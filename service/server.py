@@ -2551,22 +2551,8 @@ class Handler(BaseHTTPRequestHandler):
                     "SELECT text FROM memory WHERE ts >= ? ORDER BY id DESC LIMIT 12",
                     (today_start,),
                 ).fetchall()
-                raw = "\n".join(str(r["text"]) for r in rows)
-                user_lines = []
-                assistant_lines = []
-                for line in raw.splitlines():
-                    text = line.strip()
-                    if not text:
-                        continue
-                    if text.startswith("主人："):
-                        user_lines.append(text[3:].strip())
-                    elif text.startswith("我："):
-                        assistant_lines.append(text[2:].strip())
-                    else:
-                        user_lines.append(text)
-                user_text = "\n".join(user_lines)[:4000]
-                if not assistant_text:
-                    assistant_text = "\n".join(assistant_lines)[:3000]
+                # 保留 L0 原顺序和「主人：/我：」标签，不要再拆开
+                user_text = "\n".join(str(r["text"]) for r in rows)[:5000]
             except Exception:
                 user_text = ""
         # 今天的活动日志
