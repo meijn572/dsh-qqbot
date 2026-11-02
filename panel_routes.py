@@ -31,6 +31,7 @@ from panel_readers import (
     qr_status,
     rolecard_payload,
     save_core_setting,
+    save_persona_field,
     set_proactive,
     status_payload,
     sticker_payload,
@@ -148,6 +149,10 @@ def handle_post(handler, path: str, parsed) -> None:
         handler._json(dismiss_style())
     elif path == "/api/persona/save":
         handler._json(save_core_setting(str(_body(handler).get("constitution") or "")))
+    elif path == "/api/persona/field":
+        body = _body(handler)
+        handler._json(save_persona_field(
+            str(body.get("field") or ""), str(body.get("text") or "")))
     elif path in ("/api/lexicon/add", "/api/lexicon/delete"):
         body = _body(handler)
         if path.endswith("/add"):

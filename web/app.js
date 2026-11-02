@@ -98,6 +98,40 @@ async function saveCore(){
   alert('核心设定已保存');
   load();
 }
+const PERSONA_FIELDS={
+  self_model:{preview:'selfPreview',wrap:'selfEditWrap',text:'selfText',msg:'selfMsg'},
+  user_profile:{preview:'profilePreview',wrap:'profileEditWrap',text:'profileText',msg:'profileMsg'}
+};
+function editPersonaField(field){
+  const f=PERSONA_FIELDS[field]; if(!f) return;
+  window.__coreLock=true;
+  const preview=document.getElementById(f.preview);
+  const wrap=document.getElementById(f.wrap);
+  if(preview) preview.hidden=true;
+  if(wrap) wrap.hidden=false;
+  document.getElementById(f.text)?.focus();
+}
+function cancelPersonaField(field){
+  const f=PERSONA_FIELDS[field]; if(!f) return;
+  window.__coreLock=false;
+  const preview=document.getElementById(f.preview);
+  const wrap=document.getElementById(f.wrap);
+  if(wrap) wrap.hidden=true;
+  if(preview) preview.hidden=false;
+  load();
+}
+async function savePersonaField(field){
+  const f=PERSONA_FIELDS[field]; if(!f) return;
+  const text=document.getElementById(f.text)?.value||'';
+  const msg=document.getElementById(f.msg);
+  if(msg) msg.textContent='保存中…';
+  const r=await fetch('/api/persona/field',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({field,text})});
+  const data=await r.json();
+  if(!data.ok){ if(msg) msg.textContent=data.error||'保存失败'; return; }
+  window.__coreLock=false;
+  alert(data.field==='self_model'?'自我认知已保存':'用户画像已保存');
+  load();
+}
 async function lexAdd(){
   const term=document.getElementById('lexTerm')?.value||'';
   const meaning=document.getElementById('lexMeaning')?.value||'';
@@ -183,8 +217,20 @@ async function load(){
         <div style="margin-top:8px"><button onclick="saveCore()">保存</button> <button onclick="cancelCore()">取消</button> <span id="coreMsg" class="mut"></span></div>
         <div class="mut" style="margin-top:6px">“非常重要的事”也可以在这里直接改；保存后会同步到 important.md。</div>
       </div></div>`;
-    h+=`<div class="card"><div class="k">自我认知（会随相处变化）</div>${p.self_model?mdToHtml(p.self_model):'<div class="mut">（空）</div>'}</div>`;
-    h+=`<div class="card"><div class="k">用户画像</div>${p.user_profile?mdToHtml(p.user_profile):'<div class="mut">（还没形成）</div>'}</div>`;
+    h+=`<div class="card"><div class="k">自我认知（会随相处变化）<button style="float:right" onclick="editPersonaField('self_model')">编辑</button></div>
+      <div id="selfPreview">${p.self_model?mdToHtml(p.self_model):'<div class="mut">（空）</div>'}</div>
+      <div id="selfEditWrap" hidden>
+        <textarea id="selfText" style="width:100%;height:280px;background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.6">${esc(p.self_model||'')}</textarea>
+        <div style="margin-top:8px"><button onclick="savePersonaField('self_model')">保存</button> <button onclick="cancelPersonaField('self_model')">取消</button> <span id="selfMsg" class="mut"></span></div>
+        <div class="mut" style="margin-top:6px">只会改自我认知，不会动核心设定和身份。</div>
+      </div></div>`;
+    h+=`<div class="card"><div class="k">用户画像<button style="float:right" onclick="editPersonaField('user_profile')">编辑</button></div>
+      <div id="profilePreview">${p.user_profile?mdToHtml(p.user_profile):'<div class="mut">（还没形成）</div>'}</div>
+      <div id="profileEditWrap" hidden>
+        <textarea id="profileText" style="width:100%;height:280px;background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.6">${esc(p.user_profile||'')}</textarea>
+        <div style="margin-top:8px"><button onclick="savePersonaField('user_profile')">保存</button> <button onclick="cancelPersonaField('user_profile')">取消</button> <span id="profileMsg" class="mut"></span></div>
+        <div class="mut" style="margin-top:6px">只改「我眼中的主人」，不会动核心设定。</div>
+      </div></div>`;
     $('#persona').innerHTML=h;
   }
   if(!$('#guests').hidden){

@@ -311,6 +311,16 @@ L4 不再走 profile 块，也不参与 recall。L4 作为「关系约定」进 
 | `user_profile` | 画像刷新、面板 |
 | important 段 | 重要的事自检、`remember_important`、手动 |
 
+面板可以手动编辑 `self_model` 和 `user_profile`：
+
+```
+POST /api/persona/field
+  {"field":"self_model","text":"..."}
+  {"field":"user_profile","text":"..."}
+```
+
+分别写服务 `/persona/self` 和 `/persona/user`，不会改核心设定。
+
 #### growth 的记忆输入
 
 先统一几个说法：
@@ -445,7 +455,7 @@ bridge.style_review_loop
 
 要求：
 
-- 4–8 条短句
+- 4–10 条短句
 - 120–500 字
 - 只改真正有变化的
 - 不新增身份/事实/关系

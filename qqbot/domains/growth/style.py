@@ -46,7 +46,7 @@ async def run(turn: Turn, chat_key: str) -> bool:
         + "【最近对话】\n" + (recent or "（最近没聊什么）") + "\n\n"
         + material + "\n\n"
         "任务：结合完整人格、最近相处和长期记忆，判断她的说话方式有没有自然变化，写出更新后的风格段。\n"
-        "要求：4–8 条短句；总长 120–500 字；保留仍然成立的部分，只改真正有变化的；\n"
+        "要求：4–10 条短句；总长 120–500 字；保留仍然成立的部分，只改真正有变化的；\n"
         "不要新增身份/事实/关系设定，不要写成规则说明书。\n"
         '只输出 JSON：{"style":"- …\\n- …","reason":"为什么改，一句话"}'
     )
@@ -63,6 +63,10 @@ async def run(turn: Turn, chat_key: str) -> bool:
     reason = str(data.get("reason") or "").strip()
     if not (100 <= len(style) <= 600):
         log.warning("风格复盘：长度不合适 %s", len(style))
+        return False
+    bullets = [line for line in style.splitlines() if line.strip().startswith("- ")]
+    if not (4 <= len(bullets) <= 10):
+        log.warning("风格复盘：条数不合适 %s", len(bullets))
         return False
     if _similar(style[:60], current[:60]) and abs(len(style) - len(current)) < 20:
         log.info("风格复盘：变化太小，不生成提议")

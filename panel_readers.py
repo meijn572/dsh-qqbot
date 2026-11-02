@@ -427,6 +427,37 @@ def save_core_setting(text: str) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
+def save_persona_field(field: str, text: str) -> dict:
+    """手工编辑自我认知 / 用户画像。"""
+    field = str(field or "")
+    text = str(text or "").strip()
+    if field == "self_model":
+        if not text:
+            return {"ok": False, "error": "自我认知不能为空"}
+        if len(text) > 4000:
+            return {"ok": False, "error": "自我认知最多 4000 字"}
+        try:
+            data = cmem_post("/persona/self", {"text": text})
+            if data.get("ok") is False:
+                return {"ok": False, "error": data.get("error") or "保存失败"}
+            return {"ok": True, "field": field, "chars": len(text),
+                    "self_model": data.get("self_model", text)}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": str(exc)}
+    if field == "user_profile":
+        if len(text) > 8000:
+            return {"ok": False, "error": "用户画像最多 8000 字"}
+        try:
+            data = cmem_post("/persona/user", {"user_profile": text})
+            if data.get("ok") is False:
+                return {"ok": False, "error": data.get("error") or "保存失败"}
+            return {"ok": True, "field": field, "chars": len(text),
+                    "user_profile": text}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": str(exc)}
+    return {"ok": False, "error": "未知字段"}
+
+
 def sticker_payload() -> dict:
     categories = {}
     user_items = []
