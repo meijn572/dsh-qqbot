@@ -890,10 +890,9 @@ async def _process_locked(dsh: Dsh, onebot: OneBot, mtype: str, target: int, cha
         reply = await dsh.wait_reply(sid, baseline)
         log.info("reply (%s): %s", chat_key, reply[:200])
         if LAST_INBOUND.get(chat_key, 0) > prompt_started:
-            # 生成期间你又发了新消息：这条已经过时，交给下一轮一起回
-            log.info("处理期间来了新消息，丢弃这条过期回复 (%s)", chat_key)
-        else:
-            await onebot.send(mtype, target, reply)
+            # 生成期间又来了新消息：这条回复仍然发出去，避免“记忆里有、QQ 没有”
+            log.info("处理期间来了新消息，本条仍发送，随后处理新消息 (%s)", chat_key)
+        await onebot.send(mtype, target, reply)
         try:
             proj_after = await dsh.projections(sid)
             set_state(chat_key, sid, int(proj_after.get("asOfSeq") or 0))
