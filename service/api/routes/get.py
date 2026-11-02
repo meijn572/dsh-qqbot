@@ -121,7 +121,8 @@ def handle_get(handler, path: str, query: dict, store) -> bool:
             except Exception:
                 hour = None
             st["activity"] = store.current_activity(hour)
-            st["weather"] = store.current_weather()
+            fetch_weather = str((query.get("weather") or ["0"])[0]).lower() in ("1", "true", "yes")
+            st["weather"] = store.current_weather(fetch=fetch_weather)
             st["stage"] = store.current_stage()
             st["emotion"] = store.get_emotion()
             try:

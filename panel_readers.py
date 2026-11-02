@@ -7,6 +7,7 @@ import socket
 import urllib.request
 import sqlite3
 import time
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -169,7 +170,7 @@ PORTS = {
 
 def port_open(port: int) -> bool:
     with socket.socket() as sock:
-        sock.settimeout(0.4)
+        sock.settimeout(0.15)
         return sock.connect_ex(("127.0.0.1", port)) == 0
 
 
@@ -642,9 +643,11 @@ def status_payload() -> dict:
         else:
             bindings[key] = {"session": value, "seq": 0}
     mood = mood_payload()
+    with ThreadPoolExecutor(max_workers=len(PORTS)) as pool:
+        port_status = dict(zip(PORTS, pool.map(port_open, PORTS.values())))
     return {
         "time": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "ports": {name: port_open(port) for name, port in PORTS.items()},
+        "ports": port_status,
         "bridge": health(),
         "bindings": bindings,
         "mood": mood.get("mood"),

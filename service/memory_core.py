@@ -1044,13 +1044,15 @@ class MemoryStore:
             return "在摸鱼"
         return "发呆"
 
-    def current_weather(self, ttl: float = 1800.0) -> str:
-        """拉天气（wttr.in，缓存 ttl 秒）。失败返回缓存或空串。"""
+    def current_weather(self, ttl: float = 1800.0, fetch: bool = False) -> str:
+        """拉天气（wttr.in，缓存 ttl 秒）。默认只读缓存，避免阻塞面板/hook。"""
         cur = self.get_state() if hasattr(self, "get_state") else {}
         now = time.time()
         cached = cur.get("weather", "") if cur else ""
         updated = float(cur.get("weather_updated", 0) or 0) if cur else 0.0
         if cached and now - updated < ttl:
+            return cached
+        if not fetch:
             return cached
         try:
             import urllib.request as _ur
