@@ -2,6 +2,7 @@
 *
 !.gitignore
 !README.md
+!THIRD_PARTY.md
 !config.example.json
 
 !bridge.py
@@ -25,10 +26,15 @@
 !scripts/**
 !docs/
 !docs/**
+!service/
+!service/**
+!plugins/
+!plugins/**
 
 # 运行产物
 **/__pycache__/
 *.pyc
+*.db
 *.log
 *.err
 *.out
@@ -38,6 +44,9 @@ token*.txt
 *_token.txt
 bili_qr.png
 bili_login.*
+.venv/
+.venv-win/
+.env
 
 # 数据/备份/密钥
 backups/

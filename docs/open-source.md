@@ -19,11 +19,12 @@
 | 直接依赖 | DSH 宿主、SnowLuma/OneBot、`dsh-bili-scroll` 工具、DeepSeek/SiliconFlow |
 | 不使用/已禁用 | `dsh-memewiki`、旧 AstrBot 链路（保留回退） |
 
-注意：当前 GitHub 仓库主要包含 `bridge.py`、`qqbot/`、面板和文档。
+当前 GitHub 仓库还包含：
 
-`remembers-service` 和 `dsh-remembers` 插件源码在 `$DSH_HOME` 下，**不在当前仓库里**。
+- `service/`：记忆服务源码（`companion-memory` 修改版）
+- `plugins/dsh-remembers/`：DSH 插件源码（`dsh-remembers` 修改版）
 
-如果要把完整系统公开，需要单独决定是否把这两部分也放进来，并做同样的许可证检查。
+这两部分跟随上游 MIT 许可证，版权声明见 `THIRD_PARTY.md` 和各自目录下的 `LICENSE`。
 
 ## 2. GitHub 简介怎么写
 
@@ -56,8 +57,8 @@ English：
 - DeepSeek / SiliconFlow（模型）
 
 说明：
-- 本仓库不包含记忆服务、DSH 插件源码和运行数据
-- 不含 QQ 号、群号、token、密钥、记忆库、日志
+- 包含记忆服务与 DSH 插件源码（基于 dsh-remembers / companion-memory，MIT）
+- 不含 QQ 号、群号、token、密钥、记忆库、日志、表情包
 ```
 
 ### Topics
@@ -77,6 +78,9 @@ dsh qqbot onebot snowluma memory persona bilibili chatbot
 - `scripts/`
 - `tests/`
 - `docs/`
+- `service/`
+- `plugins/dsh-remembers/`
+- `THIRD_PARTY.md`
 - `README.md`
 - `config.example.json`
 - 启停/看门狗脚本
@@ -91,31 +95,43 @@ dsh qqbot onebot snowluma memory persona bilibili chatbot
 - `backups/`
 - `archive/`
 - 记忆数据库
-- DSH 插件源码
-- 记忆服务源码
+- 服务运行数据/虚拟环境
+- 插件备份文件
 
 ## 4. 许可证现状
 
-当前仓库没有 `LICENSE` 文件。
+当前仓库还没有顶层 `LICENSE` 文件。
 
-GitHub 上没有许可证默认是“保留所有权利”，别人可以看，但不能合法复制、修改、再分发。
+但包含了两类代码：
 
-如果想让别人复用，建议二选一：
+- 本项目自己写的桥接、面板、`qqbot/`
+- 基于 MIT 的 `dsh-remembers` / `companion-memory` 修改版
+
+后者的 MIT 许可证已保留：
+
+```
+plugins/dsh-remembers/LICENSE
+service/LICENSE
+THIRD_PARTY.md
+```
+
+自己写的那部分目前默认“保留所有权利”。如果想让别人复用，建议加一个顶层许可证：
 
 - MIT：简单、宽松，适合个人项目
 - Apache-2.0：宽松 + 专利条款，适合更正式的项目
 
-如果只想让人看、不想让人复用，就不加许可证，并在 README 写清楚。
+如果只想让人看、不想让人复用，就不加，并在 README 写清楚。
 
 ## 5. 第三方依赖
 
 ### dsh-remembers
 
 - 包元数据：`license = MIT`
-- 当前仓库不包含它的源码
-- 如果以后把它的代码/修改版放进仓库：
-  - 保留 MIT 许可证和版权声明
-  - 标明哪些文件是修改过的
+- 当前仓库已包含修改版：
+  - `service/`（companion-memory 服务）
+  - `plugins/dsh-remembers/`
+- 已保留 MIT 版权声明和 `LICENSE`
+- 修改内容列在 `THIRD_PARTY.md`
 
 ### dsh-bili-scroll
 
@@ -185,8 +201,9 @@ GitHub 上没有许可证默认是“保留所有权利”，别人可以看，�
 当前仓库公开**基本没有第三方代码版权问题**，因为：
 
 - 不包含 DSH/SnowLuma 二进制
-- 不包含 `dsh-remembers` / `dsh-bili-scroll` 源码
-- 不包含记忆数据、日志、密钥
+- `dsh-remembers` / `companion-memory` 源码按 MIT 保留声明
+- `dsh-bili-scroll` 不复制代码
+- 不包含记忆数据、日志、密钥、表情包
 
 真正要注意的是：
 

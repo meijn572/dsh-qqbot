@@ -4,6 +4,8 @@
 
 基于 DSH（DeepSeek Harness）的 QQ 陪伴机器人。QQ 消息经 SnowLuma / OneBot 进入桥接，DSH 负责对话，记忆服务负责长期记忆与人格。
 
+记忆服务和 DSH 插件基于 `dsh-remembers` / `companion-memory`（MIT）修改，来源和改动见 [THIRD_PARTY.md](THIRD_PARTY.md)。
+
 旧 AstrBot 部署保留，可回退。
 
 ## 拓扑
@@ -66,6 +68,8 @@ powershell -ExecutionPolicy Bypass -File D:\path\to\dshbot\stop-dshbot.ps1
 | `config.json` | 端口、白名单、行为参数、路径 |
 | `qqbot/` | 业务域：media / group / growth / autonomy / qzone |
 | `qqbot/clients/` | 记忆、人格服务 HTTP 客户端 |
+| `service/` | 记忆服务源码（基于 companion-memory 修改） |
+| `plugins/dsh-remembers/` | DSH 插件源码（基于 dsh-remembers 修改） |
 | `panel.py` | 面板 HTTP 生命周期 |
 | `panel_readers.py` | 面板投影、动作、服务访问 |
 | `panel_routes.py` | 面板 API 路由 |
@@ -75,6 +79,9 @@ powershell -ExecutionPolicy Bypass -File D:\path\to\dshbot\stop-dshbot.ps1
 | `tests/` | 22 条单测 |
 | `docs/refactor-plan.md` | 重构计划与阶段记录 |
 | `docs/refactor-summary.md` | 重构总结 |
+| `docs/architecture.md` | 架构说明 |
+| `docs/open-source.md` | 公开与第三方依赖说明 |
+| `THIRD_PARTY.md` | 第三方版权/许可证声明 |
 
 ## 运行数据
 

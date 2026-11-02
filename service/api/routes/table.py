@@ -1,0 +1,60 @@
+"""POST 路由表：路径 → Handler 方法名。"""
+from __future__ import annotations
+
+POST_ROUTES = {
+    "/hook/pre-step": "_hook_pre_step",
+    "/hook/turn-end": "_hook_turn_end",
+    "/ingest": "_ingest",
+    "/context": "_context",
+    "/search": "_search",
+    "/consolidate": "_consolidate",
+    "/import": "_import",
+    "/surprisal": "_surprisal",
+    "/reindex": "_reindex",
+    "/config": "_set_config",
+    "/state": "_set_state",
+    "/persona": "_set_persona",
+    "/persona/self": "_set_self_model",
+    "/persona/important": "_set_important",
+    "/extract": "_extract",
+    "/memes": "_post_meme",
+    "/memes/used": "_post_meme_used",
+    "/bili/tools": "_set_bili_tools",
+    "/bili/run": "_bili_run",
+    "/emotion": "_post_emotion",
+    "/proactive/action": "_add_proactive_action",
+    "/persona/user": "_set_user_profile",
+    "/bili/comment": "_post_bili_comment",
+    "/public/toggle": "_public_toggle",
+    "/qq/config": "_post_qq_config",
+    "/qq/bind": "_post_qq_bind",
+    "/qq/cmd": "_post_qq_cmd",
+    "/qq/new-session": "_post_qq_new_session",
+    "/bili/thought": "_bili_thought",
+    "/bili/cfg": "_set_bili_cfg",
+    "/bili/owner": "_set_bili_owner",
+    "/bili/login": "_bili_login",
+    "/bili/toggle": "_bili_toggle",
+    "/browse": "_post_browse",
+    "/proactive": "_set_proactive",
+    "/profiles": "_set_profile",
+    "/memes/scan": "_scan_seen",
+    "/memes/upload": "_upload_meme",
+    "/memes/delete": "_delete_meme",
+    "/slang": "_post_slang",
+    "/affinity": "_post_affinity",
+    "/tasks": "_post_task",
+    "/tasks/complete": "_complete_task",
+    "/notes": "_post_note",
+    "/activity": "_log_activity",
+    "/diary": "_write_diary",
+    "/evolve": "_evolve",
+    "/episode": "_episode",
+    "/batch/run": "_batch_run",
+}
+
+
+def post_handler(path: str) -> str | None:
+    if path.startswith("/forget/"):
+        return "_forget"
+    return POST_ROUTES.get(path)
