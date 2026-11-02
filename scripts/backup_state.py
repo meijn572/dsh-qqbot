@@ -16,7 +16,7 @@ BOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BOT))
 from settings import CONFIG, DSH_HOME  # noqa: E402
 
-SERVICE = Path(r"C:\Users\12152\.dsh-qqbot\remembers-service")
+SERVICE = DSH_HOME / "remembers-service"
 PLUGIN = DSH_HOME / "plugins" / "dsh-remembers"
 DB = DSH_HOME / "remembers-data" / "memories.db"
 

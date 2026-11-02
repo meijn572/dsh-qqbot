@@ -4,7 +4,7 @@
 > 当前阶段：Phase 8 已完成，观察期  
 > 下一步：观察真实 QQ 回合、面板、自主刷一天  
 > 总结：[refactor-summary.md](refactor-summary.md)  
-> 范围：`D:\QQBot\dshbot`、`C:\Users\12152\.dsh-qqbot\remembers-service`、`plugins\dsh-remembers`  
+> 范围：`D:\path\to\dshbot`、`C:\Users\<you>\.dsh-qqbot\remembers-service`、`plugins\dsh-remembers`  
 > 原则：不推倒重来；先清边界，再拆模块；每一步可回滚、可验证。
 
 ## 0. 非目标
@@ -133,7 +133,7 @@ jobs/registry              定时触发
 ### 2.4 目标目录
 
 ```
-D:\QQBot\dshbot\
+D:\path\to\dshbot\
   settings.py                 # 唯一配置入口：路径、端口、token、DSH_HOME
   qqbot/
     __main__.py               # 进程入口，只调 runtime.main()
@@ -318,7 +318,7 @@ plugins/dsh-remembers/
 ### 2.8 数据与脚本
 
 ```
-C:\Users\12152\.dsh-qqbot\
+C:\Users\<you>\.dsh-qqbot\
   remembers-data/
     memories.db               # 主记忆库
     config.json               # 服务端配置
@@ -563,7 +563,7 @@ from settings import CONFIG, DSH_HOME, CMEM_BASE
 
 | 配置 | 文件 | 所有者 |
 | --- | --- | --- |
-| QQ/DSH/面板/路径 | `D:\QQBot\dshbot\config.json` | `settings.py` |
+| QQ/DSH/面板/路径 | `D:\path\to\dshbot\config.json` | `settings.py` |
 | 记忆/人格/批量/主动 | `~/.dsh-qqbot/remembers-data/config.json` | 记忆服务 |
 | 插件开关/服务地址 | `profiles/qqbot2/cordis.patch.yml` | DSH 插件 |
 
@@ -574,8 +574,8 @@ from settings import CONFIG, DSH_HOME, CMEM_BASE
 代码和运行数据分离：
 
 ```
-D:\QQBot\dshbot\              代码
-C:\Users\12152\.dsh-qqbot\    运行数据
+D:\path\to\dshbot\              代码
+C:\Users\<you>\.dsh-qqbot\    运行数据
   remembers-data/
     memories.db
     config.json
@@ -809,7 +809,7 @@ POST /tool/find_meme
 - [x] `index.mjs` turn-end 支持 hook 分支
 - [x] 部署到 profile 并灰度（`CMEM_HOOKS=1`）
 - [x] `cordis.patch.yml` 持久化 `hooks: true`，重启不再依赖环境变量
-- [x] 修正：实际生效的是 profile patch `C:\Users\12152\.dsh-qqbot\profiles\qqbot2\cordis.patch.yml`
+- [x] 修正：实际生效的是 profile patch `C:\Users\<you>\.dsh-qqbot\profiles\qqbot2\cordis.patch.yml`
 - [x] 启动日志确认 `config hooks=true`
 - [x] 真实回合 `turn_end` 已走 hook，L0 `id=368`
 - [x] 真实回合 `pre_step` 已出现：`recall_chars=4596`
@@ -892,7 +892,7 @@ POST /tool/find_meme
 每个 Phase 结束必须跑：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File D:\QQBot\dshbot\scripts\check.ps1
+powershell -ExecutionPolicy Bypass -File D:\path\to\dshbot\scripts\check.ps1
 ```
 
 包含：

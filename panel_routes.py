@@ -38,6 +38,7 @@ from panel_readers import (
     sync_growth,
     tail,
 )
+from settings import CONFIG
 
 
 def _body(handler) -> dict:
@@ -81,7 +82,7 @@ def handle_get(handler, path: str, parsed) -> None:
         files = {
             "bridge": BOT / "bridge.log",
             "bili": BILI / "duty.log",
-            "dsh": Path(r"D:\QQBot\logs\qqbot-boot19.err"),
+            "dsh": Path(CONFIG.get("dsh_log_file") or (BOT.parent / "logs" / "qqbot-boot19.err")),
         }
         handler._json({"text": tail(files.get(name, BOT / "bridge.log"), 150)})
     elif path == "/api/bili":
@@ -124,7 +125,7 @@ def restart_bridge() -> dict:
     if pid:
         subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True, timeout=15)
         time.sleep(2)
-    py = Path(r"D:\QQBot\AstrBot\.venv\Scripts\python.exe")
+    py = CONFIG.get("bridge_python") or "python"
     subprocess.Popen(
         [str(py), str(BOT / "bridge.py")],
         cwd=str(BOT),

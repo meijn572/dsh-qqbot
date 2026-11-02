@@ -1,17 +1,17 @@
 {
   "onebot_http": "http://127.0.0.1:3000",
   "onebot_ws": "ws://127.0.0.1:3001",
-  "onebot_token_file": "D:\\QQBot\\dshbot\\onebot_token.txt",
+  "onebot_token_file": "D:\\path\\to\\dshbot\\onebot_token.txt",
   "dsh_base": "http://127.0.0.1:60773",
-  "dsh_token_file": "D:\\QQBot\\dshbot\\dsh_token.txt",
+  "dsh_token_file": "D:\\path\\to\\dshbot\\dsh_token.txt",
   "allowed_users": [
     123456789
   ],
   "allowed_groups": [
     123456789
   ],
-  "state_file": "D:\\QQBot\\dshbot\\state.json",
-  "cwd": "D:\\QQBot\\dshbot-workspace",
+  "state_file": "D:\\path\\to\\dshbot\\state.json",
+  "cwd": "D:\\path\\to\\workspace",
   "dsh_home": "C:\\Users\\<you>\\.dsh-qqbot",
   "proactive": {
     "enabled": true,
@@ -92,10 +92,13 @@
   "profile_refresh_days": 2,
   "cmem_base": "http://127.0.0.1:8081",
   "panel_port": 6080,
-  "dsh_exe": "D:\\ds_harness\\resources\\runtime\\cli\\bin\\dsh.cmd",
-  "bridge_python": "D:\\QQBot\\AstrBot\\.venv\\Scripts\\python.exe",
-  "panel_python": "D:\\python\\python.exe",
-  "deepseek_key_file": "D:\\QQBot\\secret\\deepseek.key",
-  "siliconflow_key_file": "D:\\QQBot\\secret\\siliconflow.key",
-  "bot_qq": 123456789
+  "dsh_exe": "D:\\path\\to\\ds_harness\\resources\\runtime\\cli\\bin\\dsh.cmd",
+  "bridge_python": "D:\\path\\to\\AstrBot\\.venv\\Scripts\\python.exe",
+  "panel_python": "D:\\path\\to\\python.exe",
+  "deepseek_key_file": "D:\\path\\to\\secret\\deepseek.key",
+  "siliconflow_key_file": "D:\\path\\to\\secret\\siliconflow.key",
+  "bot_qq": 123456789,
+  "qq_exe": "D:\\path\\to\\QQ.exe",
+  "snowluma_dir": "D:\\path\\to\\SnowLuma",
+  "log_dir": "D:\\path\\to\\logs"
 }

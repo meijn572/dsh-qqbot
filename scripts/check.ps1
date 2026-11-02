@@ -1,7 +1,8 @@
-# 每阶段固定检查：单元测试 + smoke
+﻿# 每阶段固定检查：单元测试 + smoke
 $ErrorActionPreference = "Stop"
 $bot = Split-Path -Parent $PSScriptRoot
-$py = "D:\QQBot\AstrBot\.venv\Scripts\python.exe"
+$cfg = Get-Content (Join-Path $bot "config.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+$py = if ($cfg.bridge_python) { [string]$cfg.bridge_python } elseif ($env:DSHBOT_PYTHON) { $env:DSHBOT_PYTHON } else { "python" }
 Set-Location $bot
 $env:PYTHONPATH = $bot
 

@@ -1,4 +1,4 @@
-# 启动 DSH 版 QQ 机器人：记忆服务 + DSH qqbot2 + 桥接 + 面板
+﻿# 启动 DSH 版 QQ 机器人：记忆服务 + DSH qqbot2 + 桥接 + 面板
 $ErrorActionPreference = "Continue"
 
 $botDir = $PSScriptRoot
@@ -12,6 +12,12 @@ $cmemPort = ([uri]$cfg.cmem_base).Port
 $dshPort = ([uri]$cfg.dsh_base).Port
 $dshHost = ([uri]$cfg.dsh_base).Host
 $panelPort = [int]$cfg.panel_port
+$qqExe = [string]$cfg.qq_exe
+$snowDir = [string]$cfg.snowluma_dir
+$logDir = [string]$cfg.log_dir
+if (-not $snowDir) { $snowDir = Join-Path (Split-Path $botDir -Parent) "SnowLuma" }
+if (-not $logDir) { $logDir = Join-Path (Split-Path $botDir -Parent) "logs" }
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $svcDir = Join-Path $dshHome "remembers-service"
 $svcPy = Join-Path $svcDir ".venv-win\Scripts\python.exe"
 $svcData = Join-Path $dshHome "remembers-data"
@@ -22,9 +28,13 @@ $env:PATH = "$biliVenv;" + $env:PATH
 
 # 确保 QQ 在跑（SnowLuma 需要 QQ 进程才能拉起 OneBot）
 if (-not (Get-Process QQ -ErrorAction SilentlyContinue)) {
-    Write-Host "[dshbot] 启动 QQ 客户端..."
-    Start-Process -FilePath "D:\qq\QQ.exe"
-    Start-Sleep -Seconds 15
+    if ($qqExe -and (Test-Path $qqExe)) {
+        Write-Host "[dshbot] 启动 QQ 客户端..."
+        Start-Process -FilePath $qqExe
+        Start-Sleep -Seconds 15
+    } else {
+        Write-Host "[dshbot] 未配置 qq_exe，跳过启动 QQ"
+    }
 }
 
 # 确保 SnowLuma 在跑
@@ -34,11 +44,17 @@ if (-not $snow) {
     Write-Host "[dshbot] 启动 SnowLuma..."
     $env:SNOWLUMA_ACCEPT_EULA = "1"
     $env:SNOWLUMA_ACCEPT_PRIVACY = "1"
-    Start-Process -FilePath "D:\QQBot\SnowLuma\node.exe" -ArgumentList "D:\QQBot\SnowLuma\index.mjs" `
-        -WorkingDirectory "D:\QQBot\SnowLuma" `
-        -RedirectStandardOutput "D:\QQBot\logs\snowluma.out" `
-        -RedirectStandardError "D:\QQBot\logs\snowluma.err" -WindowStyle Hidden
-    Start-Sleep -Seconds 10
+    $snowExe = Join-Path $snowDir "node.exe"
+    $snowScript = Join-Path $snowDir "index.mjs"
+    if ((Test-Path $snowExe) -and (Test-Path $snowScript)) {
+        Start-Process -FilePath $snowExe -ArgumentList $snowScript `
+            -WorkingDirectory $snowDir `
+            -RedirectStandardOutput (Join-Path $logDir "snowluma.out") `
+            -RedirectStandardError (Join-Path $logDir "snowluma.err") -WindowStyle Hidden
+        Start-Sleep -Seconds 10
+    } else {
+        Write-Host "[dshbot] SnowLuma 未找到：$snowDir"
+    }
 }
 
 # 记忆服务

@@ -1,5 +1,5 @@
-$ErrorActionPreference = "Continue"
-$vbs = "D:\QQBot\dshbot\start-fish.vbs"
+﻿$ErrorActionPreference = "Continue"
+$vbs = Join-Path $PSScriptRoot "start-fish.vbs"
 while ($true) {
     $missing = $false
     foreach ($port in 8081, 60773, 6080) {

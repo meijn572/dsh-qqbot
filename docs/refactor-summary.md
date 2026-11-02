@@ -108,15 +108,15 @@ panel.py
 
 - 重构前备份：
   ```
-  D:\QQBot\dshbot\backups\refactor-phase0-20261102-163809
+  D:\path\to\dshbot\backups\refactor-phase0-20261102-163809
   ```
 - 插件拆分前备份：
   ```
-  C:\Users\12152\.dsh-qqbot\plugins\dsh-remembers\index.before-*.mjs
+  C:\Users\<you>\.dsh-qqbot\plugins\dsh-remembers\index.before-*.mjs
   ```
 - 旧目录：
   ```
-  C:\Users\12152\.dsh-qqbot\archive\legacy-20261102\
+  C:\Users\<you>\.dsh-qqbot\archive\legacy-20261102\
   ```
 
 ## 运行开关

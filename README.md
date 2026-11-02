@@ -24,7 +24,7 @@ QQ
                           store / context / persona / hook
                                  │
                                  ▼
-                     C:\Users\12152\.dsh-qqbot\remembers-data
+                     C:\Users\<you>\.dsh-qqbot\remembers-data
 
 面板 127.0.0.1:6080
 ```
@@ -34,19 +34,19 @@ QQ
 首次运行先复制配置模板，填入自己的 QQ 号、群号和路径：
 
 ```powershell
-Copy-Item D:\QQBot\dshbot\config.example.json D:\QQBot\dshbot\config.json
+Copy-Item D:\path\to\dshbot\config.example.json D:\path\to\dshbot\config.json
 ```
 
 然后：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File D:\QQBot\dshbot\start-dshbot.ps1
+powershell -ExecutionPolicy Bypass -File D:\path\to\dshbot\start-dshbot.ps1
 ```
 
 停止：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File D:\QQBot\dshbot\stop-dshbot.ps1
+powershell -ExecutionPolicy Bypass -File D:\path\to\dshbot\stop-dshbot.ps1
 ```
 
 启动脚本读取 `config.json`，按配置启动：
@@ -80,13 +80,13 @@ powershell -ExecutionPolicy Bypass -File D:\QQBot\dshbot\stop-dshbot.ps1
 
 | 路径 | 内容 |
 | --- | --- |
-| `C:\Users\12152\.dsh-qqbot\remembers-data\memories.db` | 记忆主库 |
-| `C:\Users\12152\.dsh-qqbot\remembers-service\` | 记忆服务 |
-| `C:\Users\12152\.dsh-qqbot\hook-events.jsonl` | hook 观测日志 |
-| `C:\Users\12152\.dsh-qqbot\important\important.md` | 手写重要的事 |
-| `C:\Users\12152\.dsh-qqbot\bili-autonomy\` | 兴趣、已看、运行状态 |
-| `C:\Users\12152\.dsh-qqbot\persona-reflect\` | 复盘状态 |
-| `C:\Users\12152\.dsh-qqbot\archive\legacy-20261102\` | 归档的旧目录 |
+| `C:\Users\<you>\.dsh-qqbot\remembers-data\memories.db` | 记忆主库 |
+| `C:\Users\<you>\.dsh-qqbot\remembers-service\` | 记忆服务 |
+| `C:\Users\<you>\.dsh-qqbot\hook-events.jsonl` | hook 观测日志 |
+| `C:\Users\<you>\.dsh-qqbot\important\important.md` | 手写重要的事 |
+| `C:\Users\<you>\.dsh-qqbot\bili-autonomy\` | 兴趣、已看、运行状态 |
+| `C:\Users\<you>\.dsh-qqbot\persona-reflect\` | 复盘状态 |
+| `C:\Users\<you>\.dsh-qqbot\archive\legacy-20261102\` | 归档的旧目录 |
 
 ## 记忆模型
 
@@ -144,13 +144,13 @@ POST /hook/turn-end
 桥接使用：
 
 ```
-DSH_HOME=C:\Users\12152\.dsh-qqbot
+DSH_HOME=C:\Users\<you>\.dsh-qqbot
 ```
 
 但 DSH 实际加载插件目前是：
 
 ```
-C:\Users\12152\.dsh\profiles\qqbot2\node_modules\dsh-remembers
+C:\Users\<you>\.dsh\profiles\qqbot2\node_modules\dsh-remembers
 ```
 
 改插件后两边都要同步，否则会出现“代码改了但没生效”。
@@ -158,7 +158,7 @@ C:\Users\12152\.dsh\profiles\qqbot2\node_modules\dsh-remembers
 启用 hook 的配置在实际 profile 的：
 
 ```
-C:\Users\12152\.dsh\profiles\qqbot2\cordis.patch.yml
+C:\Users\<you>\.dsh\profiles\qqbot2\cordis.patch.yml
 ```
 
 确保有：
@@ -197,7 +197,7 @@ C:\Users\12152\.dsh\profiles\qqbot2\cordis.patch.yml
 ## 测试
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File D:\QQBot\dshbot\scripts\check.ps1
+powershell -ExecutionPolicy Bypass -File D:\path\to\dshbot\scripts\check.ps1
 ```
 
 包含：
@@ -215,7 +215,7 @@ powershell -ExecutionPolicy Bypass -File D:\QQBot\dshbot\scripts\check.ps1
 真实 QQ 回合：
 
 ```powershell
-Get-Content C:\Users\12152\.dsh-qqbot\hook-events.jsonl -Tail 20
+Get-Content C:\Users\<you>\.dsh-qqbot\hook-events.jsonl -Tail 20
 ```
 
 正常应看到：
@@ -228,7 +228,7 @@ Get-Content C:\Users\12152\.dsh-qqbot\hook-events.jsonl -Tail 20
 桥接日志：
 
 ```powershell
-Get-Content D:\QQBot\dshbot\bridge.err -Tail 50
+Get-Content D:\path\to\dshbot\bridge.err -Tail 50
 ```
 
 ## 常见问题
@@ -238,7 +238,7 @@ Get-Content D:\QQBot\dshbot\bridge.err -Tail 50
 先看：
 
 ```powershell
-Get-Content D:\QQBot\dshbot\bridge.err -Tail 50
+Get-Content D:\path\to\dshbot\bridge.err -Tail 50
 ```
 
 常见原因：
@@ -264,7 +264,7 @@ Get-Content D:\QQBot\dshbot\bridge.err -Tail 50
 看：
 
 ```powershell
-Get-Content C:\Users\12152\.dsh-qqbot\qqbot2.err -Tail 40
+Get-Content C:\Users\<you>\.dsh-qqbot\qqbot2.err -Tail 40
 ```
 
 常见是 `hooks/` 或 `tools/` 新文件没复制到实际 profile。
@@ -274,13 +274,13 @@ Get-Content C:\Users\12152\.dsh-qqbot\qqbot2.err -Tail 40
 重构前备份：
 
 ```
-D:\QQBot\dshbot\backups\refactor-phase0-20261102-163809
+D:\path\to\dshbot\backups\refactor-phase0-20261102-163809
 ```
 
 旧目录：
 
 ```
-C:\Users\12152\.dsh-qqbot\archive\legacy-20261102\
+C:\Users\<you>\.dsh-qqbot\archive\legacy-20261102\
 ```
 
 AstrBot 旧部署仍在，回退时恢复 AstrBot 白名单/平台开关即可。
