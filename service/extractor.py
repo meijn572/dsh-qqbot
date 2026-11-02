@@ -44,6 +44,9 @@ DIARY_SYSTEM = """你根据今天的对话、活动和可能相关的旧记忆�
 - 如果旧记忆里有一件事和今天对得上，可以自然联想到它，写一点现在的感想
 
 要求：像真的在写日记，具体、有情绪、有细节（不要空泛的"今天过得还好"）。
+对话里的「主人：」是老大说的/做的，「我：」是你说的/做的。
+不要把老大做的事写成你做的，也不要把你说的话写成老大说的。
+你只写自己今天真的做过/想过的事；老大做的事可以提，但主语必须清楚。
 旧记忆不是每篇都要提；对不上就忽略，不要为了回忆硬扯。
 用你现在的口吻写，不要写成总结报告，不要提"AI"。
 只输出日记正文。"""
@@ -322,12 +325,15 @@ class Extractor:
                 kind = str(a.get("kind") or "")
                 if detail:
                     parts.append(f"- [{kind}] {detail}")
-        if user_text:
+        if user_text or assistant_text:
             parts.append("")
-            parts.append("跟老大的对话：")
-            parts.append(f"用户：{user_text}")
+            parts.append("【对话原话】")
+            if user_text:
+                parts.append("主人说的：")
+                parts.append(user_text)
             if assistant_text:
-                parts.append(f"你：{assistant_text}")
+                parts.append("你说的：")
+                parts.append(assistant_text)
         if memories:
             parts.append("")
             parts.append("以前可能相关的记忆（不一定相关，只在对得上时自然联想）：")
