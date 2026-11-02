@@ -10,7 +10,8 @@ import time
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from qqbot.clients.memory import l0_recent, set_emotion
+from qqbot.clients.memory import l0_recent, persona_context, set_emotion
+from qqbot.domains.growth.evidence import collect, format_block
 from settings import DSH_HOME, OWNER_CHAT_KEY
 
 log = logging.getLogger("qqbot.growth.emotion")
@@ -66,11 +67,16 @@ async def loop(turn: Turn, cfg: dict) -> None:
                 await asyncio.sleep(300)
                 continue
             recent = await l0_recent(OWNER_CHAT_KEY, 40) or "（最近没聊什么）"
+            persona_text = await persona_context()
+            ev = await collect(l1=20, l3=10, l0=20)
+            memory_text = format_block(ev)
             prompt = (
                 "（内部维护，不要回复用户）现在是 " + time.strftime("%Y-%m-%d %H:%M") + "。\n"
                 "回想一下最近这段相处。\n\n"
-                f"【最近】\n{recent}\n\n"
-                "你有没有真的产生情绪？标准：只有被戳到、心里确实起了波动才记；"
+                + (persona_text or "（当前人格为空）") + "\n\n"
+                + f"【最近】\n{recent}\n\n"
+                + (memory_text + "\n\n" if memory_text else "")
+                + "你有没有真的产生情绪？标准：只有被戳到、心里确实起了波动才记；"
                 "没有就跳过，不要为了打卡硬写。\n"
                 "有情绪就写 label（一两个词）、intensity（0–1）、reason（一句由头）。\n"
                 '只输出 JSON：{"label":"...","intensity":0.5,"reason":"..."} 或 {"skip":true}。'
