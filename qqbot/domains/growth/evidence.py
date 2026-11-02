@@ -15,7 +15,8 @@ async def collect(l1: int, l3: int, l0: int) -> dict:
     })
 
 
-def format_block(ev: dict, l1_chars: int = 240, l3_chars: int = 400, l0_chars: int = 400) -> str:
+def format_block(ev: dict, l1_chars: int = 240, l3_chars: int = 400, l0_chars: int = 400,
+                 max_chars: int = 16000) -> str:
     items = ev.get("items") or []
     l1_lines = []
     l3_lines = []
@@ -47,4 +48,7 @@ def format_block(ev: dict, l1_chars: int = 240, l3_chars: int = 400, l0_chars: i
     lines.extend(f"[L3] {x}" for x in l3_lines)
     lines.append("【对应原话】")
     lines.extend(f"- {x}" for x in l0_lines)
-    return "\n".join(lines)
+    text = "\n".join(lines)
+    if len(text) > max_chars:
+        text = text[:max(0, max_chars - 24)] + "\n…（证据过长已截断）"
+    return text
