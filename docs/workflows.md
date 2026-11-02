@@ -228,68 +228,73 @@ DSH agent/pre-step
 
 ### 4.5 一轮对话实际注入什么
 
-不是“把所有记忆都塞进去”，而是几类块分别注入。
+不是“把所有记忆都塞进去”，而是按块注入：
 
-| 块 | 来源 | 内容 | 限制 |
+| 注入块 | 内容 | 来源 | 时机 |
 | --- | --- | --- | --- |
-| system prompt 人格 | 插件 `client.persona()` + `hooks/persona.mjs` | 核心设定、自我认知、身份、自我形象、我眼中的主人 | `personaMaxChars` 默认 4000 |
-| person | 插件 `client.profileOf()`，服务 `/profiles` | 当前发言人是谁、群友画像、非主人提示 | 群聊/私聊别人 |
-| recall | 插件 `hooks/recall.mjs`，服务 `/hook/pre-step` | L1/L3 召回块 | 见下 |
-| state | 插件 pre-step，服务 `/state` | 时间、心情、亲密度、活动、B 站状态、自我认知、群黑话、关系阶段、颜文字/emoji 提示 | 变化才注入，哈希去重 |
-| bridge-note | `bridge.py :: _process_locked` | 表情库检索提示、群黑话、私聊可复用黑话、B 站链接信息、网络梗、图片/表情路径 | 拼在用户消息里，不进 system prompt |
+| system prompt | 人格、画像、L4 关系约定 | 插件 `client.persona()` + `client.profile()` → `renderPersona()` | 每轮 system prompt |
+| person | 当前发言人、群友画像、非主人提示 | 插件 `client.profileOf()` → `/profiles` | pre-step |
+| recall | L1 事实、L3 事件 | 插件 `hooks/recall.mjs` → `/hook/pre-step` | pre-step |
+| state | 时间、心情、活动、B 站状态、黑话、关系阶段、颜文字/emoji | 插件 pre-step → `/state` | 变化才注入 |
+| bridge-note | 表情库提示、群黑话、B 站链接、网络梗、图片/表情路径 | `bridge.py :: _process_locked` | 拼在用户消息里 |
 
-L4 不再走 profile 块，也不参与 recall。L4 作为「关系约定」进人格 system prompt。
+L4 不再走 profile 块，也不参与 recall。L4 作为「关系约定」进 system prompt。
 
-#### recall 具体取什么
+#### recall 参数
 
 `service/api/routes/hooks.py :: pre_step()`：
 
-- 从 messages 取最近几条 user/assistant，最多 1000 字，作为 query
-- tiers：`L1`、`L3`
-- 配额：`L1=25`、`L3=15`
-- scope：当前会话 + `global`
-- `max_chars=6000`
-- `purpose=recall`
-- 排序：BM25 + 向量 + 层权重 + 时间衰减
-- 格式化：`[L1 · 事实] ...` / `[L3 · 事件 · 08-12 20:00] ...`
+| 参数 | 值 |
+| --- | --- |
+| query | 最近几条 user/assistant，最多 1000 字 |
+| tiers | `L1`、`L3` |
+| 配额 | `L1=25`、`L3=15`，按层后置截断 |
+| scope | 当前会话 + `global` |
+| max_chars | 6000 |
+| purpose | `recall` |
+| 排序 | BM25 + 向量 + 层权重 + 时间衰减 |
+| 格式 | `[L1 · 事实] ...` / `[L3 · 事件 · 08-12 20:00] ...` |
 
-不含 **L2**，也不含 **L0**。
+不含 L2，也不含 L0。不是固定取满，相关性不够会少取或 0 条。
 
-L2 只通过人格 system prompt 里的 `user_profile` 注入。L2 仍保留在库里，供画像刷新、面板和 fallback 使用。
+#### L2 / L0 去哪了
 
-L0 只在这些地方用：
+| 层 | 是否进 recall | 实际用途 |
+| --- | --- | --- |
+| L2 | 否 | 只通过人格 system prompt 的 `user_profile` 注入；仍供画像刷新、面板、fallback |
+| L0 | 否 | 批量蒸馏 L1、复盘/画像/情绪/重要的事的最近上下文、面板 |
 
-- 批量蒸馏 L1
-- 复盘/画像/情绪/重要的事的最近上下文
-- 面板记忆展示
-
-正常聊天的 recall 不注入 L0。主要是因为会话上下文已经提供了原话；同时 L0 信息密度低、重复注入会浪费上下文。它仍然用于蒸馏、复盘和面板。
+正常聊天不注入 L0，因为会话上下文已经提供原话，重复注入会浪费 token。
 
 #### 不注入什么
 
-- 不注入数据库 id、检索分数、hook 日志
-- 不注入别的私聊 scope
-- 不注入未映射 `global` 会话的召回
-- 不注入内部维护提示、JSON、工具日志
-- 不把 emotion_log / important_check 的中间状态塞进对话
+| 不注入 | 原因 |
+| --- | --- |
+| 数据库 id、检索分数、hook 日志 | 内部信息 |
+| 别的私聊 scope | 隐私隔离 |
+| 未映射 `global` 会话的召回 | 避免私人记忆泄漏 |
+| 内部维护提示、JSON、工具日志 | 不是对话内容 |
+| emotion_log / important_check 中间状态 | 只保留结果 |
 
-#### 当前遗留的重复
+#### 当前遗留重复
 
-服务 `/hook/pre-step` 已经返回 `system`，但插件实际仍用 `hooks/persona.mjs` 自己渲染 system prompt。
+| 块 | 当前状态 | 目标 |
+| --- | --- | --- |
+| L2 | 已从 recall 移除 | 人格画像唯一来源 |
+| L4 | 已从 profile/recall 移除 | system prompt「关系约定」 |
+| 人格 system prompt | 服务返回 `system`，插件仍自己渲染 | 插件改为消费服务 `system` |
 
-所以当前实际注入的是：
+当前实际注入：
 
 ```
-插件渲染的人格块
+插件渲染的人格块（含 L4）
   + person
-  + 服务返回的 recall
+  + 服务返回的 recall（L1/L3）
   + 插件状态块
   + bridge-note
 ```
 
 不是服务返回的 `system`。
-
-L2 已经不从 recall 取，L4 已经进 system prompt、不参与 recall；这里剩下的重复只有“人格块由插件渲染”这一处。
 
 ---
 
