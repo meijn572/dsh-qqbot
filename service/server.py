@@ -2564,13 +2564,20 @@ class Handler(BaseHTTPRequestHandler):
         if not bool(cfg.get("diary_enabled", True)):
             self._json(200, {"ok": True, "skipped": "disabled"})
             return
-        # 当天最近一条 L0 的 scope，用来检索相关旧事，避免把别的会话带进来
+        # 日记默认取当天最活跃的私聊 scope；没有私聊才退回最近 L0
         scope = ""
         try:
             row = store.conn.execute(
-                "SELECT scope FROM memory WHERE tier='L0' AND ts>=? ORDER BY id DESC LIMIT 1",
+                "SELECT scope, COUNT(*) AS c FROM memory "
+                "WHERE tier='L0' AND ts>=? AND scope LIKE 'private:%' "
+                "GROUP BY scope ORDER BY c DESC, MAX(id) DESC LIMIT 1",
                 (today_start,),
             ).fetchone()
+            if row is None:
+                row = store.conn.execute(
+                    "SELECT scope FROM memory WHERE tier='L0' AND ts>=? ORDER BY id DESC LIMIT 1",
+                    (today_start,),
+                ).fetchone()
             scope = str(row["scope"] or "") if row else ""
         except Exception:
             scope = ""
