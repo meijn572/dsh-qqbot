@@ -11,6 +11,7 @@
 !panel_routes.py
 !start-dshbot.ps1
 !stop-dshbot.ps1
+!start-fish.vbs
 !watch-fish.ps1
 !watch-fish.vbs
 

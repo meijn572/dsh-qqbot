@@ -80,6 +80,11 @@ powershell -ExecutionPolicy Bypass -File D:\path\to\dshbot\stop-dshbot.ps1
 
 | 路径 | 内容 |
 | --- | --- |
+| `runtime/state.json` | QQ 会话 → DSH 会话绑定 |
+| `runtime/health.json` | 桥接心跳 |
+| `runtime/bili_qr.png` | B 站登录二维码 |
+| `logs/` | bridge / panel / bili 日志 |
+| `secrets/` | OneBot/DSH token（不入库） |
 | `$env:USERPROFILE\.dsh-qqbot\remembers-data\memories.db` | 记忆主库 |
 | `$env:USERPROFILE\.dsh-qqbot\remembers-service\` | 记忆服务 |
 | `$env:USERPROFILE\.dsh-qqbot\hook-events.jsonl` | hook 观测日志 |
@@ -228,7 +233,7 @@ Get-Content $env:USERPROFILE\.dsh-qqbot\hook-events.jsonl -Tail 20
 桥接日志：
 
 ```powershell
-Get-Content D:\path\to\dshbot\bridge.err -Tail 50
+Get-Content D:\path\to\dshbot\logs\bridge.err -Tail 50
 ```
 
 ## 常见问题
@@ -238,7 +243,7 @@ Get-Content D:\path\to\dshbot\bridge.err -Tail 50
 先看：
 
 ```powershell
-Get-Content D:\path\to\dshbot\bridge.err -Tail 50
+Get-Content D:\path\to\dshbot\logs\bridge.err -Tail 50
 ```
 
 常见原因：

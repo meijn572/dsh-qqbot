@@ -23,18 +23,28 @@ WORKSPACE = Path(
 )
 CMEM_BASE = str(CONFIG.get("cmem_base") or "http://127.0.0.1:8081")
 PANEL_PORT = int(CONFIG.get("panel_port") or 6080)
+SCRIPTS_DIR = BOT_DIR / "scripts"
+SECRETS_DIR = BOT_DIR / "secrets"
+RUNTIME_DIR = Path(CONFIG.get("runtime_dir") or (BOT_DIR / "runtime"))
+LOG_DIR = Path(CONFIG.get("log_dir") or (BOT_DIR / "logs"))
+RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+SECRETS_DIR.mkdir(parents=True, exist_ok=True)
+HEALTH_FILE = RUNTIME_DIR / "health.json"
+QR_FILE = RUNTIME_DIR / "bili_qr.png"
+LOGIN_OUT = RUNTIME_DIR / "bili_login.out"
 
-TOKEN_OB_HTTP = Path(CONFIG.get("onebot_token_file") or (BOT_DIR / "onebot_token.txt")).read_text(
+TOKEN_OB_HTTP = Path(CONFIG.get("onebot_token_file") or (SECRETS_DIR / "onebot_token.txt")).read_text(
     encoding="utf-8"
 ).strip()
-TOKEN_OB_WS = Path(CONFIG.get("onebot_ws_token_file") or (BOT_DIR / "onebot_ws_token.txt")).read_text(
+TOKEN_OB_WS = Path(CONFIG.get("onebot_ws_token_file") or (SECRETS_DIR / "onebot_ws_token.txt")).read_text(
     encoding="utf-8"
 ).strip()
-TOKEN_DSH = Path(CONFIG.get("dsh_token_file") or (BOT_DIR / "dsh_token.txt"))
-DEEPSEEK_KEY_FILE = Path(CONFIG.get("deepseek_key_file") or (BOT_DIR / "secret" / "deepseek.key"))
-SILICONFLOW_KEY_FILE = Path(CONFIG.get("siliconflow_key_file") or (BOT_DIR / "secret" / "siliconflow.key"))
+TOKEN_DSH = Path(CONFIG.get("dsh_token_file") or (SECRETS_DIR / "dsh_token.txt"))
+DEEPSEEK_KEY_FILE = Path(CONFIG.get("deepseek_key_file") or (SECRETS_DIR / "deepseek.key"))
+SILICONFLOW_KEY_FILE = Path(CONFIG.get("siliconflow_key_file") or (SECRETS_DIR / "siliconflow.key"))
 
-STATE_FILE = Path(CONFIG.get("state_file") or (BOT_DIR / "state.json"))
+STATE_FILE = Path(CONFIG.get("state_file") or (RUNTIME_DIR / "state.json"))
 AGENTS = WORKSPACE / "AGENTS.md"
 
 # 账号/主人不再写死在代码里；运行时从 config.json 读取

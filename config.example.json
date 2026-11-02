@@ -1,16 +1,16 @@
 {
   "onebot_http": "http://127.0.0.1:3000",
   "onebot_ws": "ws://127.0.0.1:3001",
-  "onebot_token_file": "D:\\path\\to\\dshbot\\onebot_token.txt",
+  "onebot_token_file": "D:\\path\\to\\dshbot\\secrets\\onebot_token.txt",
   "dsh_base": "http://127.0.0.1:60773",
-  "dsh_token_file": "D:\\path\\to\\dshbot\\dsh_token.txt",
+  "dsh_token_file": "D:\\path\\to\\dshbot\\secrets\\dsh_token.txt",
   "allowed_users": [
     123456789
   ],
   "allowed_groups": [
     123456789
   ],
-  "state_file": "D:\\path\\to\\dshbot\\state.json",
+  "state_file": "D:\\path\\to\\dshbot\\runtime\\state.json",
   "cwd": "D:\\path\\to\\workspace",
   "dsh_home": "C:\\Users\\<you>\\.dsh-qqbot",
   "proactive": {
@@ -100,5 +100,6 @@
   "bot_qq": 123456789,
   "qq_exe": "D:\\path\\to\\QQ.exe",
   "snowluma_dir": "D:\\path\\to\\SnowLuma",
-  "log_dir": "D:\\path\\to\\logs"
+  "log_dir": "D:\\path\\to\\dshbot\\logs",
+  "runtime_dir": "D:\\path\\to\\dshbot\\runtime"
 }

@@ -38,7 +38,7 @@ from panel_readers import (
     sync_growth,
     tail,
 )
-from settings import CONFIG
+from settings import CONFIG, LOGIN_OUT, QR_FILE, SCRIPTS_DIR
 
 
 def _body(handler) -> dict:
@@ -92,7 +92,7 @@ def handle_get(handler, path: str, parsed) -> None:
     elif path == "/api/bili/qr/status":
         handler._json(qr_status())
     elif path == "/api/bili/qr.png":
-        handler._file(BOT / "bili_qr.png")
+        handler._file(QR_FILE)
     elif path == "/api/sticker":
         rel = (query.get("file") or [""])[0]
         candidate = (STICKERS / rel).resolve()
@@ -105,12 +105,12 @@ def handle_get(handler, path: str, parsed) -> None:
 
 
 def start_qr() -> dict:
-    out_file = BOT / "bili_login.out"
+    out_file = LOGIN_OUT
     vpy = HOME / "bili-duty" / ".venv" / "Scripts" / "python.exe"
     if not vpy.exists():
         return {"ok": False, "error": "找不到 bili-duty 的 venv"}
     subprocess.Popen(
-        [str(vpy), str(BOT / "bili_login2.py")],
+        [str(vpy), str(SCRIPTS_DIR / "bili_login2.py")],
         cwd=str(BOT),
         stdout=open(out_file, "w", encoding="utf-8"),
         stderr=subprocess.DEVNULL,

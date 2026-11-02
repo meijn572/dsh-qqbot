@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from settings import AGENTS, BOT_DIR as BOT, CMEM_BASE, DSH_HOME as HOME, PANEL_PORT, WORKSPACE
+from settings import AGENTS, BOT_DIR as BOT, CMEM_BASE, DSH_HOME as HOME, HEALTH_FILE, PANEL_PORT, QR_FILE, SCRIPTS_DIR, STATE_FILE, WORKSPACE
 
 DB = HOME / "memory" / "memory.db"
 PERSONA = HOME / "memory" / "persona-chat.md"
@@ -201,7 +201,7 @@ def cmem_get(path: str) -> dict:
 
 
 def health() -> dict:
-    data = read_json(BOT / "health.json")
+    data = read_json(HEALTH_FILE)
     if not data:
         return {"alive": False, "age": None}
     age = time.time() - int(data.get("ts", 0)) / 1000
@@ -514,7 +514,7 @@ def sync_growth() -> dict:
     import subprocess
     import sys
 
-    result = subprocess.run([sys.executable, str(BOT / "sync_growth.py")], capture_output=True, text=True, timeout=60)
+    result = subprocess.run([sys.executable, str(SCRIPTS_DIR / "sync_growth.py")], capture_output=True, text=True, timeout=60)
     return {"ok": result.returncode == 0, "output": (result.stdout + result.stderr).strip()}
 
 
@@ -623,7 +623,7 @@ def qr_status() -> dict:
             valid = bool(json.loads(cred.read_text(encoding="utf-8")).get("sessdata"))
         except Exception:  # noqa: BLE001
             valid = False
-    qr = BOT / "bili_qr.png"
+    qr = QR_FILE
     return {
         "state": state or "未生成",
         "credential": valid,
@@ -633,7 +633,7 @@ def qr_status() -> dict:
 
 
 def status_payload() -> dict:
-    st = read_json(BOT / "state.json")
+    st = read_json(STATE_FILE)
     bindings = {}
     for key, value in st.items():
         if isinstance(value, dict):

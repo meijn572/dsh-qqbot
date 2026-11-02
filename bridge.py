@@ -32,6 +32,8 @@ from settings import (
     CONFIG,
     DEEPSEEK_KEY_FILE,
     DSH_HOME,
+    HEALTH_FILE,
+    LOG_DIR,
     STATE_FILE,
     TOKEN_OB_HTTP,
     TOKEN_OB_WS,
@@ -164,7 +166,7 @@ AUTH_COOKIE_TTL_MS = 60 * 60 * 1000
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
-    handlers=[logging.FileHandler(D / "bridge.log", encoding="utf-8"), logging.StreamHandler()],
+    handlers=[logging.FileHandler(LOG_DIR / "bridge.log", encoding="utf-8"), logging.StreamHandler()],
 )
 log = logging.getLogger("bridge")
 PROACTIVE = CONFIG.get("proactive") or {}
@@ -1515,7 +1517,7 @@ async def handle(dsh: Dsh, onebot: OneBot, event: dict, forced: bool = False) ->
 
 async def heartbeat() -> None:
     """把存活时间写进 health.json，供面板判断桥是否活着。"""
-    path = D / "health.json"
+    path = HEALTH_FILE
     while True:
         try:
             path.write_text(

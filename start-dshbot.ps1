@@ -102,7 +102,7 @@ $bridge = Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
 if (-not $bridge) {
     $env:DSH_HOME = $dshHome
     Start-Process -FilePath $py -ArgumentList "$botDir\bridge.py" -WorkingDirectory $botDir `
-        -RedirectStandardOutput "$botDir\bridge.out" -RedirectStandardError "$botDir\bridge.err" -WindowStyle Hidden
+        -RedirectStandardOutput "$logDir\bridge.out" -RedirectStandardError "$logDir\bridge.err" -WindowStyle Hidden
     Write-Host "[dshbot] 桥接已启动"
 } else {
     Write-Host "[dshbot] 桥接已在运行 (pid $($bridge.ProcessId))"
@@ -111,7 +111,7 @@ if (-not $bridge) {
 # 面板
 if (-not (Get-NetTCPConnection -LocalPort $panelPort -State Listen -ErrorAction SilentlyContinue)) {
     Start-Process -FilePath $pyPanel -ArgumentList "$botDir\panel.py" -WorkingDirectory $botDir `
-        -RedirectStandardOutput "$botDir\panel.out" -RedirectStandardError "$botDir\panel.err" -WindowStyle Hidden
+        -RedirectStandardOutput "$logDir\panel.out" -RedirectStandardError "$logDir\panel.err" -WindowStyle Hidden
     Write-Host "[dshbot] 面板已启动: http://127.0.0.1:$panelPort/"
 } else {
     Write-Host "[dshbot] 面板已在运行: http://127.0.0.1:$panelPort/"
