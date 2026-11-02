@@ -36,7 +36,7 @@ async def run(turn: Turn, chat_key: str) -> bool:
         return False
     persona_text = await persona_context()
     recent = await recent_dialogue(60)
-    material = await long_term_memory(120) or "（没有足够素材）"
+    material = await long_term_memory() or "（没有足够素材）"
     prompt = (
         "（内部维护，不要回复用户）只调整她的「表达风格」，不要改身份、底线和相处原则。\n\n"
         + (persona_text or "（空）") + "\n\n"

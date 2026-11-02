@@ -25,9 +25,9 @@ async def persona_context() -> str:
     return str(data.get("text") or "")
 
 
-async def long_term_memory(limit: int = 160) -> str:
+async def long_term_memory(tiers: dict | None = None) -> str:
     data = await cmem_call("POST", "/context", {
-        "tiers": {"L1": 80, "L2": 10, "L3": 40, "L4": 10},
+        "tiers": tiers or {"L1": 80, "L3": 40},
         "purpose": "review",
         "max_chars": 16000,
     })

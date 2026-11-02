@@ -34,7 +34,7 @@ def save_state(state: dict) -> None:
 async def run(turn: Turn) -> bool:
     persona_text = await persona_context()
     recent = await recent_dialogue(80)
-    memories = await long_term_memory(160)
+    memories = await long_term_memory()
     prompt = (
         "（内部维护，不要回复用户）做一次自我复盘。\n\n"
         + (persona_text or "（空）") + "\n\n"

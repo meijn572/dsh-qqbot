@@ -17,7 +17,7 @@ Turn = Callable[[str], Awaitable[str]]
 async def run(turn: Turn) -> bool:
     persona_text = await persona_context()
     recent = await recent_dialogue(60)
-    memory_text = await long_term_memory(160)
+    memory_text = await long_term_memory()
     if not memory_text:
         log.info("画像刷新：素材不够")
         return False
