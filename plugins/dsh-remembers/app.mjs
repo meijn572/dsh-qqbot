@@ -31,7 +31,7 @@ import { PLUGIN_VERSION, resolveConfig } from "./config.mjs";
 import { loadRecall } from "./hooks/recall.mjs";
 import { recordTurn } from "./hooks/turn_end.mjs";
 import { renderState } from "./hooks/state.mjs";
-import { renderOtherProfile, renderOwnerProfile, renderPersona, renderProfile, renderSpeakerNote } from "./hooks/persona.mjs";
+import { renderOtherProfile, renderOwnerProfile, renderPersona, renderSpeakerNote } from "./hooks/persona.mjs";
 import { registerEmotionTool as registerEmotionToolModule } from "./tools/emotion.mjs";
 import { registerImportantTool as registerImportantToolModule } from "./tools/important.mjs";
 import { registerMemeTools as registerMemeToolsModule } from "./tools/memes.mjs";
@@ -304,8 +304,7 @@ const soft = (key) => {
   }
 
   // 人格段是否真的接管了 L4 的「自我」条目。空人格段 = 不接管 = 老行为。
-  const personaOwnsProfile = () => config.personaEnabled && persona.data !== null;
-
+  
   // per-session 状态
   const states = new Map();
 
@@ -316,7 +315,6 @@ const soft = (key) => {
       state = {
         id,
         injectedHashes: new Set(),   // 去重：同一块不重复注入
-        profileDelivered: false,
         turns: 0,                    // 已结束的轮数（每 50 轮重注入画像）
         turnUser: "",
         turnAssistant: "",
@@ -339,34 +337,10 @@ const soft = (key) => {
   // 1. 启动注入 L4
   // -------------------------------------------------------------------------
   async function injectProfile(agent) {
-    if (!config.injectProfile || !agent) return false;
-    const session = agent.session;
-    if (skipped(session)) return false;
-    const state = stateFor(session);
-    if (state.profileDelivered) return false;
-    if (agent.status !== "idle") return false;
-
-    // 人格段必须在这里是新的：设置页改完人格后，用户开一个新会话就该看到，
-    // 不能等下一个刷新周期（默认 60s）。新会话不是高频事件，force 得起。
+    if (!agent || skipped(agent.session)) return false;
+    // L4 关系记忆不再由 profile 块注入；这里只负责新会话强制刷新人格缓存。
     await refreshPersona(true);
-
-    const items = await client.profile(config.profileSubject || null);
-    // 人格段已经把「我是谁」写进 system prompt 了。这些 L4 再注入一遍就是
-    // 双份 token，还容易两套说法打架。所以只留非 self 主体的条目（她的家人、
-    // 宠物这类画像仍走这里），人格相关的交给段去管。
-    const kept = personaOwnsProfile()
-      ? (items || []).filter((item) => !(item.tier === "L4" && (item.subject || "self") === "self"))
-      : (items || []);
-    if (kept.length === 0) {
-      state.profileDelivered = true;
-      return false;
-    }
-    const block = renderProfile(kept);
-    agent.inject(message(block, "instructions"));
-    state.profileDelivered = true;
-    state.injectedHashes.add(hash(block));
-    log("profile_injected", { session: state.id, items: kept.length });
-    return true;
+    return false;
   }
 
   ctx.on("agent/created", async ({ agent, source }) => {
@@ -404,26 +378,6 @@ const soft = (key) => {
       const spNow = speakerOf(decision.messages);
       if (spNow && spNow.qq) stateFor(agent.session).nickname = spNow.nickname;
     } catch { /* 忽略：拿不到昵称不影响对话 */ }
-
-    // 画像注入（每 50 轮刷新）：L4 里程碑 + L2 画像
-    try {
-      const st = stateFor(agent.session);
-      if (!st.profileDelivered) {
-        const items = await client.profile(config.profileSubject || null);
-        const kept = personaOwnsProfile()
-          ? (items || []).filter((item) => !(item.tier === "L4" && (item.subject || "self") === "self"))
-          : (items || []);
-        if (kept.length > 0) {
-          const block = renderProfile(kept);
-          st.profileDelivered = true;
-          st.injectedHashes.add(hash(block));
-          log("profile_injected", { session: st.id, items: kept.length, turn: st.turns });
-          extra.push(message(block, "profile"));
-        }
-      }
-    } catch (error) {
-      log("profile_error", { error: String(error?.message ?? error) });
-    }
 
     // ---- 多人画像：只注入「当前这个说话的人」，别人的绝不出现 ----
     try {
@@ -569,10 +523,6 @@ const soft = (key) => {
       return;
     }
     state.turns = (state.turns || 0) + 1;
-    if (state.turns % 100 === 0) {
-      // QQ 会话基本不换窗口：靠轮数触发画像刷新（每 100 轮）
-      state.profileDelivered = false;
-    }
     const user = state.turnUser.trim();
     const assistant = state.turnAssistant.trim();
     if (state.internalTurn) {

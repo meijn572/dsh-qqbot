@@ -44,8 +44,8 @@ def pre_step(store, embedder, body: dict) -> dict:
     if query:
         ctx = build_context(store, {
             "query": query,
-            "tiers": ["L1", "L2", "L3", "L4"],
-            "limits": {"L1": 20, "L2": 4, "L3": 10, "L4": 4},
+            "tiers": ["L1", "L3", "L4"],
+            "limits": {"L1": 20, "L3": 10, "L4": 4},
             "scope": body.get("scope") or "",
             "purpose": "recall",
             "max_chars": 6000,
