@@ -1045,5 +1045,6 @@ Phase 8  清遗留
 | 2026-11-02 | Phase 8 完成 | 旧 memory.db 双写删除；兴趣读服务 L1；persona_apply/selfwake 路由删除；旧目录归档 |
 | 2026-11-02 | 最终验证 | 真实 QQ：`pre_step recall=4595`、`turn_end id=377`；回复正常；22 tests + smoke 通过；总结见 `refactor-summary.md` |
 | 2026-11-02 | README | 重写根目录 `README.md`：当前拓扑、端口、启动、记忆模型、插件 hook、面板、测试、排障、回滚 |
+| 2026-11-02 | 上传 | 初始化 git，仅提交源码/文档/测试；创建 private repo `meijn572/dsh-qqbot` 并推送 main |
 
 | 2026-11-02 | 计划 | 合并 Phase 7/8 为“插件收薄（拆分 + hook 收口）”；清遗留改为 Phase 8 |

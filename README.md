@@ -1,5 +1,7 @@
 # 大肥鱼 QQ Bot
 
+> GitHub: <https://github.com/meijn572/dsh-qqbot>（private）
+
 基于 DSH（DeepSeek Harness）的 QQ 陪伴机器人。QQ 消息经 SnowLuma / OneBot 进入桥接，DSH 负责对话，记忆服务负责长期记忆与人格。
 
 旧 AstrBot 部署保留，可回退。
