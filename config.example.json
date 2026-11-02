@@ -96,5 +96,6 @@
   "bridge_python": "D:\\QQBot\\AstrBot\\.venv\\Scripts\\python.exe",
   "panel_python": "D:\\python\\python.exe",
   "deepseek_key_file": "D:\\QQBot\\secret\\deepseek.key",
-  "siliconflow_key_file": "D:\\QQBot\\secret\\siliconflow.key"
+  "siliconflow_key_file": "D:\\QQBot\\secret\\siliconflow.key",
+  "bot_qq": 123456789
 }

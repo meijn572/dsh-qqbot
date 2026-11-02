@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from qqbot.clients.memory import l0_recent, set_emotion
-from settings import DSH_HOME
+from settings import DSH_HOME, OWNER_CHAT_KEY
 
 log = logging.getLogger("qqbot.growth.emotion")
 STATE = DSH_HOME / "emotion-check-state.json"
@@ -65,7 +65,7 @@ async def loop(turn: Turn, cfg: dict) -> None:
                 _save(state)
                 await asyncio.sleep(300)
                 continue
-            recent = await l0_recent("private:1215258939", 40) or "（最近没聊什么）"
+            recent = await l0_recent(OWNER_CHAT_KEY, 40) or "（最近没聊什么）"
             prompt = (
                 "（内部维护，不要回复用户）现在是 " + time.strftime("%Y-%m-%d %H:%M") + "。\n"
                 "回想一下最近这段相处。\n\n"

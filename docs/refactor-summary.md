@@ -1,12 +1,12 @@
-# 重构总结（2026-11-02）
+﻿# 重构总结（2026-11-02）
 
 ## 结果
 
 主体重构完成，真实 QQ 回合验证通过：
 
 ```json
-{"event":"pre_step","session":"session-c9a9de9c-...","scope":"private:1215258939","recall_chars":4595}
-{"event":"turn_end","session":"session-c9a9de9c-...","scope":"private:1215258939","stored":true,"id":377,"surprisal":0.8947}
+{"event":"pre_step","session":"session-***","scope":"private:***","recall_chars":4595}
+{"event":"turn_end","session":"session-***","scope":"private:***","stored":true,"id":377,"surprisal":0.8947}
 ```
 
 回复正常发出，L0 正文包含主人原话和鱼的回复。

@@ -1,4 +1,4 @@
-# 大肥鱼 QQ Bot
+﻿# 大肥鱼 QQ Bot
 
 > GitHub: <https://github.com/meijn572/dsh-qqbot>（private）
 

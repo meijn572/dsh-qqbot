@@ -28,3 +28,8 @@ SILICONFLOW_KEY_FILE = Path(CONFIG.get("siliconflow_key_file") or r"D:\QQBot\sec
 
 STATE_FILE = Path(CONFIG.get("state_file") or (BOT_DIR / "state.json"))
 AGENTS = WORKSPACE / "AGENTS.md"
+
+# 账号/主人不再写死在代码里；运行时从 config.json 读取
+OWNER_ID = int((CONFIG.get("allowed_users") or [0])[0])
+OWNER_CHAT_KEY = f"private:{OWNER_ID}"
+BOT_QQ = int(CONFIG.get("bot_qq") or 0)

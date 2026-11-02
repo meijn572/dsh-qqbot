@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from qqbot.clients.memory import cmem_call, l0_recent
-from settings import DSH_HOME
+from settings import DSH_HOME, OWNER_CHAT_KEY
 
 log = logging.getLogger("qqbot.growth.important")
 CHECK_STATE = DSH_HOME / "important-check-state.json"
@@ -42,7 +42,7 @@ def _items(constitution: str) -> list[str]:
 async def check_once(turn: Turn) -> str:
     persona = await cmem_call("GET", "/persona")
     current = _items(str(persona.get("constitution") or ""))
-    recent = await l0_recent("private:1215258939", 80) or "（最近没聊什么）"
+    recent = await l0_recent(OWNER_CHAT_KEY, 80) or "（最近没聊什么）"
     prompt = (
         "（内部维护，不要回复用户）现在是 " + time.strftime("%Y-%m-%d %H:%M") + "。\n"
         "回看最近这段相处，判断有没有一件事重要到「以后不能忘」：约定、底线、身份、关系里最关键的事。\n"

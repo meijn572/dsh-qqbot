@@ -1,4 +1,4 @@
-# DSH QQ Bot 整改计划
+﻿# DSH QQ Bot 整改计划
 
 > 状态：草案 v2（已完成主体重构）  
 > 当前阶段：Phase 8 已完成，观察期  
@@ -815,7 +815,7 @@ POST /tool/find_meme
 - [x] 真实回合 `pre_step` 已出现：`recall_chars=4596`
 - [x] 修掉未映射会话 `scope=global` 仍注入召回的泄漏：global 非 onebot 会话直接 return
 - [x] 修掉 profile/person 注入提前 return 导致同轮召回被跳过：改成 `extra` 累积，最后合并注入
-- [x] 真实 QQ `pre_step` 已确认：scope `private:1215258939`，`recall_chars=4197`
+- [x] 真实 QQ `pre_step` 已确认：scope `private:***`，`recall_chars=4197`
 - [x] 删除旧 L0 capture fallback
 - [x] 删除旧 recall fallback
 - [x] 删除 `buildQuery` / `client.search/context/surprisal/ingest`
@@ -1031,7 +1031,7 @@ Phase 8  清遗留
 | 2026-11-02 | 修复 | 同批漏了 `sanitize_markdown` / `split_bubbles` / `persona_reflect_cfg` / `record_share_feedback`；补回，pyflakes 无 undefined，22 条测试通过 |
 | 2026-11-02 | 修复 | `hooks: true` 要写在 profile 的 `cordis.patch.yml`，不是插件目录；已改并重启 |
 | 2026-11-02 | 确认 | DSH 启动日志 `[dsh-remembers] config hooks=true`；bridge 重连；等真实 QQ 回合 |
-| 2026-11-02 | 真实回合 | `turn_end` 已走 hook，scope=private:1215258939，small_talk 正常跳过；pre_step 待下一轮 |
+| 2026-11-02 | 真实回合 | `turn_end` 已走 hook，scope=private:***，small_talk 正常跳过；pre_step 待下一轮 |
 | 2026-11-02 | 安全修复 | pre_step hook 对未映射 `scope=global` 会话也注入了 4596 字召回；加 guard：global 非 onebot 直接跳过 |
 | 2026-11-02 | 修复 | profile/person 注入提前 return 会跳过同轮召回；改为 `extra` 累积后统一注入 |
 | 2026-11-02 | 清理 | 真实 `pre_step recall=4197` / `turn_end stored=true`；删除旧 L0 capture 和旧 recall fallback |

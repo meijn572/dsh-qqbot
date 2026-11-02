@@ -9,7 +9,7 @@ from pathlib import Path
 
 import aiohttp
 
-from settings import CMEM_BASE, DSH_HOME
+from settings import CMEM_BASE, DSH_HOME, OWNER_CHAT_KEY
 
 
 async def cmem_call(method: str, path: str, body: dict | None = None) -> dict:
@@ -60,7 +60,7 @@ async def l0_recent(chat_key: str, limit: int = 80) -> str:
 
 
 async def recent_dialogue(limit: int = 80) -> str:
-    return await l0_recent("private:1215258939", limit)
+    return await l0_recent(OWNER_CHAT_KEY, limit)
 
 
 async def ingest(text: str, tier: str = "L0", tags: list[str] | None = None) -> int | None:

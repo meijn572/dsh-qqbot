@@ -26,6 +26,8 @@ import aiohttp
 from settings import (
     AGENTS,
     BOT_DIR as D,
+    BOT_QQ,
+    OWNER_CHAT_KEY,
     CMEM_BASE,
     CONFIG,
     DEEPSEEK_KEY_FILE,
@@ -165,7 +167,6 @@ logging.basicConfig(
     handlers=[logging.FileHandler(D / "bridge.log", encoding="utf-8"), logging.StreamHandler()],
 )
 log = logging.getLogger("bridge")
-BOT_QQ = 3359946682
 PROACTIVE = CONFIG.get("proactive") or {}
 LOCKS: dict[str, asyncio.Lock] = {}
 
@@ -1673,7 +1674,7 @@ async def group_proactive_loop(dsh: Dsh, onebot: OneBot) -> None:
     await group_proactive.loop(
         cfg=group_proactive_cfg(),
         groups=CONFIG.get("allowed_groups") or [],
-        turn=lambda prompt: maintenance_turn(dsh, "private:1215258939", prompt),
+        turn=lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt),
         send=lambda text: onebot.send("group", int((CONFIG.get("allowed_groups") or [0])[0]), text),
         add_l0=lambda text: add_l0_message(f"group:{int((CONFIG.get('allowed_groups') or [0])[0])}", text),
         history=lambda key: GROUP_HISTORY.get(key) or [],
@@ -1717,7 +1718,7 @@ PROFILE_STATE_FILE = DSH_HOME / "persona-roles" / "state" / "profile-refresh-sta
 
 async def refresh_user_profile(dsh: Dsh) -> bool:
     return await growth_profile.run(
-        lambda prompt: maintenance_turn(dsh, "private:1215258939", prompt)
+        lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt)
     )
 
 
@@ -1769,7 +1770,7 @@ async def style_review_loop(dsh: Dsh) -> None:
                         state = {}
                 last = float(state.get("last_run") or 0)
                 if time.time() - last >= STYLE_DAYS * 86400:
-                    ok = await run_style_review(dsh, "private:1215258939")
+                    ok = await run_style_review(dsh, OWNER_CHAT_KEY)
                     if ok:
                         STYLE_STATE_FILE.write_text(json.dumps(
                             {"last_run": int(time.time())}, ensure_ascii=False), encoding="utf-8")
@@ -1823,7 +1824,7 @@ async def inject_watch(dsh: Dsh, onebot: OneBot) -> None:
 async def qzone_loop(dsh: Dsh, onebot: OneBot) -> None:
     await qzone_publish.loop(
         CONFIG.get("qzone") or {},
-        lambda prompt: maintenance_turn(dsh, "private:1215258939", prompt),
+        lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt),
         onebot.post_qzone,
         add_l1_event,
         lambda: [str(i.get("topic")) for i in load_interests()],
@@ -1832,14 +1833,14 @@ async def qzone_loop(dsh: Dsh, onebot: OneBot) -> None:
 
 async def emotion_check_loop(dsh: Dsh) -> None:
     await growth_emotion.loop(
-        lambda prompt: maintenance_turn(dsh, "private:1215258939", prompt),
+        lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt),
         CONFIG.get("emotion_check") or {},
     )
 
 
 async def important_check_loop(dsh: Dsh) -> None:
     await growth_important.loop(
-        lambda prompt: maintenance_turn(dsh, "private:1215258939", prompt),
+        lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt),
         CONFIG.get("important_check") or {},
     )
 
