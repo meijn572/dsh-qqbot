@@ -233,9 +233,9 @@ DSH agent/pre-step
 | 注入块 | 内容 | 来源 | 时机 |
 | --- | --- | --- | --- |
 | system prompt | 人格、画像、L4 关系约定 | 插件 `client.persona()` + `client.profile()` → `renderPersona()` | 每次组装 system prompt（每个 model step） |
-| person | 当前发言人、群友画像、非主人提示 | 插件 `client.profileOf()` → `/profiles` | 每个 agent step 前 |
-| recall | L1 事实、L3 事件 | 插件 `hooks/recall.mjs` → `/hook/pre-step` | 每个 agent step 前 |
-| state | 时间、心情、活动、B 站状态、黑话、关系阶段、颜文字/emoji | 插件 pre-step → `/state` | 每个 step 前，变化才注入 |
+| person | 当前发言人、群友画像、非主人提示 | 插件 `client.profileOf()` → `/profiles` | 每个 model step 前 |
+| recall | L1 事实、L3 事件 | 插件 `hooks/recall.mjs` → `/hook/pre-step` | 每个 model step 前 |
+| state | 时间、心情、活动、B 站状态、黑话、关系阶段、颜文字/emoji | 插件 pre-step → `/state` | 每个 model step 前，变化才注入 |
 | bridge-note | 表情库提示、群黑话、B 站链接、网络梗、图片/表情路径 | `bridge.py :: _process_locked` | 用户消息进入 DSH 前 |
 
 L4 不再走 profile 块，也不参与 recall。L4 作为「关系约定」进 system prompt。
@@ -405,10 +405,15 @@ bridge.style_review_loop
   - 距上次 ≥ style_review_days（默认 3 天）
 ```
 
-读取：
+输入：
 
-- `/persona`
+- `/persona`：完整人格数据
+- `/persona/context`：完整人格纯文本
 - 核心设定里的 `<!-- style:begin -->` 段
+- 最近对话 60
+- 长期记忆 120
+
+不是只看“当前风格”这一小段；完整人格、最近相处和长期记忆都在输入里。
 
 要求：
 
@@ -417,6 +422,13 @@ bridge.style_review_loop
 - 只改真正有变化的
 - 不新增身份/事实/关系
 - 输出 JSON：`{"style":"...","reason":"..."}`
+
+为什么输出比复盘/画像短：
+
+- 复盘改的是「自我认知」，400–900 字
+- 画像改的是「我眼中的主人」，300–600 字
+- 风格只改「表达风格」这一小段，120–500 字是刻意的
+- 输入不寒酸，输出范围小是因为职责小
 
 结果：
 
