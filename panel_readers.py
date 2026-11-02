@@ -233,7 +233,8 @@ def mood_payload() -> dict:
                 "reason": item.get("trigger") or item.get("reason") or "",
                 "source": item.get("source") or "",
             })
-    last_emotion = timeline[-1] if timeline else {}
+    # 服务返回的 emotion_recent 是最新在前；最近一次应取第一条
+    last_emotion = timeline[0] if timeline else {}
     return {
         "configured": bool(state),
         "owner": "九歌",
