@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from qqbot.clients.memory import cmem_call, l0_recent
+from qqbot.clients.memory import cmem_call, l0_recent, persona_context
 from settings import DSH_HOME, OWNER_CHAT_KEY
 
 log = logging.getLogger("qqbot.growth.important")
@@ -41,6 +41,7 @@ def _items(constitution: str) -> list[str]:
 
 async def check_once(turn: Turn) -> str:
     persona = await cmem_call("GET", "/persona")
+    persona_text = await persona_context()
     current = _items(str(persona.get("constitution") or ""))
     recent = await l0_recent(OWNER_CHAT_KEY, 80) or "（最近没聊什么）"
     prompt = (
@@ -48,6 +49,7 @@ async def check_once(turn: Turn) -> str:
         "回看最近这段相处，判断有没有一件事重要到「以后不能忘」：约定、底线、身份、关系里最关键的事。\n"
         "日常小事、情绪、一次性经历、称呼纠正、角色名这类事实都不算；那些属于普通记忆。\n"
         "没有就跳过，不要为了填而填。\n\n"
+        + (persona_text or "（当前人格为空）") + "\n\n"
         f"【已经记下的】\n" + ("\n".join(f"- {x}" for x in current) or "（空）") + "\n\n"
         f"【最近】\n{recent}\n\n"
         "最多补一条，写一句具体的话，不要写标签。\n"

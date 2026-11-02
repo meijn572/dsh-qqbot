@@ -450,6 +450,7 @@ important_check.hours
 
 输入：
 
+- 完整人格（`/persona/context`）
 - 当前 important 段
 - 最近 L0 80 条
 
