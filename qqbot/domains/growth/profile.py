@@ -6,7 +6,8 @@ import logging
 import time
 from typing import Awaitable, Callable
 
-from qqbot.clients.memory import cmem_call, long_term_memory, persona_context, recent_dialogue
+from qqbot.clients.memory import cmem_call, persona_context, recent_dialogue
+from qqbot.domains.growth.evidence import collect, format_block
 from settings import DSH_HOME
 
 log = logging.getLogger("qqbot.growth.profile")
@@ -16,15 +17,16 @@ Turn = Callable[[str], Awaitable[str]]
 
 async def run(turn: Turn) -> bool:
     persona_text = await persona_context()
-    recent = await recent_dialogue(60)
-    memory_text = await long_term_memory()
+    recent = await recent_dialogue(20)
+    ev = await collect(l1=50, l3=30, l0=50)
+    memory_text = format_block(ev)
     if not memory_text:
         log.info("画像刷新：素材不够")
         return False
     prompt = (
         "（内部维护，不要回复用户）根据完整人格、最近对话和长期记忆，写一份「我眼中的主人」。\n\n"
         + (persona_text or "（空）") + "\n\n"
-        + (recent or "（最近没聊什么）") + "\n\n"
+        + "【最近对话】\n" + (recent or "（最近没聊什么）") + "\n\n"
         + memory_text + "\n\n"
         "要求：300–600 字；直接写画像正文，不要加「我眼中的主人」前缀；用「你」称呼主人，不要写成「我」；"
         "只写长期稳定的——身份、习惯、偏好、在意的事、雷区、相处方式；"

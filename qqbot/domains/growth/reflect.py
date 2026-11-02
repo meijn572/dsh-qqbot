@@ -8,7 +8,8 @@ import time
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from qqbot.clients.memory import cmem_call, long_term_memory, persona_context, recent_dialogue
+from qqbot.clients.memory import cmem_call, persona_context, recent_dialogue
+from qqbot.domains.growth.evidence import collect, format_block
 from settings import DSH_HOME
 
 log = logging.getLogger("qqbot.growth.reflect")
@@ -33,13 +34,14 @@ def save_state(state: dict) -> None:
 
 async def run(turn: Turn) -> bool:
     persona_text = await persona_context()
-    recent = await recent_dialogue(80)
-    memories = await long_term_memory()
+    recent = await recent_dialogue(30)
+    ev = await collect(l1=50, l3=30, l0=50)
+    memories = format_block(ev)
     prompt = (
         "（内部维护，不要回复用户）做一次自我复盘。\n\n"
         + (persona_text or "（空）") + "\n\n"
-        + (recent or "（最近没聊什么）") + "\n\n"
-        + (memories or "（无）") + "\n\n"
+        + "【最近对话】\n" + (recent or "（最近没聊什么）") + "\n\n"
+        + (memories or "（没有长期记忆）") + "\n\n"
         "任务：只重写「自我认知」这一段（不是核心设定，不是主人画像）。\n"
         "要求：400–900 字，第一人称；把当前自我认知和最近经历、长期记忆合并蒸馏；\n"
         "仍然成立的旧变化要保留，过时、重复、琐碎的压缩掉；写长出来的样子，不写流水账、不写空话。\n"

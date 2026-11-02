@@ -8,7 +8,8 @@ import re
 import time
 from typing import Awaitable, Callable
 
-from qqbot.clients.memory import cmem_call, long_term_memory, persona_context, recent_dialogue
+from qqbot.clients.memory import cmem_call, persona_context, recent_dialogue
+from qqbot.domains.growth.evidence import collect, format_block
 from settings import DSH_HOME
 
 log = logging.getLogger("qqbot.growth.style")
@@ -36,12 +37,13 @@ async def run(turn: Turn, chat_key: str) -> bool:
         return False
     persona_text = await persona_context()
     recent = await recent_dialogue(60)
-    material = await long_term_memory() or "（没有足够素材）"
+    ev = await collect(l1=30, l3=20, l0=30)
+    material = format_block(ev) or "（没有足够素材）"
     prompt = (
         "（内部维护，不要回复用户）只调整她的「表达风格」，不要改身份、底线和相处原则。\n\n"
         + (persona_text or "（空）") + "\n\n"
         + "【当前风格】\n" + current + "\n\n"
-        + (recent or "（最近没聊什么）") + "\n\n"
+        + "【最近对话】\n" + (recent or "（最近没聊什么）") + "\n\n"
         + material + "\n\n"
         "任务：结合完整人格、最近相处和长期记忆，判断她的说话方式有没有自然变化，写出更新后的风格段。\n"
         "要求：4–8 条短句；总长 120–500 字；保留仍然成立的部分，只改真正有变化的；\n"

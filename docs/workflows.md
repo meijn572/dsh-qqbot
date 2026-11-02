@@ -1,4 +1,4 @@
-﻿# 工作流与记忆逻辑
+# 工作流与记忆逻辑
 
 本文写清楚当前实际运行的记忆蒸馏、人格复盘、B 站自主等流程。
 
@@ -317,14 +317,15 @@ L4 不再走 profile 块，也不参与 recall。L4 作为「关系约定」进 
 
 | 名称 | 实际层 | 获取方式 | 说明 |
 | --- | --- | --- | --- |
-| 最近对话 | L0 | `l0_recent(owner)` / `recent_dialogue()` | 当前会话原话，最多 16000 字 |
-| 长期记忆 | L1 + L3 | `long_term_memory()` → `/context`，`purpose=review` | 固定配额 L1 80 / L3 40，最多 16000 字 |
+| 最近对话 | L0 | `recent_dialogue()` / `l0_recent()` | 补最新，条数按任务 |
+| 长期记忆 | L1 + L3 | `/context/evidence` | 蒸馏后的 L1/L3，配额按任务 |
+| 对应原话 | L0 | `/context/evidence` 的 `l0` | 由 L1/L3 的 `source_ids` 展开，按 id/文本去重 |
 | 完整人格 | persona | `/persona/context` | 核心设定、自我认知、身份、形象、画像 |
 
 注意：
 
-- “长期记忆”不含 L0、L2、L4
-- L0 只在“最近对话”里单独取
+- 长期记忆不含 L0、L2、L4
+- L0 分两部分：最近对话补最新，对应原话做证据
 - L2 画像已经在完整人格的 `user_profile` 里，不再重复取
 - L4 关系约定已经在 system prompt 里，不再重复取
 
@@ -348,8 +349,9 @@ bridge.persona_reflect_loop
 | 输入 | 层 | 量 |
 | --- | --- | --- |
 | 完整人格 | persona | `/persona/context` |
-| 最近对话 | L0 | 80 条，最多 16000 字 |
-| 长期记忆 | L1/L3 | L1 80 / L3 40，最多 16000 字 |
+| 最近对话 | L0 | 30 条，补最新 |
+| 长期记忆 | L1/L3 | L1 50 / L3 30 |
+| 对应原话 | L0 | 50 条，来自 L1/L3 的 source_ids |
 
 提示词要求：
 
@@ -393,8 +395,9 @@ bridge.profile_refresh_loop
 | 输入 | 层 | 量 |
 | --- | --- | --- |
 | 完整人格 | persona | `/persona/context` |
-| 最近对话 | L0 | 60 条，最多 16000 字 |
-| 长期记忆 | L1/L3 | L1 80 / L3 40，最多 16000 字 |
+| 最近对话 | L0 | 20 条，补最新 |
+| 长期记忆 | L1/L3 | L1 50 / L3 30 |
+| 对应原话 | L0 | 50 条，来自 L1/L3 的 source_ids |
 
 要求：
 
@@ -433,8 +436,9 @@ bridge.style_review_loop
 | 完整人格数据 | persona | `/persona` |
 | 完整人格文本 | persona | `/persona/context` |
 | 当前风格段 | constitution | `<!-- style:begin -->` 到 `<!-- style:end -->` |
-| 最近对话 | L0 | 60 条，最多 16000 字 |
-| 长期记忆 | L1/L3 | L1 80 / L3 40，最多 16000 字 |
+| 最近对话 | L0 | 60 条，主样本 |
+| 长期记忆 | L1/L3 | L1 30 / L3 20 |
+| 对应原话 | L0 | 30 条，来自 L1/L3 的 source_ids |
 
 不是只看“当前风格”这一小段；完整人格、最近相处和长期记忆都在输入里。
 
