@@ -63,6 +63,10 @@ async def recent_dialogue(limit: int = 80) -> str:
     return await l0_recent(OWNER_CHAT_KEY, limit)
 
 
+async def context_evidence(body: dict) -> dict:
+    return await cmem_call("POST", "/context/evidence", body)
+
+
 async def ingest(text: str, tier: str = "L0", tags: list[str] | None = None) -> int | None:
     data = await cmem_call("POST", "/ingest", {
         "text": text,

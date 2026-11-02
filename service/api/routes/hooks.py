@@ -62,6 +62,97 @@ def pre_step(store, embedder, body: dict) -> dict:
     return {"ok": True, "system": system, "recall": recall}
 
 
+def _ids(value) -> list[int]:
+    if isinstance(value, list):
+        return [int(x) for x in value if str(x).strip().isdigit()]
+    try:
+        data = json.loads(value or "[]")
+        return [int(x) for x in data] if isinstance(data, list) else []
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def evidence(store, body: dict) -> dict:
+    """最近 L1/L3 + 它们引用的 L0 证据（按 id/文本去重）。"""
+    tiers = [str(t).upper() for t in (body.get("tiers") or ["L1", "L3"])]
+    limits = body.get("limits") or {"L1": 15, "L3": 10}
+    scope = str(body.get("scope") or "")
+    l0_limit = max(1, min(100, int(body.get("l0_limit") or 50)))
+    items: list[dict] = []
+    l1_ids: set[int] = set()
+    l3_rows: list = []
+
+    def fetch(tier: str) -> list:
+        limit = max(1, min(50, int(limits.get(tier, 10))))
+        sql = "SELECT id,tier,text,ts,source_ids,scope FROM memory WHERE tier=?"
+        args: list = [tier]
+        if scope:
+            sql += " AND (scope=? OR scope='global')"
+            args.append(scope)
+        sql += " ORDER BY ts DESC LIMIT ?"
+        args.append(limit)
+        return store.conn.execute(sql, args).fetchall()
+
+    for tier in tiers:
+        for row in fetch(tier):
+            item = {
+                "id": int(row["id"]),
+                "tier": str(row["tier"]),
+                "text": str(row["text"]),
+                "ts": float(row["ts"] or 0),
+                "source_ids": _ids(row["source_ids"]),
+            }
+            items.append(item)
+            if tier == "L1":
+                l1_ids.add(item["id"])
+            elif tier == "L3":
+                l3_rows.append(item)
+
+    # L3 的 source_ids 是 L1；再展开这些 L1 的 source_ids 到 L0
+    l3_l1_ids = {sid for item in l3_rows for sid in item["source_ids"]}
+    if l3_l1_ids:
+        marks = ",".join("?" for _ in l3_l1_ids)
+        for row in store.conn.execute(
+            f"SELECT id,tier,source_ids FROM memory WHERE id IN ({marks})",
+            list(l3_l1_ids),
+        ):
+            if str(row["tier"]) == "L1":
+                l1_ids.add(int(row["id"]))
+
+    l0_ids: set[int] = set()
+    if l1_ids:
+        marks = ",".join("?" for _ in l1_ids)
+        for row in store.conn.execute(
+            f"SELECT source_ids FROM memory WHERE id IN ({marks})",
+            list(l1_ids),
+        ):
+            l0_ids.update(_ids(row["source_ids"]))
+
+    l0 = []
+    if l0_ids:
+        marks = ",".join("?" for _ in l0_ids)
+        rows = store.conn.execute(
+            f"SELECT id,text,ts,scope FROM memory WHERE tier='L0' AND id IN ({marks})",
+            list(l0_ids),
+        ).fetchall()
+        seen_ids: set[int] = set()
+        seen_text: set[str] = set()
+        for row in rows:
+            mid = int(row["id"])
+            text = str(row["text"] or "").strip()
+            if mid in seen_ids or not text:
+                continue
+            digest = text[:200]
+            if digest in seen_text:
+                continue
+            seen_ids.add(mid)
+            seen_text.add(digest)
+            l0.append({"id": mid, "text": text, "ts": float(row["ts"] or 0)})
+
+    l0.sort(key=lambda x: x["ts"])
+    return {"ok": True, "items": items, "l0": l0[:l0_limit], "l0_total": len(l0_ids)}
+
+
 def turn_end(store, lock, gate, embedder, body: dict) -> dict:
     user = str(body.get("user") or "").strip()
     assistant = str(body.get("assistant") or "").strip()

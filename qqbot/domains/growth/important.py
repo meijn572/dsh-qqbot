@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from qqbot.clients.memory import cmem_call, l0_recent, persona_context
+from qqbot.clients.memory import cmem_call, context_evidence, l0_recent, persona_context
 from settings import DSH_HOME, OWNER_CHAT_KEY
 
 log = logging.getLogger("qqbot.growth.important")
@@ -43,7 +43,34 @@ async def check_once(turn: Turn) -> str:
     persona = await cmem_call("GET", "/persona")
     persona_text = await persona_context()
     current = _items(str(persona.get("constitution") or ""))
-    recent = await l0_recent(OWNER_CHAT_KEY, 80) or "（最近没聊什么）"
+    ev = await context_evidence({
+        "tiers": ["L1", "L3"],
+        "limits": {"L1": 15, "L3": 10},
+        "scope": OWNER_CHAT_KEY,
+        "l0_limit": 50,
+    })
+    items = ev.get("items") or []
+    l1_lines = []
+    l3_lines = []
+    for item in items:
+        text = str(item.get("text") or "").strip().replace("\n", " ")
+        if not text:
+            continue
+        if str(item.get("tier")) == "L1":
+            l1_lines.append(text[:240])
+        elif str(item.get("tier")) == "L3":
+            l3_lines.append(text[:400])
+    raw_l0 = [str(x.get("text") or "").strip().replace("\n", " ") for x in (ev.get("l0") or [])]
+    raw_l0 = [x[:400] for x in raw_l0 if x]
+    if not l1_lines and not l3_lines and not raw_l0:
+        fallback = await l0_recent(OWNER_CHAT_KEY, 80) or "（最近没聊什么）"
+        raw_l0 = [fallback[:4000]]
+    recent_block = ""
+    if l1_lines or l3_lines:
+        recent_block += "【最近 L1/L3】\n"
+        recent_block += "\n".join(f"[L1] {x}" for x in l1_lines) + "\n"
+        recent_block += "\n".join(f"[L3] {x}" for x in l3_lines) + "\n\n"
+    recent_block += "【相关原话】\n" + ("\n".join(f"- {x}" for x in raw_l0) or "（没有）")
     prompt = (
         "（内部维护，不要回复用户）现在是 " + time.strftime("%Y-%m-%d %H:%M") + "。\n"
         "回看最近这段相处，判断有没有一件事重要到「以后不能忘」：约定、底线、身份、关系里最关键的事。\n"
@@ -51,7 +78,7 @@ async def check_once(turn: Turn) -> str:
         "没有就跳过，不要为了填而填。\n\n"
         + (persona_text or "（当前人格为空）") + "\n\n"
         f"【已经记下的】\n" + ("\n".join(f"- {x}" for x in current) or "（空）") + "\n\n"
-        f"【最近】\n{recent}\n\n"
+        + recent_block + "\n\n"
         "最多补一条，写一句具体的话，不要写标签。\n"
         '只输出 JSON：{"item":"..."} 或 {"skip":true}。'
     )

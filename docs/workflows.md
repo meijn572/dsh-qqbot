@@ -452,7 +452,16 @@ important_check.hours
 
 - 完整人格（`/persona/context`）
 - 当前 important 段
-- 最近 L0 80 条
+- 最近 L1 15 条、L3 10 条
+- 这些 L1/L3 引用的 L0 原文（按 id 去重，最多 50 条，单条截 400 字）
+
+L3 的 `source_ids` 指向 L1，所以要先展开 L3 → L1 → L0；L1 直接指向 L0。L1 和 L3 引用同一句原话时只保留一次。
+
+接口：
+
+```
+POST /context/evidence
+```
 
 要求：
 

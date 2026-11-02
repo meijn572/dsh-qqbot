@@ -6,6 +6,7 @@ POST_ROUTES = {
     "/hook/turn-end": "_hook_turn_end",
     "/ingest": "_ingest",
     "/context": "_context",
+    "/context/evidence": "_context_evidence",
     "/search": "_search",
     "/consolidate": "_consolidate",
     "/import": "_import",
