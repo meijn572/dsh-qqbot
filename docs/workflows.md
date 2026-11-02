@@ -580,7 +580,7 @@ bridge 启动 growth_diary.loop
 执行：
 
 ```
-POST /diary/write
+POST /diary
   {"date":"YYYY-MM-DD"}
 ```
 

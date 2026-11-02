@@ -51,7 +51,7 @@ async def run_once(cfg: dict) -> bool:
         _save_state(state)
         return False
 
-    result = await cmem_call("POST", "/diary/write", {"date": today})
+    result = await cmem_call("POST", "/diary", {"date": today})
     if not result.get("ok"):
         log.warning("日记写入失败：%s", result.get("error") or result)
         return False
