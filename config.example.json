@@ -1,0 +1,100 @@
+{
+  "onebot_http": "http://127.0.0.1:3000",
+  "onebot_ws": "ws://127.0.0.1:3001",
+  "onebot_token_file": "D:\\QQBot\\dshbot\\onebot_token.txt",
+  "dsh_base": "http://127.0.0.1:60773",
+  "dsh_token_file": "D:\\QQBot\\dshbot\\dsh_token.txt",
+  "allowed_users": [
+    123456789
+  ],
+  "allowed_groups": [
+    123456789
+  ],
+  "state_file": "D:\\QQBot\\dshbot\\state.json",
+  "cwd": "D:\\QQBot\\dshbot-workspace",
+  "dsh_home": "C:\\Users\\<you>\\.dsh-qqbot",
+  "proactive": {
+    "enabled": true,
+    "min_minutes": 25,
+    "max_minutes": 50,
+    "quiet_hours": "0-8",
+    "report_push": false,
+    "report_dir": "C:\\Users\\<you>\\.dsh-qqbot\\bili-duty\\out"
+  },
+  "merge_seconds": 12,
+  "group_followup_seconds": 120,
+  "group_merge_seconds": 20,
+  "collect_group_stickers": true,
+  "bili_autonomy": {
+    "enabled": true,
+    "min_gap_minutes": 25,
+    "daily_max": 16,
+    "quiet_hours": "0-8",
+    "free_explore_ratio": 0.4,
+    "max_videos_per_round": 3,
+    "share_max_per_day": 9999
+  },
+  "split_min_chars": 40,
+  "split_max_bubbles": 3,
+  "persona_reflect": {
+    "enabled": true,
+    "min_gap_hours": 8,
+    "active_hours": "8-24",
+    "style_days": 3
+  },
+  "group_activity": {
+    "followup_seconds": 300,
+    "gate_skip_probability": 0.45,
+    "interject_probability": 0.1,
+    "interject_min_gap_seconds": 600,
+    "interject_daily_max": 6
+  },
+  "group_proactive": {
+    "enabled": true,
+    "min_minutes": 180,
+    "max_minutes": 360,
+    "quiet_hours": "0-8",
+    "idle_minutes": 60,
+    "daily_max": 1
+  },
+  "group_slang": {
+    "enabled": true,
+    "extract_hour": 22,
+    "min_messages": 30,
+    "max_inject": 8
+  },
+  "memory_hygiene": {
+    "enabled": true,
+    "days": 3
+  },
+  "qzone": {
+    "enabled": true,
+    "per_day": 1,
+    "min_gap_hours": 6,
+    "quiet_hours": "0-8",
+    "ugc_right": 4
+  },
+  "emotion_check": {
+    "enabled": true,
+    "min_hours": 3,
+    "max_hours": 5,
+    "per_day": 5,
+    "quiet_hours": "0-8"
+  },
+  "important_check": {
+    "enabled": true,
+    "hours": [
+      10,
+      22
+    ],
+    "per_day": 2
+  },
+  "profile_refresh_days": 2,
+  "cmem_base": "http://127.0.0.1:8081",
+  "panel_port": 6080,
+  "dsh_exe": "D:\\ds_harness\\resources\\runtime\\cli\\bin\\dsh.cmd",
+  "bridge_python": "D:\\QQBot\\AstrBot\\.venv\\Scripts\\python.exe",
+  "panel_python": "D:\\python\\python.exe",
+  "deepseek_key_file": "D:\\QQBot\\secret\\deepseek.key",
+  "siliconflow_key_file": "D:\\QQBot\\secret\\siliconflow.key"
+}

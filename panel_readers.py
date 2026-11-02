@@ -1,0 +1,658 @@
+"""本鱼的小面板：只读展示机器人状态、心情、记忆、表情包、日志。"""
+
+import json
+import os
+import re
+import socket
+import urllib.request
+import sqlite3
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+from settings import AGENTS, BOT_DIR as BOT, CMEM_BASE, DSH_HOME as HOME, PANEL_PORT, WORKSPACE
+
+DB = HOME / "memory" / "memory.db"
+PERSONA = HOME / "memory" / "persona-chat.md"
+BILI = HOME / "bili-duty"
+STICKERS = BOT / "stickers"
+ROLE_DIR = HOME / "persona-roles"
+ROLE_CARD = ROLE_DIR / "roles" / "小肥鱼.md"
+ROLE_HISTORY = ROLE_DIR / "roles" / ".history"
+AUT_DIR = HOME / "bili-autonomy"
+AUT_INTERESTS = AUT_DIR / "interests.json"
+AUT_STATE = AUT_DIR / "state.json"
+AUT_OUT = AUT_DIR / "out"
+SLANG_DIR = HOME / "group-slang"
+
+
+def groupslang_payload() -> dict:
+    groups = {}
+    if SLANG_DIR.is_dir():
+        for path in SLANG_DIR.glob("*.json"):
+            if path.stem == "state":
+                continue
+            try:
+                items = json.loads(path.read_text(encoding="utf-8")) or []
+            except Exception:  # noqa: BLE001
+                items = []
+            groups[path.stem] = items
+    logs = {}
+    log_dir = HOME / "group-log"
+    if log_dir.is_dir():
+        for path in log_dir.glob("*.jsonl"):
+            try:
+                logs[path.stem] = len(path.read_text(encoding="utf-8").splitlines())
+            except Exception:  # noqa: BLE001
+                logs[path.stem] = 0
+    last = ""
+    state_path = SLANG_DIR / "state.json"
+    if state_path.exists():
+        try:
+            last = str(json.loads(state_path.read_text(encoding="utf-8")).get("date") or "")
+        except Exception:  # noqa: BLE001
+            last = ""
+    learned = cmem_get("/slang") or []
+    learned = [
+        item for item in learned
+        if str(item.get("meaning") or "").strip() or int(item.get("count") or 0) >= 2
+    ]
+    return {"groups": groups, "logs": logs, "last_extract": last, "service_slang": learned}
+
+
+NETWORK_MEMES = HOME / "network-memes.json"
+
+
+def lexicon_payload() -> dict:
+    entries = []
+    slang = groupslang_payload()
+    for gid, items in (slang.get("groups") or {}).items():
+        for item in items:
+            term = str(item.get("term") or "").strip()
+            if not term:
+                continue
+            entries.append({
+                "category": "group",
+                "scope": gid,
+                "term": term,
+                "meaning": str(item.get("meaning") or ""),
+                "example": str(item.get("example") or ""),
+                "count": int(item.get("count") or 0),
+                "last_seen": item.get("last_seen") or 0,
+            })
+    net = read_json(NETWORK_MEMES) or {}
+    for item in net.get("entries") or []:
+        if not isinstance(item, dict) or not item.get("term"):
+            continue
+        entries.append({
+            "category": "network",
+            "scope": "global",
+            "term": str(item.get("term") or ""),
+            "meaning": str(item.get("meaning") or ""),
+            "example": str(item.get("example") or ""),
+            "count": int(item.get("count") or 0),
+            "last_seen": item.get("last_seen") or 0,
+        })
+    entries.sort(key=lambda item: (item["category"], item["term"]))
+    return {"entries": entries}
+
+
+def lexicon_add(category: str, term: str, meaning: str, example: str = "") -> dict:
+    term = str(term or "").strip()[:40]
+    meaning = str(meaning or "").strip()[:300]
+    example = str(example or "").strip()[:300]
+    if not term:
+        return {"ok": False, "error": "term required"}
+    if category == "network":
+        data = read_json(NETWORK_MEMES) or {}
+        items = data.setdefault("entries", [])
+        existing = next((item for item in items if str(item.get("term")) == term), None)
+        if existing:
+            existing.update({"meaning": meaning, "example": example})
+        else:
+            items.append({"term": term, "meaning": meaning, "example": example, "count": 1, "last_seen": int(time.time())})
+        NETWORK_MEMES.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+        return {"ok": True}
+    config = read_json(BOT / "config.json") or {}
+    groups = config.get("allowed_groups") or []
+    if not groups:
+        return {"ok": False, "error": "没有配置群号"}
+    gid = str(groups[0])
+    path = SLANG_DIR / f"{gid}.json"
+    items = read_json(path) or []
+    if not isinstance(items, list):
+        items = []
+    existing = next((item for item in items if str(item.get("term")) == term), None)
+    if existing:
+        existing.update({"meaning": meaning, "example": example})
+    else:
+        items.append({"term": term, "meaning": meaning, "example": example, "count": 1, "last_seen": int(time.time())})
+    SLANG_DIR.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"ok": True}
+
+
+def lexicon_delete(category: str, term: str) -> dict:
+    term = str(term or "").strip()
+    if not term:
+        return {"ok": False, "error": "term required"}
+    if category == "network":
+        data = read_json(NETWORK_MEMES) or {}
+        data["entries"] = [item for item in (data.get("entries") or []) if str(item.get("term")) != term]
+        NETWORK_MEMES.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+        return {"ok": True}
+    changed = False
+    if SLANG_DIR.is_dir():
+        for path in SLANG_DIR.glob("*.json"):
+            if path.stem == "state":
+                continue
+            items = read_json(path) or []
+            if not isinstance(items, list):
+                continue
+            kept = [item for item in items if str(item.get("term")) != term]
+            if len(kept) != len(items):
+                path.write_text(json.dumps(kept, ensure_ascii=False, indent=1), encoding="utf-8")
+                changed = True
+    return {"ok": changed}
+
+
+PORTS = {
+    "DSH 实例": 60773,
+    "记忆服务": 8081,
+    "OneBot WS": 3001,
+    "OneBot HTTP": 3000,
+    "AstrBot 面板": 6185,
+    "AstrBot WS": 6199,
+}
+
+
+def port_open(port: int) -> bool:
+    with socket.socket() as sock:
+        sock.settimeout(0.4)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def tail(path: Path, n: int = 120) -> str:
+    if not path.exists():
+        return "(文件不存在)"
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        return "\n".join(lines[-n:])
+    except OSError as exc:
+        return f"(读取失败: {exc})"
+
+
+def read_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def cmem_get(path: str) -> dict:
+    try:
+        with urllib.request.urlopen(CMEM_BASE + path, timeout=4) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def health() -> dict:
+    data = read_json(BOT / "health.json")
+    if not data:
+        return {"alive": False, "age": None}
+    age = time.time() - int(data.get("ts", 0)) / 1000
+    return {"alive": age < 120, "age": round(age, 1), "pid": data.get("pid")}
+
+
+def mood_payload() -> dict:
+    state = cmem_get("/state")
+    valence = float(state.get("valence") or 0)
+    arousal = float(state.get("arousal") or 0.5)
+    intimacy = float(state.get("intimacy") or 0)
+    emotion = state.get("emotion") or {}
+    dims = {}
+    if isinstance(emotion, dict):
+        for key, value in list(emotion.items())[:7]:
+            try:
+                dims[str(key)] = round(float(value) * 100)
+            except (TypeError, ValueError):
+                continue
+    dims.setdefault("心情值", round((valence + 1) * 50))
+    dims.setdefault("亲密度", round(min(100, intimacy / 10)))
+    dims.setdefault("唤醒", round(arousal * 100))
+    timeline = []
+    for item in (state.get("emotion_recent") or [])[-12:]:
+        if isinstance(item, dict):
+            timeline.append({
+                "at": item.get("at") or item.get("ts"),
+                "mood": item.get("label") or item.get("mood") or "",
+                "reason": item.get("trigger") or item.get("reason") or "",
+                "source": item.get("source") or "",
+            })
+    last_emotion = timeline[-1] if timeline else {}
+    return {
+        "configured": bool(state),
+        "owner": "九歌",
+        "self": "大肥鱼",
+        "inject_mode": "dsh-remembers",
+        "auto_judge": True,
+        "per_day": 0,
+        "mood": round((valence + 1) * 50),
+        "dims": dims,
+        "reason": str(last_emotion.get("reason") or state.get("activity") or ""),
+        "emotion_label": str(last_emotion.get("mood") or ""),
+        "confidence": 50,
+        "updated_at": state.get("last_interaction") or 0,
+        "timeline": timeline,
+        "active": state.get("mood") or "",
+        "intimacy": intimacy,
+        "stage": (state.get("stage") or {}).get("name", ""),
+        "activity": state.get("activity", ""),
+        "valence": valence,
+        "arousal": arousal,
+    }
+
+
+STYLE_PROPOSAL = HOME / "persona-roles" / "state" / "style-proposal.json"
+STYLE_BEGIN = "<!-- style:begin -->"
+STYLE_END = "<!-- style:end -->"
+
+
+def cmem_post(path: str, body: dict) -> dict:
+    try:
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(CMEM_BASE + path, data=data,
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+def style_payload() -> dict:
+    proposal = {}
+    if STYLE_PROPOSAL.exists():
+        proposal = read_json(STYLE_PROPOSAL)
+    persona = cmem_get("/persona")
+    constitution = str(persona.get("constitution") or "")
+    current = ""
+    match = re.search(re.escape(STYLE_BEGIN) + r"(.*?)" + re.escape(STYLE_END), constitution, re.S)
+    if match:
+        current = match.group(1).strip()
+    return {"proposal": proposal, "current": current}
+
+
+def apply_style() -> dict:
+    if not STYLE_PROPOSAL.exists():
+        return {"ok": False, "error": "没有待处理的风格提议"}
+    proposal = read_json(STYLE_PROPOSAL)
+    style = str(proposal.get("style") or "").strip()
+    if not style:
+        return {"ok": False, "error": "提议为空"}
+    persona = cmem_get("/persona")
+    constitution = str(persona.get("constitution") or "")
+    if STYLE_BEGIN not in constitution or STYLE_END not in constitution:
+        return {"ok": False, "error": "核心设定里没有 style 标记"}
+    new_constitution = re.sub(
+        re.escape(STYLE_BEGIN) + r".*?" + re.escape(STYLE_END),
+        lambda _: STYLE_BEGIN + "\n" + style + "\n" + STYLE_END,
+        constitution, count=1, flags=re.S)
+    backup = HOME / "persona-roles" / "state" / f"constitution-before-style-{time.strftime('%Y%m%d-%H%M%S')}.md"
+    backup.write_text(constitution, encoding="utf-8")
+    result = cmem_post("/persona", {"constitution": new_constitution})
+    if result.get("ok"):
+        STYLE_PROPOSAL.unlink(missing_ok=True)
+        return {"ok": True, "message": "已应用新风格", "backup": backup.name}
+    return {"ok": False, "error": result.get("error") or "写入失败"}
+
+
+def dismiss_style() -> dict:
+    STYLE_PROPOSAL.unlink(missing_ok=True)
+    return {"ok": True, "message": "已忽略风格提议"}
+
+
+def proactive_payload() -> dict:
+    return cmem_get("/proactive") or {"enabled": False, "error": "记忆服务未连接"}
+
+
+def set_proactive(body: dict) -> dict:
+    try:
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(CMEM_BASE + "/proactive", data=data,
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+def memory_payload() -> dict:
+    out = {"count": 0, "items": [], "persona_chars": 0}
+    data = cmem_get("/memories?limit=100")
+    if data:
+        out["count"] = int(data.get("total") or 0)
+        for item in data.get("items") or []:
+            out["items"].append({
+                "type": str(item.get("tier") or ""),
+                "content": str(item.get("text") or ""),
+                "time": item.get("ts") or "",
+            })
+        persona = cmem_get("/persona")
+        chars = persona.get("chars") or {}
+        out["persona_chars"] = int(chars.get("constitution") or 0) + int(chars.get("self_model") or 0)
+        return out
+    return out
+
+
+def guests_payload() -> dict:
+    data = cmem_get("/profiles") or {}
+    profiles = data.get("profiles") or []
+    config = read_json(BOT / "config.json") or {}
+    owners = {str(uid) for uid in (config.get("allowed_users") or [])}
+    out = []
+    for profile in profiles[:80]:
+        uid = str(profile.get("user_id") or "")
+        if uid in owners:
+            continue
+        score = 0
+        if uid:
+            aff = cmem_get("/affinity?user=" + uid)
+            score = aff.get("score") or 0
+        out.append({
+            "user_id": uid,
+            "name": str(profile.get("name") or ""),
+            "msg_count": int(profile.get("msg_count") or 0),
+            "profile": str(profile.get("profile") or ""),
+            "manual_profile": str(profile.get("manual_profile") or ""),
+            "affinity": float(score or 0),
+            "updated": profile.get("updated_at") or 0,
+        })
+    out.sort(key=lambda item: (item["affinity"], item["msg_count"]), reverse=True)
+    return {"profiles": out, "admins": data.get("admins") or []}
+
+
+def notebook_payload() -> dict:
+    return {
+        "notes": cmem_get("/notes") or [],
+        "tasks": cmem_get("/tasks") or [],
+        "diary": cmem_get("/diary") or [],
+    }
+
+
+def persona_payload() -> dict:
+    persona = cmem_get("/persona")
+    if not persona:
+        return {"text": "(记忆服务未连接)", "sections": {}, "growth": "", "growth_chars": 0,
+                "important": [], "proposals": {}, "synced": False, "history": [], "role": "大肥鱼",
+                "agents_chars": 0}
+    constitution = str(persona.get("constitution") or "")
+    self_model = str(persona.get("self_model") or "")
+    text = constitution
+    if self_model:
+        text += "\n\n## 自我认知\n\n" + self_model
+    return {
+        "text": text,
+        "role": "大肥鱼",
+        "sections": {"identity": constitution, "style": "", "relationship": ""},
+        "growth": self_model,
+        "growth_chars": len(self_model),
+        "important": [],
+        "proposals": {},
+        "history": [],
+        "synced": True,
+        "agents_chars": len(text),
+        "constitution": constitution,
+        "self_model": self_model,
+        "user_profile": str(persona.get("user_profile") or ""),
+        "identity": str(persona.get("identity") or "大肥鱼"),
+        "self_image": str(persona.get("self_image") or ""),
+        "chars": persona.get("chars") or {},
+    }
+
+
+def save_core_setting(text: str) -> dict:
+    text = str(text or "")
+    if len(text) > 15000:
+        return {"ok": False, "error": "核心设定最多 15000 字"}
+    try:
+        data = cmem_post("/persona", {"constitution": text})
+        return {"ok": True, "chars": len(text), "constitution": data.get("constitution", text)}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+def sticker_payload() -> dict:
+    categories = {}
+    user_items = []
+    meta = read_json(STICKERS / "meta.json") or {}
+    meta = {str(k).replace("\\", "/"): v for k, v in meta.items() if isinstance(v, dict)}
+    hidden = 0
+    if STICKERS.is_dir():
+        for folder in sorted(STICKERS.iterdir()):
+            if not folder.is_dir():
+                continue
+            files = [f for f in folder.iterdir() if f.is_file() and f.suffix.lower() in {".gif", ".png", ".jpg", ".jpeg", ".webp"}]
+            stickers = []
+            for f in files:
+                rel = str(f.relative_to(STICKERS)).replace("\\", "/")
+                if (meta.get(rel) or {}).get("sticker"):
+                    stickers.append(f)
+                elif f.name.startswith("u_"):
+                    hidden += 1
+            user = [f for f in stickers if f.name.startswith("u_")]
+            if stickers:
+                categories[folder.name] = {"total": len(stickers), "user": len(user)}
+            for f in user:
+                rel = str(f.relative_to(STICKERS)).replace("\\", "/")
+                user_items.append({"file": rel, "category": folder.name, "size": f.stat().st_size})
+    index = read_json(STICKERS / "index.json") or []
+    index_map = {e.get("file"): e for e in index if isinstance(e, dict)}
+    for item in user_items:
+        entry = index_map.get(item["file"], {})
+        item["caption"] = entry.get("caption", "")
+        item["tags"] = entry.get("tags", [])
+    user_items.sort(key=lambda x: x["file"], reverse=True)
+    return {"categories": categories, "user_items": user_items[:60], "hidden_images": hidden}
+
+
+def rolecard_payload() -> dict:
+    import re
+
+    card = ROLE_CARD.read_text(encoding="utf-8") if ROLE_CARD.exists() else ""
+    match = re.search(r"<!-- persona-growth:begin -->(.*?)<!-- persona-growth:end -->", card, re.S)
+    growth = match.group(1).strip() if match else ""
+    sections = {}
+    for name, begin, end in (
+        ("identity", "<!-- persona-identity:begin -->", "<!-- persona-identity:end -->"),
+        ("style", "<!-- persona-style:begin -->", "<!-- persona-style:end -->"),
+        ("relationship", "<!-- persona-relationship:begin -->", "<!-- persona-relationship:end -->"),
+    ):
+        found = re.search(re.escape(begin) + r"(.*?)" + re.escape(end), card, re.S)
+        sections[name] = found.group(1).strip() if found else ""
+    style = sections.get("style", "")
+    important = []
+    important_match = re.search(r"<!-- persona-important:begin -->(.*?)<!-- persona-important:end -->", card, re.S)
+    if important_match:
+        important = [line[2:].strip() for line in important_match.group(1).splitlines() if line.strip().startswith("- ")]
+    preamble = card.split("<!-- persona-identity:begin -->")[0].strip() if card else ""
+    history = []
+    if ROLE_HISTORY.is_dir():
+        for item in sorted(ROLE_HISTORY.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+            if item.is_file():
+                history.append({"name": item.name, "size": item.stat().st_size, "time": int(item.stat().st_mtime)})
+    proposals = {}
+    proposal_file = HOME / "persona-roles" / "state" / "section-proposals.json"
+    if proposal_file.exists():
+        try:
+            data = json.loads(proposal_file.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                proposals = data
+        except Exception:
+            proposals = {}
+    agents_text = AGENTS.read_text(encoding="utf-8") if AGENTS.exists() else ""
+    return {
+        "role": ROLE_CARD.stem,
+        "card": card,
+        "preamble": preamble,
+        "sections": sections,
+        "style": style,
+        "important": important,
+        "growth": growth,
+        "growth_chars": len(growth),
+        "history": history[:10],
+        "synced": bool(growth) and growth in agents_text,
+        "agents_chars": len(agents_text),
+        "proposals": proposals,
+    }
+
+
+def sync_growth() -> dict:
+    import subprocess
+    import sys
+
+    result = subprocess.run([sys.executable, str(BOT / "sync_growth.py")], capture_output=True, text=True, timeout=60)
+    return {"ok": result.returncode == 0, "output": (result.stdout + result.stderr).strip()}
+
+
+def interests_payload() -> dict:
+    interests = []
+    if AUT_INTERESTS.exists():
+        try:
+            interests = json.loads(AUT_INTERESTS.read_text(encoding="utf-8")) or []
+        except Exception:  # noqa: BLE001
+            interests = []
+    state = {}
+    if AUT_STATE.exists():
+        try:
+            state = json.loads(AUT_STATE.read_text(encoding="utf-8")) or {}
+        except Exception:  # noqa: BLE001
+            state = {}
+    reports = []
+    if AUT_OUT.is_dir():
+        for item in sorted(AUT_OUT.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)[:5]:
+            reports.append({"name": item.name, "size": item.stat().st_size, "time": int(item.stat().st_mtime)})
+    latest = ""
+    if reports:
+        latest = tail(AUT_OUT / reports[0]["name"], 80)
+    return {"interests": interests, "state": state, "reports": reports, "latest": latest}
+
+
+def bili_feed_payload() -> dict:
+    import re
+
+    seen: list[dict] = []
+    seen_file = BILI / "seen.md"
+    if seen_file.exists():
+        for line in seen_file.read_text(encoding="utf-8", errors="replace").splitlines():
+            match = re.match(r"\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*(BV\w+)\s*\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|\s*(挑了|跳过)\s*\|", line)
+            if match:
+                seen.append(
+                    {
+                        "date": match.group(1),
+                        "bvid": match.group(2),
+                        "title": match.group(3).strip(),
+                        "up": match.group(4).strip(),
+                        "status": match.group(5),
+                        "url": f"https://www.bilibili.com/video/{match.group(2)}",
+                    }
+                )
+    notes: list[dict] = []
+    if AUT_OUT.is_dir():
+        for report in sorted(AUT_OUT.glob("*.md"), reverse=True):
+            text = report.read_text(encoding="utf-8", errors="replace")
+            for section in re.split(r"(?m)^## ", text):
+                section = section.strip()
+                if not section:
+                    continue
+                head, _, body = section.partition("\n")
+                videos = []
+                for line in body.splitlines():
+                    vm = re.match(r"-\s*(.+?)\s+(https?://\S+|`?BV[0-9A-Za-z]+`?)\s*(?:—\s*(.*))?$", line.strip())
+                    if not vm:
+                        continue
+                    raw_link = vm.group(2).strip("`")
+                    url = raw_link if raw_link.startswith("http") else f"https://www.bilibili.com/video/{raw_link}"
+                    videos.append({"title": vm.group(1).strip(), "url": url, "why": (vm.group(3) or "").strip()})
+                thought = " ".join(line.lstrip("> ").strip() for line in body.splitlines() if line.strip().startswith(">"))
+                if videos:
+                    notes.append({"head": head.strip(), "videos": videos, "thought": thought})
+    interests = []
+    if AUT_INTERESTS.exists():
+        try:
+            interests = json.loads(AUT_INTERESTS.read_text(encoding="utf-8")) or []
+        except Exception:  # noqa: BLE001
+            interests = []
+    return {"seen": seen[:40], "notes": notes[:20], "interests": interests[:10], "login": bili_payload()}
+
+
+def bili_payload() -> dict:
+    cred = BILI / "bili_credential.json"
+    logged_in = False
+    uid = ""
+    if cred.exists():
+        try:
+            data = json.loads(cred.read_text(encoding="utf-8"))
+            logged_in = bool(data.get("sessdata"))
+            uid = str(data.get("dedeuserid") or "")
+        except Exception:  # noqa: BLE001
+            pass
+    return {"logged_in": logged_in, "uid": uid, "duty_tail": tail(BILI / "duty.log", 40)}
+
+
+def qr_status() -> dict:
+    out_file = BOT / "bili_login.out"
+    state = ""
+    if out_file.exists():
+        text = out_file.read_text(encoding="utf-8", errors="replace")
+        if "LOGIN_DONE" in text:
+            state = "登录成功"
+        elif "TIMEOUT" in text:
+            state = "二维码已过期"
+        elif "STATE_SCANNED" in text:
+            state = "已扫码，等确认"
+        elif "QR_SAVED" in text:
+            state = "等待扫码"
+    valid = False
+    cred = BILI / "bili_credential.json"
+    if cred.exists():
+        try:
+            valid = bool(json.loads(cred.read_text(encoding="utf-8")).get("sessdata"))
+        except Exception:  # noqa: BLE001
+            valid = False
+    qr = BOT / "bili_qr.png"
+    return {
+        "state": state or "未生成",
+        "credential": valid,
+        "qr_ready": qr.exists(),
+        "mtime": int(qr.stat().st_mtime) if qr.exists() else 0,
+    }
+
+
+def status_payload() -> dict:
+    st = read_json(BOT / "state.json")
+    bindings = {}
+    for key, value in st.items():
+        if isinstance(value, dict):
+            bindings[key] = {"session": value.get("sid", ""), "seq": value.get("seq", 0)}
+        else:
+            bindings[key] = {"session": value, "seq": 0}
+    mood = mood_payload()
+    return {
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "ports": {name: port_open(port) for name, port in PORTS.items()},
+        "bridge": health(),
+        "bindings": bindings,
+        "mood": mood.get("mood"),
+        "mood_reason": mood.get("reason", ""),
+        "intimacy": mood.get("intimacy", 0),
+        "stage": mood.get("stage", ""),
+        "activity": mood.get("activity", ""),
+        "proactive": (proactive_payload() or {}).get("enabled", False),
+        "stickers_user": sum(1 for _ in STICKERS.rglob("u_*")) if STICKERS.is_dir() else 0,
+        "bili_logged_in": bili_payload()["logged_in"],
+        "memory_count": memory_payload()["count"],
+    }

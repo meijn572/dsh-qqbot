@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>大肥鱼面板</title>
+<link rel="stylesheet" href="/static/style.css"></head><body>
+<header><h1>🐟 大肥鱼面板</h1><span class="mut" id="clock"></span><span id="alive"></span><span class="mut" id="quick"></span></header>
+<div class="tabs">
+  <div class="tab on" data-cat="overview">概览</div>
+  <div class="tab" data-cat="inner">心与记忆</div>
+  <div class="tab" data-cat="media">表情 / 黑话</div>
+  <div class="tab" data-cat="logs">日志</div>
+  <div class="tab" data-cat="bili">兴趣 · B站</div>
+</div>
+<div class="tabs subtabs" id="subtabs"></div>
+<main>
+  <section id="overview"></section>
+  <section id="mood" hidden></section>
+  <section id="memory" hidden></section>
+  <section id="persona" hidden></section>
+  <section id="guests" hidden></section>
+  <section id="notebook" hidden></section>
+  <section id="proactive" hidden></section>
+  <section id="stickers" hidden></section>
+  <section id="lexicon" hidden></section>
+  <section id="logs" hidden></section>
+  <section id="interests" hidden></section>
+  <section id="bili" hidden></section>
+</main>
+<script src="/static/app.js"></script></body></html>

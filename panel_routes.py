@@ -1,0 +1,169 @@
+"""面板 API 路由：只做请求解析和响应。"""
+from __future__ import annotations
+
+import json
+import subprocess
+import time
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+from panel_readers import (
+    BILI,
+    BOT,
+    HOME,
+    STICKERS,
+    apply_style,
+    bili_feed_payload,
+    bili_payload,
+    dismiss_style,
+    groupslang_payload,
+    guests_payload,
+    health,
+    interests_payload,
+    lexicon_add,
+    lexicon_delete,
+    lexicon_payload,
+    memory_payload,
+    mood_payload,
+    notebook_payload,
+    persona_payload,
+    proactive_payload,
+    qr_status,
+    rolecard_payload,
+    save_core_setting,
+    set_proactive,
+    status_payload,
+    sticker_payload,
+    style_payload,
+    sync_growth,
+    tail,
+)
+
+
+def _body(handler) -> dict:
+    try:
+        length = int(handler.headers.get("Content-Length") or 0)
+        return json.loads(handler.rfile.read(length).decode("utf-8") or "{}")
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def handle_get(handler, path: str, parsed) -> None:
+    query = parse_qs(parsed.query)
+    if path == "/api/status":
+        handler._json(status_payload())
+    elif path == "/api/mood":
+        handler._json(mood_payload())
+    elif path == "/api/memory":
+        handler._json(memory_payload())
+    elif path == "/api/proactive":
+        handler._json(proactive_payload())
+    elif path == "/api/style":
+        handler._json(style_payload())
+    elif path == "/api/persona":
+        handler._json(persona_payload())
+    elif path == "/api/guests":
+        handler._json(guests_payload())
+    elif path == "/api/notebook":
+        handler._json(notebook_payload())
+    elif path == "/api/rolecard":
+        handler._json(rolecard_payload())
+    elif path == "/api/interests":
+        handler._json(interests_payload())
+    elif path == "/api/groupslang":
+        handler._json(groupslang_payload())
+    elif path == "/api/lexicon":
+        handler._json(lexicon_payload())
+    elif path == "/api/stickers":
+        handler._json(sticker_payload())
+    elif path == "/api/logs":
+        name = (query.get("name") or ["bridge"])[0]
+        files = {
+            "bridge": BOT / "bridge.log",
+            "bili": BILI / "duty.log",
+            "dsh": Path(r"D:\QQBot\logs\qqbot-boot19.err"),
+        }
+        handler._json({"text": tail(files.get(name, BOT / "bridge.log"), 150)})
+    elif path == "/api/bili":
+        handler._json(bili_payload())
+    elif path == "/api/bili/feed":
+        handler._json(bili_feed_payload())
+    elif path == "/api/bili/qr/status":
+        handler._json(qr_status())
+    elif path == "/api/bili/qr.png":
+        handler._file(BOT / "bili_qr.png")
+    elif path == "/api/sticker":
+        rel = (query.get("file") or [""])[0]
+        candidate = (STICKERS / rel).resolve()
+        if STICKERS.resolve() in candidate.parents:
+            handler._file(candidate)
+        else:
+            handler.send_error(403)
+    else:
+        handler.send_error(404)
+
+
+def start_qr() -> dict:
+    out_file = BOT / "bili_login.out"
+    vpy = HOME / "bili-duty" / ".venv" / "Scripts" / "python.exe"
+    if not vpy.exists():
+        return {"ok": False, "error": "找不到 bili-duty 的 venv"}
+    subprocess.Popen(
+        [str(vpy), str(BOT / "bili_login2.py")],
+        cwd=str(BOT),
+        stdout=open(out_file, "w", encoding="utf-8"),
+        stderr=subprocess.DEVNULL,
+        creationflags=0x08000000,
+    )
+    time.sleep(4)
+    return {"ok": True, "status": qr_status()}
+
+
+def restart_bridge() -> dict:
+    pid = health().get("pid")
+    if pid:
+        subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True, timeout=15)
+        time.sleep(2)
+    py = Path(r"D:\QQBot\AstrBot\.venv\Scripts\python.exe")
+    subprocess.Popen(
+        [str(py), str(BOT / "bridge.py")],
+        cwd=str(BOT),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=0x08000000,
+    )
+    time.sleep(6)
+    return {"ok": True, "status": health()}
+
+
+def handle_post(handler, path: str, parsed) -> None:
+    if path == "/api/bili/qr/start":
+        handler._json(start_qr())
+    elif path == "/api/proactive":
+        handler._json(set_proactive(_body(handler)))
+    elif path == "/api/style/apply":
+        handler._json(apply_style())
+    elif path == "/api/style/dismiss":
+        handler._json(dismiss_style())
+    elif path == "/api/persona/save":
+        handler._json(save_core_setting(str(_body(handler).get("constitution") or "")))
+    elif path in ("/api/lexicon/add", "/api/lexicon/delete"):
+        body = _body(handler)
+        if path.endswith("/add"):
+            handler._json(lexicon_add(
+                str(body.get("category") or "network"),
+                str(body.get("term") or ""),
+                str(body.get("meaning") or ""),
+                str(body.get("example") or ""),
+            ))
+        else:
+            handler._json(lexicon_delete(
+                str(body.get("category") or "network"),
+                str(body.get("term") or ""),
+            ))
+    elif path == "/api/bridge/restart":
+        handler._json(restart_bridge())
+    elif path == "/api/growth/sync":
+        handler._json(sync_growth())
+    else:
+        handler.send_error(404)
