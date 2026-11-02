@@ -232,11 +232,11 @@ DSH agent/pre-step
 
 | 注入块 | 内容 | 来源 | 时机 |
 | --- | --- | --- | --- |
-| system prompt | 人格、画像、L4 关系约定 | 插件 `client.persona()` + `client.profile()` → `renderPersona()` | 每轮 system prompt |
-| person | 当前发言人、群友画像、非主人提示 | 插件 `client.profileOf()` → `/profiles` | pre-step |
-| recall | L1 事实、L3 事件 | 插件 `hooks/recall.mjs` → `/hook/pre-step` | pre-step |
-| state | 时间、心情、活动、B 站状态、黑话、关系阶段、颜文字/emoji | 插件 pre-step → `/state` | 变化才注入 |
-| bridge-note | 表情库提示、群黑话、B 站链接、网络梗、图片/表情路径 | `bridge.py :: _process_locked` | 拼在用户消息里 |
+| system prompt | 人格、画像、L4 关系约定 | 插件 `client.persona()` + `client.profile()` → `renderPersona()` | 每次组装 system prompt（每个 model step） |
+| person | 当前发言人、群友画像、非主人提示 | 插件 `client.profileOf()` → `/profiles` | 每个 agent step 前 |
+| recall | L1 事实、L3 事件 | 插件 `hooks/recall.mjs` → `/hook/pre-step` | 每个 agent step 前 |
+| state | 时间、心情、活动、B 站状态、黑话、关系阶段、颜文字/emoji | 插件 pre-step → `/state` | 每个 step 前，变化才注入 |
+| bridge-note | 表情库提示、群黑话、B 站链接、网络梗、图片/表情路径 | `bridge.py :: _process_locked` | 用户消息进入 DSH 前 |
 
 L4 不再走 profile 块，也不参与 recall。L4 作为「关系约定」进 system prompt。
 
