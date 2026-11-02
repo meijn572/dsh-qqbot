@@ -2939,8 +2939,20 @@ class Handler(BaseHTTPRequestHandler):
         return [dict(r) for r in rows]
 
 
+def _weather_loop() -> None:
+    """后台刷新天气，避免 /state 请求阻塞在网络超时上。"""
+    time.sleep(30)
+    while True:
+        try:
+            store.current_weather(fetch=True)
+        except Exception:
+            pass
+        time.sleep(1800)
+
+
 def main() -> None:
     _init()
+    threading.Thread(target=_weather_loop, name="cmem-weather", daemon=True).start()
     host = os.environ.get("CMEM_HOST", "0.0.0.0")
     port = int(os.environ.get("CMEM_PORT", "8080"))
     server = ThreadingHTTPServer((host, port), Handler)
