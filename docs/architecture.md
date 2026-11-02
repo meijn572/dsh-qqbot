@@ -352,6 +352,90 @@ POST /batch/run
 
 L2 由 profile 刷新单独写。
 
+### 5.4 引擎、工作流、注入的边界
+
+当前记忆和人格不是完全对称的。先把边界写清楚，暂时不搬代码。
+
+#### 定义
+
+| 类型 | 判断标准 | 例子 |
+| --- | --- | --- |
+| 引擎 | 确定性数据变换、事务、检索、格式 | SQL、FTS/向量、CRUD、context 拼装、persona 存储、facts apply |
+| 工作流 | 需要 LLM 提示词、时间窗口、上限、业务判断、重试 | batch 何时跑、抽什么、L1/L3/L4 接受规则、复盘/画像 |
+| 注入 | 决定文本怎么进宿主 | DSH 消息追加、systemPrompt |
+| 触发 | 谁在什么时候调用 | bridge 定时器、QQ 事件、hook |
+
+#### 当前分布
+
+记忆：
+
+```
+service       memory_core / 检索 / context / surprisal / extractor
+bridge        memory_batch_loop 定时触发
+plugin        recall 注入
+```
+
+人格：
+
+```
+service       persona 存储 / persona 文本格式 / API
+growth        复盘、画像、风格、重要的事工作流
+plugin        systemPrompt / profile / person 注入
+```
+
+#### 已知混层
+
+`extractor.py` 同时包含：
+
+- 引擎部分：候选查询、去重、写库、source_ids
+- 工作流部分：抽取提示词、接受规则、L1/L3/L4 编排
+
+`server.py /batch/run` 也是控制面编排。
+
+所以“记忆逻辑全在 service”并不准确。更准确是：
+
+> 记忆引擎在 service，记忆工作流部分在 service、部分在 bridge，注入在 plugin。
+
+#### 为什么现在不搬
+
+- `extractor.py` 和 `memory_core.py` 共享候选集、去重、事务、source_ids
+- 拆开需要新增内部 API、幂等、半成功回滚
+- 当前 batch 在服务进程内跑，事务简单
+- 这不是文件位置问题，是事务边界问题
+
+#### 如果以后要统一
+
+目标：
+
+```
+service
+  memory_core
+  检索 / context
+  persona 存储
+  facts apply（事务/去重/校验）
+
+memory-workflows
+  定时 batch
+  抽取提示词
+  L1/L3/L4 编排
+  接受/拒绝策略
+
+plugin
+  注入
+
+bridge
+  触发/装配
+```
+
+原则：
+
+- 需要 LLM 提示词、时间窗口、每日上限、业务判断的 → workflow
+- 只做确定性数据变换、事务、检索的 → engine
+- 注入永远在 plugin
+- 触发永远在 bridge/jobs
+
+不要为了目录统一，把 `memory_core.py`、检索、context、persona 存储搬出去。
+
 ## 6. 主动与自主
 
 ### 6.1 私聊主动
@@ -524,5 +608,6 @@ DSH_HOME
 - `remembers-service/server.py` 2709 行，路由已拆一部分
 - 前端 `app.js` 还没按 tab 拆
 - `qqbot/adapters`、`conversation`、`jobs`、`runtime.py` 仍是骨架
+- `extractor.py` 混合引擎与工作流，边界见 5.4；当前不搬
 - DSH 实际加载 profile 有两个路径，改插件要同步
 - 旧 `memory.db` 已不写，文件还在；旧目录已归档
