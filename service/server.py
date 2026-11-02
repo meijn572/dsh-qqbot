@@ -2539,28 +2539,24 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True})
 
     def _write_diary(self) -> None:
-        """写今天的日记：根据最近对话让 LLM 用第一人称写一段（100 字内）。"""
+        """写今天的日记：人格 + 当天记忆/活动 + 相关旧记忆。"""
         body = self._body()
+        import datetime as _dt
+        today_start = _dt.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
         user_text = str(body.get("user_text") or "")
         assistant_text = str(body.get("assistant_text") or "")
         if not user_text:
-            # 没有显式对话时，用今天的记忆当素材
-            import datetime as _dt
-            today = _dt.date.today()
-            start = _dt.datetime.combine(today, _dt.time.min).timestamp()
             try:
                 rows = store.conn.execute(
                     "SELECT text FROM memory WHERE ts >= ? ORDER BY id DESC LIMIT 12",
-                    (start,),
+                    (today_start,),
                 ).fetchall()
                 user_text = "\n".join(str(r["text"]) for r in rows)
             except Exception:
                 user_text = ""
-        # 今天干了什么（活动日志）
+        # 今天的活动日志
         acts = []
         try:
-            import datetime as _dt
-            today_start = _dt.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
             acts = [a for a in store.list_activities(200) if float(a.get("ts") or 0) >= today_start]
         except Exception:
             acts = []
@@ -2568,11 +2564,41 @@ class Handler(BaseHTTPRequestHandler):
         if not bool(cfg.get("diary_enabled", True)):
             self._json(200, {"ok": True, "skipped": "disabled"})
             return
+        # 当天最近一条 L0 的 scope，用来检索相关旧事，避免把别的会话带进来
+        scope = ""
+        try:
+            row = store.conn.execute(
+                "SELECT scope FROM memory WHERE tier='L0' AND ts>=? ORDER BY id DESC LIMIT 1",
+                (today_start,),
+            ).fetchone()
+            scope = str(row["scope"] or "") if row else ""
+        except Exception:
+            scope = ""
+        persona_text = build_persona_context(store.get_persona()).get("text", "")
+        diary_query = " ".join([
+            user_text[:1200],
+            " ".join(str(a.get("detail") or "") for a in acts[-10:]),
+        ]).strip()
+        related = ""
+        if diary_query:
+            try:
+                related = build_context(store, {
+                    "query": diary_query,
+                    "tiers": ["L1", "L3"],
+                    "limits": {"L1": 8, "L3": 6},
+                    "scope": scope,
+                    "purpose": "diary",
+                    "max_chars": 3000,
+                }, embedder).get("text", "")
+            except Exception:
+                related = ""
         text = extractor.write_diary(
             user_text,
-            assistant_text="",
+            assistant_text=assistant_text,
             date=str(body.get("date") or time.strftime("%Y-%m-%d")),
             activities=acts,
+            persona=persona_text,
+            memories=related,
         )
         if not text:
             self._json(503, {"ok": False, "error": "llm unavailable"})

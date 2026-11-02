@@ -34,16 +34,18 @@ SLEEP_SYSTEM = """你在睡前整理今天发生的事。用第一人称写两�
 只输出正文。"""
 
 
-DIARY_SYSTEM = """你根据今天的对话和活动，用第一人称写一段日记（不超过 120 字）。
+DIARY_SYSTEM = """你根据今天的对话、活动和可能相关的旧记忆，用第一人称写一段日记（不超过 160 字）。
 
 重点：写「我今天真的干了什么」——
 - 刷 B 站看到了什么（具体标题/内容）
 - 玩了什么、看了什么、想了什么
 - 跟老大聊了什么（有情绪的细节）
 - 今天有什么小情绪、小发现
+- 如果旧记忆里有一件事和今天对得上，可以自然联想到它，写一点现在的感想
 
 要求：像真的在写日记，具体、有情绪、有细节（不要空泛的"今天过得还好"）。
-不要评价用户、不要写成总结报告、不要提"AI"。
+旧记忆不是每篇都要提；对不上就忽略，不要为了回忆硬扯。
+用你现在的口吻写，不要写成总结报告，不要提"AI"。
 只输出日记正文。"""
 
 
@@ -303,11 +305,16 @@ class Extractor:
         return (str(text).strip()[:250]) if text else None
 
     def write_diary(self, user_text: str, assistant_text: str = "", date: str = "",
-                    activities: list | None = None) -> str | None:
-        """写今天的日记（LLM，第一人称，120 字内）。activities = 今天干了什么。"""
+                    activities: list | None = None, persona: str = "",
+                    memories: str = "") -> str | None:
+        """写今天的日记（LLM，第一人称，160 字内）。"""
         if self.llm is None or not getattr(self.llm, "enabled", False):
             return None
         parts = []
+        if persona:
+            parts.append("【你现在的样子】")
+            parts.append(persona[:3000])
+            parts.append("")
         if activities:
             parts.append("今天做过的事（按时间）：")
             for a in activities[-30:]:
@@ -321,14 +328,18 @@ class Extractor:
             parts.append(f"用户：{user_text}")
             if assistant_text:
                 parts.append(f"你：{assistant_text}")
+        if memories:
+            parts.append("")
+            parts.append("以前可能相关的记忆（不一定相关，只在对得上时自然联想）：")
+            parts.append(memories[:3000])
         convo = "\n".join(parts) if parts else str(user_text)
         try:
-            text = self.llm.chat(DIARY_SYSTEM, convo, max_tokens=260)
+            text = self.llm.chat(DIARY_SYSTEM, convo, max_tokens=300)
         except Exception:
             return None
         if not text:
             return None
-        return str(text).strip()[:200]
+        return str(text).strip()[:240]
 
     def evolve(self, user_text: str, assistant_text: str = "", persona: str = "", memories: str = "") -> str | None:
         """人设演化：从这段对话生一句「我发现自己……」（追加到自我认知区）。"""
