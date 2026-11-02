@@ -1,4 +1,4 @@
-﻿# 大肥鱼 QQ Bot
+# 大肥鱼 QQ Bot
 
 > GitHub: <https://github.com/meijn572/dsh-qqbot>（private）
 
@@ -294,5 +294,6 @@ AstrBot 旧部署仍在，回退时恢复 AstrBot 白名单/平台开关即可�
 
 ## 相关文档
 
+- [架构说明](docs/architecture.md)
 - [重构计划](docs/refactor-plan.md)
 - [重构总结](docs/refactor-summary.md)
