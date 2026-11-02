@@ -112,11 +112,11 @@ panel.py
   ```
 - 插件拆分前备份：
   ```
-  C:\Users\<you>\.dsh-qqbot\plugins\dsh-remembers\index.before-*.mjs
+  $DSH_HOME\plugins\dsh-remembers\index.before-*.mjs
   ```
 - 旧目录：
   ```
-  C:\Users\<you>\.dsh-qqbot\archive\legacy-20261102\
+  $DSH_HOME\archive\legacy-20261102\
   ```
 
 ## 运行开关

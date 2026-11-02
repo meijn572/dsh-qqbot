@@ -1,4 +1,4 @@
-# 大肥鱼 QQ Bot
+﻿# 大肥鱼 QQ Bot
 
 > GitHub: <https://github.com/meijn572/dsh-qqbot>（private）
 
@@ -24,7 +24,7 @@ QQ
                           store / context / persona / hook
                                  │
                                  ▼
-                     C:\Users\<you>\.dsh-qqbot\remembers-data
+                     $env:USERPROFILE\.dsh-qqbot\remembers-data
 
 面板 127.0.0.1:6080
 ```
@@ -80,13 +80,13 @@ powershell -ExecutionPolicy Bypass -File D:\path\to\dshbot\stop-dshbot.ps1
 
 | 路径 | 内容 |
 | --- | --- |
-| `C:\Users\<you>\.dsh-qqbot\remembers-data\memories.db` | 记忆主库 |
-| `C:\Users\<you>\.dsh-qqbot\remembers-service\` | 记忆服务 |
-| `C:\Users\<you>\.dsh-qqbot\hook-events.jsonl` | hook 观测日志 |
-| `C:\Users\<you>\.dsh-qqbot\important\important.md` | 手写重要的事 |
-| `C:\Users\<you>\.dsh-qqbot\bili-autonomy\` | 兴趣、已看、运行状态 |
-| `C:\Users\<you>\.dsh-qqbot\persona-reflect\` | 复盘状态 |
-| `C:\Users\<you>\.dsh-qqbot\archive\legacy-20261102\` | 归档的旧目录 |
+| `$env:USERPROFILE\.dsh-qqbot\remembers-data\memories.db` | 记忆主库 |
+| `$env:USERPROFILE\.dsh-qqbot\remembers-service\` | 记忆服务 |
+| `$env:USERPROFILE\.dsh-qqbot\hook-events.jsonl` | hook 观测日志 |
+| `$env:USERPROFILE\.dsh-qqbot\important\important.md` | 手写重要的事 |
+| `$env:USERPROFILE\.dsh-qqbot\bili-autonomy\` | 兴趣、已看、运行状态 |
+| `$env:USERPROFILE\.dsh-qqbot\persona-reflect\` | 复盘状态 |
+| `$env:USERPROFILE\.dsh-qqbot\archive\legacy-20261102\` | 归档的旧目录 |
 
 ## 记忆模型
 
@@ -144,13 +144,13 @@ POST /hook/turn-end
 桥接使用：
 
 ```
-DSH_HOME=C:\Users\<you>\.dsh-qqbot
+DSH_HOME=$env:USERPROFILE\.dsh-qqbot
 ```
 
 但 DSH 实际加载插件目前是：
 
 ```
-C:\Users\<you>\.dsh\profiles\qqbot2\node_modules\dsh-remembers
+$env:USERPROFILE\.dsh\profiles\qqbot2\node_modules\dsh-remembers
 ```
 
 改插件后两边都要同步，否则会出现“代码改了但没生效”。
@@ -158,7 +158,7 @@ C:\Users\<you>\.dsh\profiles\qqbot2\node_modules\dsh-remembers
 启用 hook 的配置在实际 profile 的：
 
 ```
-C:\Users\<you>\.dsh\profiles\qqbot2\cordis.patch.yml
+$env:USERPROFILE\.dsh\profiles\qqbot2\cordis.patch.yml
 ```
 
 确保有：
@@ -215,7 +215,7 @@ powershell -ExecutionPolicy Bypass -File D:\path\to\dshbot\scripts\check.ps1
 真实 QQ 回合：
 
 ```powershell
-Get-Content C:\Users\<you>\.dsh-qqbot\hook-events.jsonl -Tail 20
+Get-Content $env:USERPROFILE\.dsh-qqbot\hook-events.jsonl -Tail 20
 ```
 
 正常应看到：
@@ -264,7 +264,7 @@ Get-Content D:\path\to\dshbot\bridge.err -Tail 50
 看：
 
 ```powershell
-Get-Content C:\Users\<you>\.dsh-qqbot\qqbot2.err -Tail 40
+Get-Content $env:USERPROFILE\.dsh-qqbot\qqbot2.err -Tail 40
 ```
 
 常见是 `hooks/` 或 `tools/` 新文件没复制到实际 profile。
@@ -280,7 +280,7 @@ D:\path\to\dshbot\backups\refactor-phase0-20261102-163809
 旧目录：
 
 ```
-C:\Users\<you>\.dsh-qqbot\archive\legacy-20261102\
+$env:USERPROFILE\.dsh-qqbot\archive\legacy-20261102\
 ```
 
 AstrBot 旧部署仍在，回退时恢复 AstrBot 白名单/平台开关即可。

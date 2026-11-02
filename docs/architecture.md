@@ -142,7 +142,7 @@ growth 只依赖 `qqbot/clients` 和 `settings`，不 import bridge。
 
 ### 3.9 记忆服务
 
-路径：`C:\Users\<you>\.dsh-qqbot\remembers-service\`
+路径：`$DSH_HOME/remembers-service/`
 
 | 文件 | 作用 |
 | --- | --- |
