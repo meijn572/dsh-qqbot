@@ -564,10 +564,12 @@ POST /emotion
 
 ### 5.7 日记
 
+文件：`qqbot/domains/growth/diary.py`
+
 触发：
 
 ```
-bridge.diary_loop
+bridge 启动 growth_diary.loop
   - 23 点后
   - 每 15 分钟检查一次
   - diary-state.json 记录 last_date

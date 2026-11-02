@@ -122,6 +122,8 @@ QQ
 | `style.py` | 表达风格复盘，生成待确认提议 |
 | `important.py` | 重要的事自检 + `important.md` 同步 |
 | `emotion.py` | 情绪自检 |
+| `diary.py` | 每天 23 点后写日记 |
+| `evidence.py` | growth 共用的 L1/L3 + 对应 L0 证据块 |
 
 growth 只依赖 `qqbot/clients` 和 `settings`，不 import bridge。
 
