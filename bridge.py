@@ -1866,6 +1866,42 @@ async def memory_batch_loop() -> None:
         await asyncio.sleep(300)
 
 
+async def diary_loop() -> None:
+    """每天 23 点后让记忆服务根据当天素材写一篇日记。"""
+    await asyncio.sleep(90)
+    state_path = DSH_HOME / "diary-state.json"
+    while True:
+        try:
+            cfg = CONFIG.get("diary") or {}
+            if cfg.get("enabled", True) and time.localtime().tm_hour >= int(cfg.get("hour", 23)):
+                today = time.strftime("%Y-%m-%d")
+                try:
+                    state = json.loads(state_path.read_text(encoding="utf-8"))
+                except Exception:  # noqa: BLE001
+                    state = {}
+                if state.get("last_date") != today:
+                    existing = await cmem_call("GET", "/diary")
+                    has_today = any(
+                        str(item.get("date")) == today and str(item.get("text") or "").strip()
+                        for item in (existing or [])
+                        if isinstance(item, dict)
+                    )
+                    if not has_today:
+                        result = await cmem_call("POST", "/diary/write", {"date": today})
+                        if result.get("ok"):
+                            state["last_date"] = today
+                            state_path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+                            log.info("日记已写：%s 字", len(str(result.get("text") or "")))
+                        else:
+                            log.warning("日记写入失败：%s", result.get("error") or result)
+                    else:
+                        state["last_date"] = today
+                        state_path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001
+            log.warning("diary_loop err: %s", exc)
+        await asyncio.sleep(15 * 60)
+
+
 async def run() -> None:
     sync_session_scopes()
     load_sticker_meta()
@@ -1882,6 +1918,7 @@ async def run() -> None:
     asyncio.create_task(important_check_loop(dsh))
     asyncio.create_task(important_file_loop(dsh))
     asyncio.create_task(memory_batch_loop())
+    asyncio.create_task(diary_loop())
     asyncio.create_task(group_slang_loop(dsh))
     asyncio.create_task(report_watch(dsh, onebot))
     asyncio.create_task(session_watch(dsh, onebot))

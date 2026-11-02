@@ -562,7 +562,41 @@ POST /emotion
 - `arousal`
 - `source=self-check`
 
-### 5.7 人格注入
+### 5.7 日记
+
+触发：
+
+```
+bridge.diary_loop
+  - 23 点后
+  - 每 15 分钟检查一次
+  - diary-state.json 记录 last_date
+```
+
+执行：
+
+```
+POST /diary/write
+  {"date":"YYYY-MM-DD"}
+```
+
+服务端用当天记忆和活动生成一篇第一人称日记，写入 `diary` 表。
+
+读取：
+
+- 面板「小本子」
+- 鱼主动调用 `read_diary`
+- `read_diary date=YYYY-MM-DD` 可看某天
+
+之前日记一直没写，是因为：
+
+- `scheduler._tick_diary` 只在 23 点写一条 **silent** 唤醒事件
+- `bridge.inject_watch` 明确跳过 silent 事件
+- 插件也没有 `write_diary` 工具
+
+所以“提醒”发出来了，但没人真正写。
+
+### 5.8 人格注入
 
 当前：
 
@@ -748,6 +782,7 @@ bili_autonomy.deferred_share_hours   # 默认 6
 | `$DSH_HOME/persona-roles/state/style-proposal.json` | 待确认风格 |
 | `$DSH_HOME/important-check-state.json` | 重要的事小时槽 |
 | `$DSH_HOME/emotion-check-state.json` | 情绪自检时间和次数 |
+| `$DSH_HOME/diary-state.json` | 最近一次成功写日记的日期 |
 | `$DSH_HOME/bili-autonomy/state.json` | 自主刷轮次/分享 |
 | `$DSH_HOME/bili-autonomy/interests.json` | 兴趣权重 |
 | `$DSH_HOME/bili-autonomy/seen.json` | 已看 BV |
