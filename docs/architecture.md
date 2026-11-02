@@ -611,5 +611,6 @@ DSH_HOME
 - 前端 `app.js` 还没按 tab 拆
 - `qqbot/adapters`、`conversation`、`jobs`、`runtime.py` 仍是骨架
 - `extractor.py` 混合引擎与工作流，边界见 5.4；当前不搬
+- **已知隐私隐患**：L0 有 private/group scope，但 L1/L2/L3/L4 目前都写成 `global`；私聊蒸馏出的内容可能被群聊 recall 到。等需要严格隔离时再按来源 scope 拆分蒸馏，当前先记录
 - DSH 实际加载 profile 有两个路径，改插件要同步
 - 旧 `memory.db` 已不写，文件还在；旧目录已归档

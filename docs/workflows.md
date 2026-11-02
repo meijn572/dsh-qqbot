@@ -257,6 +257,8 @@ L4 不再走 profile 块，也不参与 recall。L4 作为「关系约定」进 
 
 不含 L2，也不含 L0。不是固定取满，相关性不够会少取或 0 条。
 
+> 已知隐患：L0 有 private/group scope，但当前 L1/L2/L3/L4 都写成 `global`，私聊蒸馏内容可能被群聊 recall 到。等需要严格隔离时再修，见 `architecture.md` 12。
+
 #### L2 / L0 去哪了
 
 | 层 | 是否进 recall | 实际用途 |
