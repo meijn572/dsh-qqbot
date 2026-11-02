@@ -1503,6 +1503,8 @@ async def handle(dsh: Dsh, onebot: OneBot, event: dict, forced: bool = False) ->
     pending["target"] = target
     pending["last_at"] = time.time()
     LAST_INBOUND[chat_key] = pending["last_at"]
+    if chat_key == OWNER_CHAT_KEY:
+        autonomy_round.note_user_reply(chat_key)
     if mtype == "group":
         pending["addressed"] = bool(pending.get("addressed")) or addressed
         if not pending["addressed"]:

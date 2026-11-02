@@ -60,6 +60,15 @@ def _quiet_now(cfg: dict) -> bool:
     return hour >= start or hour < end
 
 
+def note_user_reply(chat_key: str) -> None:
+    """主人回消息了：解除「连续分享没人理」的暂停。"""
+    state = load_aut_state()
+    state["last_user_reply"] = int(time.time())
+    if int(state.get("unanswered_shares") or 0):
+        state["unanswered_shares"] = 0
+    save_aut_state(state)
+
+
 async def run_round(deps: Deps) -> dict | None:
     cfg = autonomy_cfg()
     if not deps.users:
@@ -174,13 +183,42 @@ async def run_round(deps: Deps) -> dict | None:
         url = value if value.startswith("http") else f"https://www.bilibili.com/video/{value}"
         if url not in chosen:
             chosen.append(url)
-    if data.get("share") and share_line and int(state.get("shares", 0)) < int(cfg.get("share_max_per_day", 3)):
-        text = compose_share_text(share_line, chosen)
-        await deps.send_private(uid, text)
-        deps.add_l0(chat_key, text)
-        deps.last_share[chat_key] = {"topic": round_topic, "ts": time.time()}
-        state["shares"] = int(state.get("shares", 0)) + 1
-        log.info("自主刷分享：%s", text[:160])
+
+    max_unanswered = max(1, int(cfg.get("max_unanswered_shares", 2)))
+    pending = list(state.get("pending_shares") or [])
+    recent_reply = float(state.get("last_user_reply") or 0)
+    deferred_sent = False
+    # 主人刚回过消息：先把攒下的分享补一条，而不是继续刷新的
+    if (pending
+            and int(state.get("unanswered_shares", 0)) == 0
+            and recent_reply
+            and time.time() - recent_reply <= float(cfg.get("deferred_share_hours", 6)) * 3600
+            and int(state.get("shares", 0)) < int(cfg.get("share_max_per_day", 3))):
+        item = pending.pop(0)
+        text = compose_share_text(str(item.get("line") or ""), item.get("links") or [])
+        if text:
+            await deps.send_private(uid, text)
+            deps.add_l0(chat_key, text)
+            state["pending_shares"] = pending
+            state["unanswered_shares"] = 1
+            deps.last_share[chat_key] = {"topic": item.get("topic") or "", "ts": time.time()}
+            state["shares"] = int(state.get("shares", 0)) + 1
+            deferred_sent = True
+            log.info("自主刷补发攒下的分享：%s", text[:160])
+
+    if data.get("share") and share_line and not deferred_sent and int(state.get("shares", 0)) < int(cfg.get("share_max_per_day", 3)):
+        if int(state.get("unanswered_shares", 0)) >= max_unanswered:
+            pending.append({"topic": round_topic, "line": share_line, "links": chosen, "ts": int(time.time())})
+            state["pending_shares"] = pending[-max(1, int(cfg.get("pending_share_max", 5))):]
+            log.info("自主刷分享暂存：连续 %s 条没人回，先攒着", max_unanswered)
+        else:
+            text = compose_share_text(share_line, chosen)
+            await deps.send_private(uid, text)
+            deps.add_l0(chat_key, text)
+            deps.last_share[chat_key] = {"topic": round_topic, "ts": time.time()}
+            state["unanswered_shares"] = int(state.get("unanswered_shares", 0)) + 1
+            state["shares"] = int(state.get("shares", 0)) + 1
+            log.info("自主刷分享：%s", text[:160])
     save_aut_state(state)
     titles = "、".join(f"《{v.get('title')}》" for v in videos[:3] if isinstance(v, dict) and v.get("title"))
     deps.log_activity("bili", f"刷了「{round_topic}」{titles}", thought)

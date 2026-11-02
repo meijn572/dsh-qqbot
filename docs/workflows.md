@@ -639,6 +639,38 @@ plugin client.profile()
 
 不分享就只留记录。
 
+### 6.4.1 连续分享没人回
+
+默认连续分享 2 条主人都不回：
+
+- 不再继续发
+- 后续想分享的内容写进 `state.json` 的 `pending_shares`
+- 最多攒 5 条
+
+主人回消息后：
+
+- `unanswered_shares` 归零
+- 下一轮先补发一条攒下的分享
+- 补发也计入当天分享数
+
+配置：
+
+```
+bili_autonomy.max_unanswered_shares  # 默认 2
+bili_autonomy.pending_share_max      # 默认 5
+bili_autonomy.deferred_share_hours   # 默认 6
+```
+
+效果：
+
+```
+8:00 发一条 → 没回
+8:25 发一条 → 没回
+8:50 想发 → 攒着，不发了
+...
+主人回消息 → 下一轮补一条
+```
+
 ### 6.5 落库
 
 - 每次写 `bili-autonomy/out/YYYY-MM-DD.md`

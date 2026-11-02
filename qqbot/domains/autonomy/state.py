@@ -27,6 +27,9 @@ def autonomy_cfg() -> dict:
         "free_explore_ratio": 0.25,
         "max_videos_per_round": 3,
         "share_max_per_day": 3,
+        "max_unanswered_shares": 2,
+        "pending_share_max": 5,
+        "deferred_share_hours": 6,
     }
     merged.update(CONFIG.get("bili_autonomy") or {})
     return merged
@@ -78,12 +81,14 @@ def mark_aut_seen(videos: list[dict], topic: str) -> None:
 
 def load_aut_state() -> dict:
     if not AUT_STATE.exists():
-        return {"date": "", "rounds": 0, "shares": 0, "last_run": 0, "last_extract": 0}
+        return {"date": "", "rounds": 0, "shares": 0, "last_run": 0, "last_extract": 0,
+                "unanswered_shares": 0, "pending_shares": [], "last_user_reply": 0}
     try:
         data = json.loads(AUT_STATE.read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001
         data = {}
-    base = {"date": "", "rounds": 0, "shares": 0, "last_run": 0, "last_extract": 0}
+    base = {"date": "", "rounds": 0, "shares": 0, "last_run": 0, "last_extract": 0,
+            "unanswered_shares": 0, "pending_shares": [], "last_user_reply": 0}
     base.update(data or {})
     return base
 
