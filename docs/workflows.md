@@ -203,7 +203,7 @@ DSH agent/pre-step
 - `store.search()`
 - BM25 + 向量 + 层权重 + 时间衰减
 - scope 过滤：当前场景 + global
-- tiers：L1/L2/L3/L4
+- tiers：L1/L3
 
 ### 4.3 格式
 
@@ -234,19 +234,19 @@ DSH agent/pre-step
 | --- | --- | --- | --- |
 | system prompt 人格 | 插件 `client.persona()` + `hooks/persona.mjs` | 核心设定、自我认知、身份、自我形象、我眼中的主人 | `personaMaxChars` 默认 4000 |
 | person | 插件 `client.profileOf()`，服务 `/profiles` | 当前发言人是谁、群友画像、非主人提示 | 群聊/私聊别人 |
-| recall | 插件 `hooks/recall.mjs`，服务 `/hook/pre-step` | L1/L3/L4 召回块 | 见下 |
+| recall | 插件 `hooks/recall.mjs`，服务 `/hook/pre-step` | L1/L3 召回块 | 见下 |
 | state | 插件 pre-step，服务 `/state` | 时间、心情、亲密度、活动、B 站状态、自我认知、群黑话、关系阶段、颜文字/emoji 提示 | 变化才注入，哈希去重 |
 | bridge-note | `bridge.py :: _process_locked` | 表情库检索提示、群黑话、私聊可复用黑话、B 站链接信息、网络梗、图片/表情路径 | 拼在用户消息里，不进 system prompt |
 
-L4 不再走 profile 块。L4 现在只通过 recall 注入。
+L4 不再走 profile 块，也不参与 recall。L4 作为「关系约定」进人格 system prompt。
 
 #### recall 具体取什么
 
 `service/api/routes/hooks.py :: pre_step()`：
 
 - 从 messages 取最近几条 user/assistant，最多 1000 字，作为 query
-- tiers：`L1`、`L3`、`L4`
-- 配额：`L1=20`、`L3=10`、`L4=4`
+- tiers：`L1`、`L3`
+- 配额：`L1=25`、`L3=15`
 - scope：当前会话 + `global`
 - `max_chars=6000`
 - `purpose=recall`
@@ -289,7 +289,7 @@ L0 只在这些地方用：
 
 不是服务返回的 `system`。
 
-L2 已经不从 recall 取，L4 已经不从 profile 块取；这里剩下的重复只有“人格块由插件渲染”这一处。
+L2 已经不从 recall 取，L4 已经进 system prompt、不参与 recall；这里剩下的重复只有“人格块由插件渲染”这一处。
 
 ---
 
@@ -498,6 +498,10 @@ service /persona/context
 
 plugin client.persona()
   → hooks/persona.mjs renderPersona()
+
+plugin client.profile()
+  → persona.l4
+  → renderPersona() 的「关系约定」段
   → DSH systemPrompt
 ```
 

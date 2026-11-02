@@ -251,6 +251,8 @@ const soft = (key) => {
     manualByUser: {},
     /** 自我认知原文。走 state 块注入，不在这里进系统提示词。 */
     selfModel: "",
+    /** L4 关系/规矩：进 system prompt，不再走 recall。 */
+    l4: [],
     at: 0,         // 最近一次成功刷新（ms）
     triedAt: 0,    // 最近一次尝试（含失败），用于节流
     error: null,
@@ -264,14 +266,15 @@ const soft = (key) => {
     try {
       // 一次拉齐：人格 + 主动配置 + 所有人的手编画像。
       // profiles 是给系统提示词按会话挑人用的，所以整份缓存在内存里（同步可读）。
-      const [data, proactive, allProfiles] = await Promise.all([
-        client.persona(), fetchProactive(), client.profiles(),
+      const [data, proactive, allProfiles, l4Items] = await Promise.all([
+        client.persona(), fetchProactive(), client.profiles(), client.profile(config.profileSubject || null),
       ]);
-      if (!data) return persona.data ? renderPersona(persona.data, config.personaMaxChars, persona.proactive) : "";
+      if (!data) return persona.data ? renderPersona(persona.data, config.personaMaxChars, persona.proactive, { l4: persona.l4 }) : "";
       // 只渲染人格。state 走 pre-step 注入，不进 system prompt
       //（system prompt 是最顶层前缀，一变整段历史缓存全失效）
       persona.data = data;
       persona.proactive = proactive;
+      persona.l4 = Array.isArray(l4Items) ? l4Items : [];
       persona.ownerManual = String(data?.user_profile ?? "").trim();
       persona.selfModel = String(data?.self_model ?? "").trim();
 
@@ -754,6 +757,7 @@ const soft = (key) => {
             ? `以下是正在跟你说话的人（${who}）的画像：`
             : "以下是老大是谁（他的画像，你该知道的基本信息）：",
           footer: notOwnerNote,
+          l4: persona.l4,
         });
       }
     }
@@ -761,6 +765,7 @@ const soft = (key) => {
     return renderPersona(data, maxChars, proactive, {
       profileText: persona.ownerManual,
       profileHeader: "以下是老大是谁（他的画像，你该知道的基本信息）：",
+      l4: persona.l4,
     });
   }
 

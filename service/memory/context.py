@@ -41,7 +41,16 @@ def build_context(store, body: dict, embedder) -> dict:
             focus=focus or None,
             scopes=body.get("scopes") or ([scope, "global"] if scope else None),
         )
-        items = [{"tier": h.tier, "text": h.text, "ts": h.ts} for h in hits]
+        # 严格按层配额截断，避免 L1 命中过多把 L3 挤掉
+        taken: dict[str, int] = {}
+        items = []
+        for hit in hits:
+            tier = str(hit.tier)
+            cap = max(1, int(limits.get(tier, 10)))
+            if taken.get(tier, 0) >= cap:
+                continue
+            taken[tier] = taken.get(tier, 0) + 1
+            items.append({"tier": tier, "text": hit.text, "ts": hit.ts})
     else:
         for tier in tiers:
             limit = max(1, min(200, int(limits.get(tier, 10))))
