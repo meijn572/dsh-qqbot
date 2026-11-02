@@ -311,6 +311,22 @@ L4 不再走 profile 块，也不参与 recall。L4 作为「关系约定」进 
 | `user_profile` | 画像刷新、面板 |
 | important 段 | 重要的事自检、`remember_important`、手动 |
 
+#### growth 的记忆输入
+
+先统一几个说法：
+
+| 名称 | 实际层 | 获取方式 | 说明 |
+| --- | --- | --- | --- |
+| 最近对话 | L0 | `l0_recent(owner)` / `recent_dialogue()` | 当前会话原话，最多 16000 字 |
+| 长期记忆 | L1 + L2 + L3 + L4 | `long_term_memory()` → `/context`，`purpose=review` | 固定配额 L1 80 / L2 10 / L3 40 / L4 10，最多 16000 字 |
+| 完整人格 | persona | `/persona/context` | 核心设定、自我认知、身份、形象、画像 |
+
+注意：
+
+- “长期记忆”不含 L0
+- L0 只在“最近对话”里单独取
+- `long_term_memory(limit)` 的 `limit` 目前没有参与分层配额；实际固定为 L1 80 / L2 10 / L3 40 / L4 10
+
 ### 5.2 人格复盘
 
 文件：`qqbot/domains/growth/reflect.py`
@@ -328,9 +344,11 @@ bridge.persona_reflect_loop
 
 输入：
 
-- `/persona/context` 完整人格
-- 最近对话 80 条
-- 长期记忆 160
+| 输入 | 层 | 量 |
+| --- | --- | --- |
+| 完整人格 | persona | `/persona/context` |
+| 最近对话 | L0 | 80 条，最多 16000 字 |
+| 长期记忆 | L1/L2/L3/L4 | L1 80 / L2 10 / L3 40 / L4 10，最多 16000 字 |
 
 提示词要求：
 
@@ -371,9 +389,11 @@ bridge.profile_refresh_loop
 
 输入：
 
-- 完整人格
-- 最近对话 60
-- 长期记忆 160
+| 输入 | 层 | 量 |
+| --- | --- | --- |
+| 完整人格 | persona | `/persona/context` |
+| 最近对话 | L0 | 60 条，最多 16000 字 |
+| 长期记忆 | L1/L2/L3/L4 | L1 80 / L2 10 / L3 40 / L4 10，最多 16000 字 |
 
 要求：
 
@@ -407,11 +427,13 @@ bridge.style_review_loop
 
 输入：
 
-- `/persona`：完整人格数据
-- `/persona/context`：完整人格纯文本
-- 核心设定里的 `<!-- style:begin -->` 段
-- 最近对话 60
-- 长期记忆 120
+| 输入 | 层 | 量 |
+| --- | --- | --- |
+| 完整人格数据 | persona | `/persona` |
+| 完整人格文本 | persona | `/persona/context` |
+| 当前风格段 | constitution | `<!-- style:begin -->` 到 `<!-- style:end -->` |
+| 最近对话 | L0 | 60 条，最多 16000 字 |
+| 长期记忆 | L1/L2/L3/L4 | L1 80 / L2 10 / L3 40 / L4 10，最多 16000 字 |
 
 不是只看“当前风格”这一小段；完整人格、最近相处和长期记忆都在输入里。
 
