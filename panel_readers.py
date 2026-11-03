@@ -100,12 +100,21 @@ def lexicon_payload() -> dict:
     return {"entries": entries, "kinds": list(KINDS), "statuses": list(STATUSES)}
 
 
-def lexicon_search_payload(query: str) -> dict:
+def lexicon_lookup_payload(query: str, scope: str = "", kind: str = "", status: str = "") -> dict:
     q = str(query or "").strip().lower()
     if not q:
-        return {"query": "", "terms": [], "stickers": []}
-    terms = []
+        return {"query": "", "terms": []}
+    wanted_scope = str(scope or "").strip()
+    if wanted_scope.startswith("group:"):
+        wanted_scope = wanted_scope.split(":", 1)[1]
+    out = []
     for item in lexicon_payload().get("entries") or []:
+        if scope and str(item.get("scope") or "") != wanted_scope:
+            continue
+        if kind and str(item.get("kind") or "") != kind:
+            continue
+        if status and str(item.get("status") or "") != status:
+            continue
         fields = [str(item.get("term") or ""), " ".join(item.get("aliases") or []), str(item.get("meaning") or "")]
         hay = " ".join(fields).lower()
         if q not in hay:
@@ -117,8 +126,16 @@ def lexicon_search_payload(query: str) -> dict:
             score += 50
         if q in str(item.get("meaning") or "").lower():
             score += 20
-        terms.append((score, item))
-    terms.sort(key=lambda pair: pair[0], reverse=True)
+        out.append((score, item))
+    out.sort(key=lambda pair: pair[0], reverse=True)
+    return {"query": q, "terms": [item for _, item in out[:20]]}
+
+
+def lexicon_search_payload(query: str) -> dict:
+    q = str(query or "").strip().lower()
+    if not q:
+        return {"query": "", "terms": [], "stickers": []}
+    terms = lexicon_lookup_payload(q).get("terms") or []
     stickers = []
     for item in sticker_payload().get("items") or []:
         hay = " ".join([
@@ -131,7 +148,7 @@ def lexicon_search_payload(query: str) -> dict:
             stickers.append(item)
     return {
         "query": q,
-        "terms": [item for _, item in terms[:8]],
+        "terms": terms[:8],
         "stickers": stickers[:8],
     }
 

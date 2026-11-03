@@ -155,6 +155,33 @@ export async function registerMemeTools({ registerTool, log, endpoint, memeDir }
     }));
 
     registerTool(defineTool({
+      name: "lexicon_lookup",
+      description:
+        "只查词库：这个梗/黑话/热词是什么意思、有哪些别名。"
+        + "只返回 terms，不返回表情；要找相关表情用 lexicon_search。",
+      parameters: {
+        q: { type: "string", required: true, description: "要查的词，比如 奶龙 / yyds / 2G" },
+        scope: { type: "string", description: "可选：global 或 group:<群号>" },
+        kind: { type: "string", description: "可选：slang/meme/buzzword/fandom/abbreviation" },
+        status: { type: "string", description: "可选：fresh/hot/stable/archived" },
+      },
+      output: { schema: { type: "json" }, render: (_a, v) => [{ type: "text", text: JSON.stringify(v) }] },
+      execute: async (args) => {
+        const q = String(args.q || "").trim();
+        if (!q) return { ok: false, error: "缺少 q" };
+        const base = String(process.env.CMEM_PANEL_URL || "http://127.0.0.1:6080").replace(/\/$/, "");
+        const params = new URLSearchParams({ q });
+        for (const key of ["scope", "kind", "status"]) {
+          if (args[key]) params.set(key, String(args[key]));
+        }
+        const res = await fetch(base + "/api/lexicon/lookup?" + params.toString(), {
+          signal: AbortSignal.timeout(5000),
+        });
+        return res.json().catch(() => ({ ok: false, error: "查询失败" }));
+      },
+    }));
+
+    registerTool(defineTool({
       name: "lexicon_search",
       description:
         "查梗/黑话/热词是什么意思，同时找相关的表情。"
@@ -213,7 +240,7 @@ export async function registerMemeTools({ registerTool, log, endpoint, memeDir }
       },
     }));
 
-    log("meme_tools_registered", { count: 7 });
+    log("meme_tools_registered", { count: 8 });
   } catch (error) {
     log("meme_tools_skipped", { reason: "register 失败", error: String(error?.message ?? error) });
   }
