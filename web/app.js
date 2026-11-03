@@ -291,7 +291,7 @@ async function load(){
     let h='<div class="card"><div class="k">分类统计</div><div style="margin-top:8px">';
     for(const [k,v] of Object.entries(st.categories)) h+=`<span class="tag">${esc(k)} ${v.user}/${v.total}</span> `;
     h+='</div></div>';
-    h+=`<div class="card"><div class="k">表情库（${items.length} 张）</div>${st.hidden_images?`<div class="mut" style="margin:4px 0">另有 ${st.hidden_images} 张旧图片没有表情标识，已隐藏；重新发一次可收成表情。</div>`:''}<div class="items" style="margin-top:8px">`;
+    h+=`<div class="card"><div class="k">表情库（${items.length} 张） <button onclick="stickerRefresh()" style="margin-left:8px">刷新列表</button></div>${st.hidden_images?`<div class="mut" style="margin:4px 0">另有 ${st.hidden_images} 张旧图片没有表情标识，已隐藏；重新发一次可收成表情。</div>`:''}<div class="items" style="margin-top:8px">`;
     for(let i=0;i<items.length;i++){
       const it=items[i], id=`st_tags_${i}`, view=`st_view_${i}`, status=`st_status_${i}`;
       h+=`<div class="item"><img class="thumb" src="/api/sticker?file=${encodeURIComponent(it.file)}">
@@ -385,6 +385,11 @@ function stickerTagHtml(tags){
   const list=(tags||[]).filter(Boolean);
   return list.length ? list.map(t=>`<span class="tag">${esc(t)}</span>`).join(' ') : '<span class="mut">暂无标签</span>';
 }
+function stickerRefresh(){
+  if(stickerDirty && !confirm('有未保存的标签，仍要刷新列表？')) return;
+  stickerDirty=false;
+  load();
+}
 async function stickerSaveTags(file,id,view,status){
   const raw=(document.getElementById(id)?.value||'');
   const tags=raw.split(/[,，、\s]+/).map(x=>x.trim()).filter(Boolean);
@@ -418,4 +423,6 @@ async function stickerDelete(file){
     load();
   }
 }
-setInterval(load,10000); load();
+// 表情页有输入框，不参与 10 秒轮询，避免把正在输入的内容顶掉
+setInterval(()=>{ if(curSub!=='stickers') load(); },10000);
+load();

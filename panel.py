@@ -41,7 +41,7 @@ class Handler(BaseHTTPRequestHandler):
         }.get(path.suffix.lower(), "application/octet-stream")
         self.send_response(200)
         self.send_header("Content-Type", ctype)
-        self.send_header("Cache-Control", "max-age=60")
+        self.send_header("Cache-Control", "no-store" if path.suffix.lower() in {".js", ".css", ".html"} else "max-age=60")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
