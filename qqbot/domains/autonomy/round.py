@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 import re
 import time
 from dataclasses import dataclass
@@ -246,28 +247,76 @@ async def run_round(deps: Deps) -> dict | None:
     return data
 
 
+def _active_block(cfg: dict, hour: int) -> dict | None:
+    """当前小时属于哪个时段；不在任何时段返回 None。"""
+    if hour < int(cfg.get("start_hour", 10)) or hour >= int(cfg.get("end_hour", 23)):
+        return None
+    blocks = cfg.get("blocks")
+    if not isinstance(blocks, list):
+        return {"start": int(cfg.get("start_hour", 10)),
+                "end": int(cfg.get("end_hour", 23)),
+                "max": int(cfg.get("daily_max", 10))}
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        try:
+            start, end = int(block.get("start")), int(block.get("end"))
+            cap = int(block.get("max"))
+        except (TypeError, ValueError):
+            continue
+        if start <= hour < end:
+            return {"start": start, "end": end, "max": cap}
+    return None
+
+
+def _gap_seconds(cfg: dict) -> float:
+    lo = max(5.0, float(cfg.get("min_gap_minutes", 35)))
+    hi = max(lo, float(cfg.get("max_gap_minutes", 90)))
+    return random.uniform(lo, hi) * 60
+
+
 async def loop(deps: Deps) -> None:
     await asyncio.sleep(30)
     while True:
         try:
             cfg = autonomy_cfg()
-            if cfg.get("enabled", True) and not _quiet_now(cfg):
+            now = time.time()
+            hour = time.localtime().tm_hour
+            block = _active_block(cfg, hour)
+            if cfg.get("enabled", True) and not _quiet_now(cfg) and block is not None:
                 state = load_aut_state()
                 today = time.strftime("%Y-%m-%d")
                 if state.get("date") != today:
-                    state.update({"date": today, "rounds": 0, "shares": 0})
+                    state.update({"date": today, "rounds": 0, "shares": 0,
+                                  "block_counts": {}, "next_run_at": 0})
                     save_aut_state(state)
                 if deps.users and state.get("interest_consolidated_date") != today:
                     await deps.consolidate(f"private:{int(deps.users[0])}")
                     state["interest_consolidated_date"] = today
                     save_aut_state(state)
+
+                key = f"{block['start']}-{block['end']}"
+                counts = dict(state.get("block_counts") or {})
+                used = int(counts.get(key, 0))
+                next_at = float(state.get("next_run_at") or 0)
+                if not next_at:
+                    next_at = now + random.uniform(0, float(cfg.get("min_gap_minutes", 35))) * 60
+                    state["next_run_at"] = next_at
+                    save_aut_state(state)
                 due = (
                     int(state.get("rounds", 0)) < int(cfg.get("daily_max", 10))
-                    and time.time() - float(state.get("last_run") or 0) >= float(cfg.get("min_gap_minutes", 45)) * 60
+                    and used < int(block.get("max", 99))
+                    and now >= next_at
                 )
                 if due:
                     decay_interests()
                     await run_round(deps)
+                    state = load_aut_state()
+                    counts = dict(state.get("block_counts") or {})
+                    counts[key] = used + 1
+                    state["block_counts"] = counts
+                    state["next_run_at"] = time.time() + _gap_seconds(cfg)
+                    save_aut_state(state)
         except Exception as exc:  # noqa: BLE001
             log.warning("autonomy_loop err: %s", exc)
         await asyncio.sleep(300)

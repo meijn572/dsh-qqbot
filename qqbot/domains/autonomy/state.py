@@ -21,9 +21,17 @@ AUT_SEEN = BILI_AUTONOMY_DIR / "seen.json"
 def autonomy_cfg() -> dict:
     merged = {
         "enabled": True,
-        "min_gap_minutes": 45,
+        "min_gap_minutes": 35,
+        "max_gap_minutes": 90,
         "daily_max": 10,
         "quiet_hours": "0-8",
+        "start_hour": 10,
+        "end_hour": 23,
+        "blocks": [
+            {"start": 10, "end": 13, "max": 2},
+            {"start": 13, "end": 18, "max": 4},
+            {"start": 18, "end": 23, "max": 4},
+        ],
         "free_explore_ratio": 0.25,
         "max_videos_per_round": 3,
         "share_max_per_day": 3,
@@ -84,13 +92,15 @@ def mark_aut_seen(videos: list[dict], topic: str) -> None:
 def load_aut_state() -> dict:
     if not AUT_STATE.exists():
         return {"date": "", "rounds": 0, "shares": 0, "last_run": 0, "last_extract": 0,
-                "unanswered_shares": 0, "pending_shares": [], "last_user_reply": 0}
+                "unanswered_shares": 0, "pending_shares": [], "last_user_reply": 0,
+                "block_counts": {}, "next_run_at": 0}
     try:
         data = json.loads(AUT_STATE.read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001
         data = {}
     base = {"date": "", "rounds": 0, "shares": 0, "last_run": 0, "last_extract": 0,
-            "unanswered_shares": 0, "pending_shares": [], "last_user_reply": 0}
+            "unanswered_shares": 0, "pending_shares": [], "last_user_reply": 0,
+            "block_counts": {}, "next_run_at": 0}
     base.update(data or {})
     return base
 

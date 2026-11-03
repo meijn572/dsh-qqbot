@@ -27,12 +27,32 @@
   "collect_group_stickers": true,
   "bili_autonomy": {
     "enabled": true,
-    "min_gap_minutes": 25,
+    "min_gap_minutes": 35,
     "daily_max": 16,
     "quiet_hours": "0-8",
     "free_explore_ratio": 0.4,
     "max_videos_per_round": 3,
-    "share_max_per_day": 9999
+    "share_max_per_day": 9999,
+    "max_gap_minutes": 90,
+    "start_hour": 10,
+    "end_hour": 23,
+    "blocks": [
+      {
+        "start": 10,
+        "end": 13,
+        "max": 2
+      },
+      {
+        "start": 13,
+        "end": 18,
+        "max": 4
+      },
+      {
+        "start": 18,
+        "end": 23,
+        "max": 4
+      }
+    ]
   },
   "split_min_chars": 40,
   "split_max_bubbles": 3,
