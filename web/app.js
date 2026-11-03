@@ -68,7 +68,8 @@ function renderLex(){
   let h='';
   for(const it of items){
     const tag=it.category==='group'?`群黑话 · ${esc(it.scope)}`:'网络梗';
-    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${tag}</span> <b>${esc(it.term)}</b> <span class="mut">×${it.count||1}</span> <button style="float:right" onclick="lexDel('${encodeURIComponent(it.category)}','${encodeURIComponent(it.term)}')">删</button><div>${esc(it.meaning||'')}</div></div>`;
+    const concept=it.id?`<span class="tag concept">${esc(it.id.replace(/^concept:/,''))}</span>`:'';
+    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${tag}</span> <b>${esc(it.term)}</b> ${concept} <span class="mut">×${it.count||1}</span> <button style="float:right" onclick="lexDel('${encodeURIComponent(it.category)}','${encodeURIComponent(it.term)}')">删</button><div>${esc(it.meaning||'')}</div></div>`;
   }
   const box=document.getElementById('lexlist'); if(box) box.innerHTML=h||'<div class="mut">还没有词条</div>';
 }
@@ -294,6 +295,7 @@ async function load(){
       h+=`<div class="item sticker-item">
         <img class="thumb" src="/api/sticker?file=${encodeURIComponent(it.file)}">
         <div id="${view}" class="sticker-tags">${stickerTagHtml(it.tags)}</div>
+        ${it.concepts&&it.concepts.length?`<div class="sticker-concepts">${stickerConceptHtml(it.concepts)}</div>`:''}
         <div class="sticker-actions">
           <button onclick='stickerEditTags(${JSON.stringify(it.file)}, ${JSON.stringify(view)})'>修改标签</button>
           <button onclick='stickerToggleDelete(${JSON.stringify(xid)})'>删除</button>
@@ -377,6 +379,10 @@ async function dismissStyle(){ const r=await fetch('/api/style/dismiss',{method:
 async function syncGrowth(){ const r=await fetch('/api/growth/sync',{method:'POST'}); const j=await r.json(); alert(j.output||'已同步'); load(); }
 function setLog(n){ logName=n; load(); }
 async function startQr(){ await fetch('/api/bili/qr/start',{method:'POST'}); setTimeout(load,1500); }
+function stickerConceptHtml(concepts){
+  const list=(concepts||[]).map(x=>String(x).replace(/^concept:/,'')).filter(Boolean);
+  return list.map(t=>`<span class="tag concept">${esc(t)}</span>`).join(' ');
+}
 function stickerTagHtml(tags,limit=5){
   const list=(tags||[]).filter(Boolean);
   if(!list.length) return '<span class="mut">暂无标签</span>';
