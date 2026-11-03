@@ -74,9 +74,9 @@ export class MemoryClient {
   }
 
   /** Phase 8：turn-end 由服务决定是否写 L0。 */
-  async hookTurnEnd({ request_id, session, scope, user, assistant, context, user_id, nickname }) {
+  async hookTurnEnd({ request_id, session, scope, user, assistant, context, user_id, nickname, tags }) {
     return this.#request("POST", "/hook/turn-end", {
-      request_id, session, scope, user, assistant, context, user_id, nickname,
+      request_id, session, scope, user, assistant, context, user_id, nickname, tags,
     });
   }
 

@@ -321,6 +321,8 @@ const soft = (key) => {
         outboundSeen: new Set(),     // 已补进上下文的桥接主动消息
         turnImages: 0,               // 本轮用户发来的图片数
         turnStickers: 0,             // 其中表情包数
+        turnImageRefs: [],           // 图片 attachment id
+        turnStickerKinds: [],        // 表情包分类
         turns: 0,                    // 已结束的轮数（每 50 轮重注入画像）
         turnUser: "",
         turnAssistant: "",
@@ -542,9 +544,21 @@ const soft = (key) => {
     const imageCount = message.role === "assistant" ? 0 : (Array.isArray(message.content)
       ? message.content.filter((part) => part?.type === "image").length
       : 0);
+    if (imageCount) {
+      state.turnImages += imageCount;
+      for (const part of message.content) {
+        const ref = part?.type === "image" ? String(part?.attachment?.attachmentId || "").trim() : "";
+        if (ref) state.turnImageRefs.push(ref);
+      }
+    }
+    for (const match of String(text || "").matchAll(/\[表情包[：:]([^\]]+)\]/g)) {
+      const path = String(match[1] || "").replace(/\\/g, "/");
+      const parts = path.split("/").filter(Boolean);
+      const kind = parts.length >= 2 ? parts[parts.length - 2] : "sticker";
+      if (kind) state.turnStickerKinds.push(kind);
+    }
     const stickerCount = message.role === "assistant" ? 0
       : (String(text || "").match(/\[(?:表情包|表情)[：:]/g) || []).length;
-    if (imageCount) state.turnImages += imageCount;
     if (stickerCount) state.turnStickers += stickerCount;
     if (!text) return;
     if (message.role === "assistant") {
@@ -563,8 +577,16 @@ const soft = (key) => {
     const state = stateFor(session);
     const imageCount = Number(state.turnImages) || 0;
     const stickerCount = Math.min(imageCount, Number(state.turnStickers) || 0);
+    const imageRefs = [...new Set(state.turnImageRefs || [])].slice(0, 8);
+    const stickerKinds = [...new Set(state.turnStickerKinds || [])].slice(0, 8);
     state.turnImages = 0;
     state.turnStickers = 0;
+    state.turnImageRefs = [];
+    state.turnStickerKinds = [];
+    const mediaTags = [
+      ...imageRefs.map((ref) => `img:${ref}`),
+      ...stickerKinds.map((kind) => `sticker:${kind}`),
+    ];
     const scopeOf = scopeFromSession(state.id);   // 谁说的 / 在哪个场景
     // 桥接没登记的会话 = 内部维护/测试/DSH 面板，不写记忆
     if (scopeOf.scope === "global" && !String(state.id).startsWith("onebot-")) {
@@ -663,6 +685,7 @@ const soft = (key) => {
             user: keptUser,
             assistant,
             context,
+            tags: mediaTags,
             user_id: scopeOf.userId,
             nickname,
           });

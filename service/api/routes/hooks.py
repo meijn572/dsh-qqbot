@@ -172,6 +172,12 @@ def turn_end(store, lock, gate, embedder, body: dict) -> dict:
         })
         return {"ok": True, "stored": False, "surprisal": result.get("score"), "reason": result.get("reason")}
     merged = "\n".join(part for part in (f"主人：{user}", f"我：{assistant}" if assistant else "") if part)
+    extra_tags = body.get("tags") if isinstance(body.get("tags"), list) else []
+    tags = ["raw", f"session:{body.get('session') or ''}"]
+    for tag in extra_tags[:20]:
+        value = str(tag or "").strip()
+        if value and len(value) <= 180 and value not in tags:
+            tags.append(value)
     vec = None
     vec_model = None
     if embedder.enabled:
@@ -182,7 +188,7 @@ def turn_end(store, lock, gate, embedder, body: dict) -> dict:
             text=merged,
             tier="L0",
             subject="self",
-            tags=["raw", f"session:{body.get('session') or ''}"],
+            tags=tags,
             vec=vec,
             vec_model=vec_model,
             user_id=str(body.get("user_id") or ""),
