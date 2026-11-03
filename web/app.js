@@ -510,6 +510,11 @@ async function stickerConfirmDelete(ev,btn){
   stickerClearSelection();
   load();
 }
-// 表情页不参与 10 秒轮询，避免编辑时被重绘
-setInterval(()=>{ if(curSub!=='stickers') load(); },10000);
+// 表情/黑话有输入框，不参与 10 秒轮询，避免把正在输入的内容顶掉
+setInterval(()=>{
+  if(curSub==='stickers' || curSub==='lexicon') return;
+  const el=document.activeElement;
+  if(el && ['INPUT','TEXTAREA','SELECT'].includes(el.tagName)) return;
+  load();
+},10000);
 load();
