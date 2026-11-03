@@ -80,6 +80,7 @@ powershell -ExecutionPolicy Bypass -File D:\path\to\dshbot\stop-dshbot.ps1
 | `docs/refactor-plan.md` | 重构计划与阶段记录 |
 | `docs/refactor-summary.md` | 重构总结 |
 | `docs/architecture.md` | 架构说明 |
+| `docs/stickers.md` | 表情包、标签、选取与语义工具 |
 | `docs/open-source.md` | 公开与第三方依赖说明 |
 | `THIRD_PARTY.md` | 第三方版权/许可证声明 |
 
@@ -316,6 +317,7 @@ AstrBot 旧部署仍在，回退时恢复 AstrBot 白名单/平台开关即可�
 ## 相关文档
 
 - [架构说明](docs/architecture.md)
+- [表情包系统](docs/stickers.md)
 - [工作流与记忆逻辑](docs/workflows.md)
 - [开源与第三方依赖](docs/open-source.md)
 - [重构计划](docs/refactor-plan.md)
