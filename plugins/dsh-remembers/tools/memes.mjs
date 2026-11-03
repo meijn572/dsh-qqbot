@@ -98,30 +98,36 @@ export async function registerMemeTools({ registerTool, log, endpoint, memeDir }
     registerTool(defineTool({
       name: "sticker_meta",
       description:
-        "给刚收到的表情包写语义信息。你看到表情图、也认得出角色/梗/动作时调用一次。"
-        + "source 填 bridge-note 里的完整图片路径；tags 用逗号分隔，只写图本身（角色、外观、动作、情绪），不要写聊天场景。"
+        "给表情包写语义信息。你看到表情图、也认得出角色/梗/动作时调用一次。"
+        + "ref 支持 source:<图片路径> / file:<库内相对路径> / query:<描述>；"
+        + "最简单是 source: 加 bridge-note 里的完整图片路径。"
+        + "tags 用逗号分隔，只写图本身（角色、外观、动作、情绪），不要写聊天场景。"
         + "系统会把它补进表情库索引，不回复用户。",
       parameters: {
-        source: { type: "string", required: true, description: "bridge-note 里的完整图片路径" },
+        ref: { type: "string", description: "source:D:\\...\\xxx.jpg 或 file:happy/u_xxx.jpg 或 query:黄色小恐龙" },
+        source: { type: "string", description: "兼容写法：直接给图片路径" },
         name: { type: "string", description: "这张表情叫什么，比如「奶龙举旗」；不知道就空" },
         tags: { type: "string", description: "逗号或空格分隔的标签，比如「奶龙, 小恐龙, 举旗, 开心」" },
         caption: { type: "string", description: "一句话描述图里是什么、在做什么" },
       },
       output: { schema: { type: "json" }, render: (_a, v) => [{ type: "text", text: JSON.stringify(v) }] },
       execute: async (args) => {
-        const source = String(args.source || "").trim();
+        const rawRef = String(args.ref || "").trim();
+        const rawSource = String(args.source || "").trim();
+        const ref = rawRef || (rawSource ? (rawSource.includes(":") ? rawSource : `source:${rawSource}`) : "");
         const home = String(process.env.DSH_HOME || "").trim();
-        if (!source) return { ok: false, error: "缺少 source" };
+        if (!ref) return { ok: false, error: "缺少 ref（source:/file:/query:）" };
+        if (ref.startsWith("last:")) return { ok: false, error: "last 还没接，先用 source/file/query" };
         if (!home) return { ok: false, error: "没有 DSH_HOME，无法写表情队列" };
         const record = {
-          source,
+          ref,
           name: String(args.name || "").trim(),
           tags: String(args.tags || "").split(/[,，、\s]+/).map((x) => x.trim()).filter(Boolean).slice(0, 12),
           caption: String(args.caption || "").trim(),
           ts: Date.now(),
         };
         await appendFile(join(home, "sticker-meta-queue.jsonl"), JSON.stringify(record) + "\n", "utf8");
-        return { ok: true, queued: true, name: record.name, tags: record.tags };
+        return { ok: true, queued: true, ref: record.ref, name: record.name, tags: record.tags };
       },
     }));
 
