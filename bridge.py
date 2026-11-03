@@ -74,6 +74,7 @@ from qqbot.domains.media.library import (
     category_from_text,
     should_hint,
 )
+from qqbot.domains.media.meta import apply_record as apply_sticker_meta
 from qqbot.domains.media.stickers import collect_sticker
 from qqbot.domains.growth import profile as growth_profile
 from qqbot.domains.growth import reflect as growth_reflect
@@ -953,54 +954,6 @@ async def sticker_enrich_loop(dsh: Dsh) -> None:
             log.warning("sticker_enrich_loop err: %s", exc)
 
 
-def _sticker_rel_for_source(source: str) -> str:
-    raw = str(source or "").strip()
-    if not raw:
-        return ""
-    path = Path(raw)
-    try:
-        return str(path.resolve().relative_to(MEME_DIR.resolve())).replace("\\", "/")
-    except Exception:
-        pass
-    try:
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
-    except OSError:
-        return ""
-    matches = sorted(MEME_DIR.rglob(f"u_{digest}*"))
-    if not matches:
-        return ""
-    return str(matches[0].relative_to(MEME_DIR)).replace("\\", "/")
-
-
-def _sticker_rel_for_ref(ref: str) -> str:
-    value = str(ref or "").strip()
-    if not value:
-        return ""
-    kind, sep, target = value.partition(":")
-    if not sep:
-        return _sticker_rel_for_source(value)
-    kind = kind.lower()
-    if kind == "source":
-        return _sticker_rel_for_source(target)
-    if kind == "file":
-        raw = target.replace("\\", "/").strip()
-        if not raw or raw.startswith("/") or ".." in raw.split("/"):
-            return ""
-        path = (MEME_DIR / raw).resolve()
-        if MEME_DIR.resolve() not in path.parents or not path.is_file():
-            return ""
-        return raw
-    if kind == "query":
-        path = find_by_keyword(target)
-        if not path:
-            return ""
-        try:
-            return str(Path(path).resolve().relative_to(MEME_DIR.resolve())).replace("\\", "/")
-        except Exception:  # noqa: BLE001
-            return ""
-    return ""
-
-
 async def sticker_meta_loop() -> None:
     """主模型看图表意后写队列；这里等收藏完成后补进索引。"""
     while True:
@@ -1018,26 +971,12 @@ async def sticker_meta_loop() -> None:
                     rec = json.loads(line)
                 except Exception:
                     continue
-                source = str(rec.get("ref") or rec.get("source") or "")
-                rel = _sticker_rel_for_ref(source)
-                if not rel:
-                    # 收藏是后台异步的，给 source 3 分钟落盘时间
-                    is_source = source.startswith("source:") or bool(rec.get("source"))
-                    if is_source and now - float(rec.get("ts") or 0) / 1000 < 180:
-                        pending.append(rec)
+                result = apply_sticker_meta(rec)
+                if result.get("ok"):
+                    log.info("表情语义已补：%s %s", result.get("rel"), rec.get("name"))
                     continue
-                category = Path(rel).parent.name
-                tags = rec.get("tags") or []
-                if isinstance(tags, str):
-                    tags = [t.strip() for t in re.split(r"[,，、\s]+", tags) if t.strip()]
-                index_add(
-                    rel,
-                    category,
-                    str(rec.get("caption") or ""),
-                    list(tags)[:12],
-                    name=str(rec.get("name") or ""),
-                )
-                log.info("表情语义已补：%s %s %s", rel, rec.get("name"), tags)
+                if result.get("pending") and now - float(rec.get("ts") or 0) / 1000 < 180:
+                    pending.append(rec)
             STICKER_META_QUEUE.write_text(
                 "".join(json.dumps(rec, ensure_ascii=False) + "\n" for rec in pending),
                 encoding="utf-8",
