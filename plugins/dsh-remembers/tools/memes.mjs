@@ -154,7 +154,27 @@ export async function registerMemeTools({ registerTool, log, endpoint, memeDir }
       },
     }));
 
-    log("meme_tools_registered", { count: 5 });
+    registerTool(defineTool({
+      name: "lexicon_search",
+      description:
+        "查梗/黑话/热词是什么意思，同时找相关的表情。"
+        + "用户问「XX 是什么意思」「这什么梗」「有没有 XX 表情」时用；返回 terms（词条+别名+解释）和 stickers（相关表情）。",
+      parameters: {
+        q: { type: "string", required: true, description: "要查的词，比如 奶龙 / yyds / 2G" },
+      },
+      output: { schema: { type: "json" }, render: (_a, v) => [{ type: "text", text: JSON.stringify(v) }] },
+      execute: async (args) => {
+        const q = String(args.q || "").trim();
+        if (!q) return { ok: false, error: "缺少 q" };
+        const base = String(process.env.CMEM_PANEL_URL || "http://127.0.0.1:6080").replace(/\/$/, "");
+        const res = await fetch(base + "/api/lexicon/search?q=" + encodeURIComponent(q), {
+          signal: AbortSignal.timeout(5000),
+        });
+        return res.json().catch(() => ({ ok: false, error: "查询失败" }));
+      },
+    }));
+
+    log("meme_tools_registered", { count: 6 });
   } catch (error) {
     log("meme_tools_skipped", { reason: "register 失败", error: String(error?.message ?? error) });
   }

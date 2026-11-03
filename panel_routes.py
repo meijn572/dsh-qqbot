@@ -23,6 +23,7 @@ from panel_readers import (
     lexicon_add,
     lexicon_delete,
     lexicon_payload,
+    lexicon_search_payload,
     memory_payload,
     mood_payload,
     notebook_payload,
@@ -80,6 +81,8 @@ def handle_get(handler, path: str, parsed) -> None:
         handler._json(groupslang_payload())
     elif path == "/api/lexicon":
         handler._json(lexicon_payload())
+    elif path == "/api/lexicon/search":
+        handler._json(lexicon_search_payload((query.get("q") or [""])[0]))
     elif path == "/api/stickers":
         handler._json(sticker_payload())
     elif path == "/api/stickers/lookup":
@@ -177,6 +180,7 @@ def handle_post(handler, path: str, parsed) -> None:
                 str(body.get("term") or ""),
                 str(body.get("meaning") or ""),
                 str(body.get("example") or ""),
+                body.get("aliases") or "",
             ))
         else:
             handler._json(lexicon_delete(

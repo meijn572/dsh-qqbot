@@ -79,6 +79,7 @@ def lexicon_payload() -> dict:
                 "category": "group",
                 "scope": gid,
                 "term": term,
+                "aliases": item.get("aliases") if isinstance(item.get("aliases"), list) else [],
                 "meaning": str(item.get("meaning") or ""),
                 "example": str(item.get("example") or ""),
                 "count": int(item.get("count") or 0),
@@ -93,6 +94,7 @@ def lexicon_payload() -> dict:
             "id": concept_id(term),
             "scope": "global",
             "term": str(item.get("term") or ""),
+            "aliases": item.get("aliases") if isinstance(item.get("aliases"), list) else [],
             "meaning": str(item.get("meaning") or ""),
             "example": str(item.get("example") or ""),
             "count": int(item.get("count") or 0),
@@ -102,10 +104,49 @@ def lexicon_payload() -> dict:
     return {"entries": entries}
 
 
-def lexicon_add(category: str, term: str, meaning: str, example: str = "") -> dict:
+def lexicon_search_payload(query: str) -> dict:
+    q = str(query or "").strip().lower()
+    if not q:
+        return {"query": "", "terms": [], "stickers": []}
+    terms = []
+    for item in lexicon_payload().get("entries") or []:
+        fields = [str(item.get("term") or ""), " ".join(item.get("aliases") or []), str(item.get("meaning") or "")]
+        hay = " ".join(fields).lower()
+        if q not in hay:
+            continue
+        score = 0
+        if q == str(item.get("term") or "").lower() or q in [str(a).lower() for a in (item.get("aliases") or [])]:
+            score += 100
+        elif q in str(item.get("term") or "").lower():
+            score += 50
+        if q in str(item.get("meaning") or "").lower():
+            score += 20
+        terms.append((score, item))
+    terms.sort(key=lambda pair: pair[0], reverse=True)
+    stickers = []
+    for item in sticker_payload().get("items") or []:
+        hay = " ".join([
+            str(item.get("name") or ""),
+            str(item.get("caption") or ""),
+            " ".join(str(t) for t in (item.get("tags") or [])),
+            " ".join(str(t) for t in (item.get("concepts") or [])),
+        ]).lower()
+        if q in hay:
+            stickers.append(item)
+    return {
+        "query": q,
+        "terms": [item for _, item in terms[:8]],
+        "stickers": stickers[:8],
+    }
+
+
+def lexicon_add(category: str, term: str, meaning: str, example: str = "", aliases: str | list = "") -> dict:
     term = str(term or "").strip()[:40]
     meaning = str(meaning or "").strip()[:300]
     example = str(example or "").strip()[:300]
+    if isinstance(aliases, str):
+        aliases = [x.strip() for x in re.split(r"[,，、\s]+", aliases) if x.strip()]
+    aliases = [str(x).strip()[:40] for x in (aliases or []) if str(x).strip()][:12]
     if not term:
         return {"ok": False, "error": "term required"}
     if category == "network":
@@ -113,9 +154,9 @@ def lexicon_add(category: str, term: str, meaning: str, example: str = "") -> di
         items = data.setdefault("entries", [])
         existing = next((item for item in items if str(item.get("term")) == term), None)
         if existing:
-            existing.update({"meaning": meaning, "example": example, "id": concept_id(term)})
+            existing.update({"meaning": meaning, "example": example, "id": concept_id(term), "aliases": aliases})
         else:
-            items.append({"term": term, "meaning": meaning, "example": example, "id": concept_id(term), "count": 1, "last_seen": int(time.time())})
+            items.append({"term": term, "meaning": meaning, "example": example, "id": concept_id(term), "aliases": aliases, "count": 1, "last_seen": int(time.time())})
         ensure_concept(term, kind="meme", scope="global", meaning=meaning, source="lexicon")
         NETWORK_MEMES.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
         return {"ok": True, "id": concept_id(term)}
@@ -130,9 +171,9 @@ def lexicon_add(category: str, term: str, meaning: str, example: str = "") -> di
         items = []
     existing = next((item for item in items if str(item.get("term")) == term), None)
     if existing:
-        existing.update({"meaning": meaning, "example": example})
+        existing.update({"meaning": meaning, "example": example, "aliases": aliases})
     else:
-        items.append({"term": term, "meaning": meaning, "example": example, "count": 1, "last_seen": int(time.time())})
+        items.append({"term": term, "meaning": meaning, "example": example, "aliases": aliases, "count": 1, "last_seen": int(time.time())})
     SLANG_DIR.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"ok": True}

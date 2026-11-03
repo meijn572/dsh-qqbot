@@ -68,10 +68,12 @@ def network_meme_hint(text: str) -> str:
     hits = []
     for item in load_network_memes():
         term = str(item.get("term") or "").strip()
-        if len(term) < 2 or term not in text:
+        aliases = [str(a).strip() for a in (item.get("aliases") or []) if str(a).strip()]
+        matched = next((x for x in [term, *aliases] if len(x) >= 2 and x in text), "")
+        if not matched:
             continue
         meaning = str(item.get("meaning") or "").strip()
-        hits.append(f"{term}→{meaning[:120]}" if meaning else term)
+        hits.append(f"{matched}→{meaning[:120]}" if meaning else matched)
         if len(hits) >= 4:
             break
     if not hits:

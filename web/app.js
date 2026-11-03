@@ -69,7 +69,8 @@ function renderLex(){
   for(const it of items){
     const tag=it.category==='group'?`群黑话 · ${esc(it.scope)}`:'网络梗';
     const concept=it.id?`<span class="tag concept">${esc(it.id.replace(/^concept:/,''))}</span>`:'';
-    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${tag}</span> <b>${esc(it.term)}</b> ${concept} <span class="mut">×${it.count||1}</span> <button style="float:right" onclick="lexDel('${encodeURIComponent(it.category)}','${encodeURIComponent(it.term)}')">删</button><div>${esc(it.meaning||'')}</div></div>`;
+    const aliases=(it.aliases||[]).length?` <span class="mut">别名：${(it.aliases||[]).map(esc).join('、')}</span>`:'';
+    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${tag}</span> <b>${esc(it.term)}</b> ${concept}${aliases} <span class="mut">×${it.count||1}</span> <button style="float:right" onclick="lexDel('${encodeURIComponent(it.category)}','${encodeURIComponent(it.term)}')">删</button><div>${esc(it.meaning||'')}</div></div>`;
   }
   const box=document.getElementById('lexlist'); if(box) box.innerHTML=h||'<div class="mut">还没有词条</div>';
 }
@@ -138,8 +139,9 @@ async function lexAdd(){
   const term=document.getElementById('lexTerm')?.value||'';
   const meaning=document.getElementById('lexMeaning')?.value||'';
   const category=document.getElementById('lexCat')?.value||'network';
+  const aliases=document.getElementById('lexAliases')?.value||'';
   if(!term.trim()) return alert('先填词');
-  const r=await fetch('/api/lexicon/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({term,meaning,category})});
+  const r=await fetch('/api/lexicon/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({term,meaning,category,aliases})});
   const data=await r.json(); if(!data.ok) alert(data.error||'失败'); load();
 }
 async function lexDel(category,term){
@@ -318,6 +320,7 @@ async function load(){
       <div style="margin:10px 0">
         <input id="lexTerm" placeholder="词" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px;width:150px">
         <input id="lexMeaning" placeholder="意思" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px;width:320px">
+        <input id="lexAliases" placeholder="别名，逗号分隔（可选）" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px;width:190px">
         <select id="lexCat" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px"><option value="network">网络梗</option><option value="group">群黑话</option></select>
         <button onclick="lexAdd()">添加</button>
       </div>
