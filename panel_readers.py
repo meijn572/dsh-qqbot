@@ -461,6 +461,7 @@ def save_persona_field(field: str, text: str) -> dict:
 def sticker_payload() -> dict:
     categories = {}
     user_items = []
+    items = []
     meta = read_json(STICKERS / "meta.json") or {}
     meta = {str(k).replace("\\", "/"): v for k, v in meta.items() if isinstance(v, dict)}
     hidden = 0
@@ -479,17 +480,75 @@ def sticker_payload() -> dict:
             user = [f for f in stickers if f.name.startswith("u_")]
             if stickers:
                 categories[folder.name] = {"total": len(stickers), "user": len(user)}
-            for f in user:
+            for f in stickers:
                 rel = str(f.relative_to(STICKERS)).replace("\\", "/")
-                user_items.append({"file": rel, "category": folder.name, "size": f.stat().st_size})
+                if f in user:
+                    user_items.append({"file": rel, "category": folder.name, "size": f.stat().st_size})
+                items.append({"file": rel, "category": folder.name, "size": f.stat().st_size})
     index = read_json(STICKERS / "index.json") or []
     index_map = {e.get("file"): e for e in index if isinstance(e, dict)}
-    for item in user_items:
+    for item in items:
         entry = index_map.get(item["file"], {})
         item["caption"] = entry.get("caption", "")
-        item["tags"] = entry.get("tags", [])
+        item["name"] = entry.get("name") or item["caption"][:20] or Path(item["file"]).stem
+        item["tags"] = entry.get("tags") if isinstance(entry.get("tags"), list) else []
+        item["usage_count"] = int(entry.get("usage_count") or 0)
+    item_map = {item["file"]: item for item in items}
+    user_items = [item_map[x["file"]] for x in user_items if x["file"] in item_map]
+    items.sort(key=lambda x: (x["category"], str(x.get("name") or x["file"])))
     user_items.sort(key=lambda x: x["file"], reverse=True)
-    return {"categories": categories, "user_items": user_items[:60], "hidden_images": hidden}
+    return {"categories": categories, "items": items[:200], "user_items": user_items[:60], "hidden_images": hidden}
+
+
+def _sticker_file(rel: str) -> tuple[Path | None, str]:
+    raw = str(rel or "").replace("\\", "/").strip()
+    if not raw or raw.startswith("/") or ".." in raw.split("/"):
+        return None, ""
+    candidate = (STICKERS / raw).resolve()
+    if STICKERS.resolve() not in candidate.parents or not candidate.is_file():
+        return None, ""
+    return candidate, raw
+
+
+def sticker_delete(rel: str) -> dict:
+    path, key = _sticker_file(rel)
+    if path is None:
+        return {"ok": False, "error": "文件不存在或路径不合法"}
+    try:
+        path.unlink()
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)}
+    index = read_json(STICKERS / "index.json") or []
+    if isinstance(index, list):
+        index = [e for e in index if not (isinstance(e, dict) and str(e.get("file") or "").replace("\\", "/") == key)]
+        (STICKERS / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1), encoding="utf-8")
+    meta = read_json(STICKERS / "meta.json") or {}
+    if isinstance(meta, dict):
+        for old in (key, key.replace("/", "\\")):
+            meta.pop(old, None)
+        (STICKERS / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"ok": True, "file": key}
+
+
+def sticker_update_tags(rel: str, tags: list) -> dict:
+    path, key = _sticker_file(rel)
+    if path is None:
+        return {"ok": False, "error": "文件不存在或路径不合法"}
+    clean = []
+    for tag in (tags if isinstance(tags, list) else [])[:30]:
+        value = str(tag or "").strip()
+        if value and len(value) <= 40 and value not in clean:
+            clean.append(value)
+    index = read_json(STICKERS / "index.json") or []
+    if not isinstance(index, list):
+        index = []
+    entry = next((e for e in index if isinstance(e, dict) and str(e.get("file") or "").replace("\\", "/") == key), None)
+    if entry is None:
+        entry = {"file": key, "category": path.parent.name, "caption": "", "tags": []}
+        index.append(entry)
+    entry["tags"] = clean
+    (STICKERS / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"ok": True, "file": key, "tags": clean}
 
 
 def rolecard_payload() -> dict:

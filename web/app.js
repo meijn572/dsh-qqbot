@@ -1,5 +1,6 @@
 const $=(s)=>document.querySelector(s);
 const esc=(s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const attr=(s)=>esc(s).replace(/"/g,'&quot;');
 function inlineMd(s){return esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');}
 function mdToHtml(text){
   const lines=String(text||'').replace(/<!--[\s\S]*?-->/g,'').split(/\r?\n/);
@@ -282,12 +283,21 @@ async function load(){
   }
   if(!$('#stickers').hidden){
     const st=await j('/api/stickers');
+    const items=st.items||st.user_items||[];
     let h='<div class="card"><div class="k">分类统计</div><div style="margin-top:8px">';
-    for(const [k,v] of Object.entries(st.categories)) h+=`<span class="tag">${k} ${v.user}/${v.total}</span> `;
+    for(const [k,v] of Object.entries(st.categories)) h+=`<span class="tag">${esc(k)} ${v.user}/${v.total}</span> `;
     h+='</div></div>';
-    h+=`<div class="card"><div class="k">你发过的表情（${st.user_items.length} 张）</div>${st.hidden_images?`<div class="mut" style="margin:4px 0">另有 ${st.hidden_images} 张旧图片没有表情标识，已隐藏；重新发一次可收成表情。</div>`:''}<div class="items" style="margin-top:8px">`;
-    for(const it of st.user_items){
-      h+=`<div class="item"><img class="thumb" src="/api/sticker?file=${encodeURIComponent(it.file)}"><div>${esc(it.caption||'')}</div><div>${(it.tags||[]).slice(0,3).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div></div>`;
+    h+=`<div class="card"><div class="k">表情库（${items.length} 张）</div>${st.hidden_images?`<div class="mut" style="margin:4px 0">另有 ${st.hidden_images} 张旧图片没有表情标识，已隐藏；重新发一次可收成表情。</div>`:''}<div class="items" style="margin-top:8px">`;
+    for(let i=0;i<items.length;i++){
+      const it=items[i], id=`st_tags_${i}`;
+      h+=`<div class="item"><img class="thumb" src="/api/sticker?file=${encodeURIComponent(it.file)}">
+        <div><b>${esc(it.name||'')}</b> <span class="mut">${esc(it.category||'')}${it.usage_count?` · 发过 ${it.usage_count} 次`:''}</span></div>
+        <div class="mut" style="margin:3px 0">${esc(it.caption||'')}</div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px">
+          <input id="${id}" value="${attr((it.tags||[]).join(', '))}" placeholder="标签，用逗号分隔" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:7px;padding:5px 8px;width:260px">
+          <button onclick='stickerSaveTags(${JSON.stringify(it.file)}, ${JSON.stringify(id)})'>保存标签</button>
+          <button onclick='stickerDelete(${JSON.stringify(it.file)})'>删除</button>
+        </div></div>`;
     }
     h+='</div></div>';
     $('#stickers').innerHTML=h;
@@ -365,4 +375,19 @@ async function dismissStyle(){ const r=await fetch('/api/style/dismiss',{method:
 async function syncGrowth(){ const r=await fetch('/api/growth/sync',{method:'POST'}); const j=await r.json(); alert(j.output||'已同步'); load(); }
 function setLog(n){ logName=n; load(); }
 async function startQr(){ await fetch('/api/bili/qr/start',{method:'POST'}); setTimeout(load,1500); }
+async function stickerSaveTags(file,id){
+  const raw=(document.getElementById(id)?.value||'');
+  const tags=raw.split(/[,，、\s]+/).map(x=>x.trim()).filter(Boolean);
+  const r=await fetch('/api/stickers/tags',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file,tags})});
+  const j=await r.json();
+  if(!j.ok) alert(j.error||'保存失败');
+  load();
+}
+async function stickerDelete(file){
+  if(!confirm(`删除这张表情？\n${file}`)) return;
+  const r=await fetch('/api/stickers/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file})});
+  const j=await r.json();
+  if(!j.ok) alert(j.error||'删除失败');
+  load();
+}
 setInterval(load,10000); load();

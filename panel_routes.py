@@ -35,6 +35,8 @@ from panel_readers import (
     set_proactive,
     status_payload,
     sticker_payload,
+    sticker_delete,
+    sticker_update_tags,
     style_payload,
     sync_growth,
     tail,
@@ -153,6 +155,12 @@ def handle_post(handler, path: str, parsed) -> None:
         body = _body(handler)
         handler._json(save_persona_field(
             str(body.get("field") or ""), str(body.get("text") or "")))
+    elif path == "/api/stickers/tags":
+        body = _body(handler)
+        handler._json(sticker_update_tags(str(body.get("file") or ""), body.get("tags") or []))
+    elif path == "/api/stickers/delete":
+        body = _body(handler)
+        handler._json(sticker_delete(str(body.get("file") or "")))
     elif path in ("/api/lexicon/add", "/api/lexicon/delete"):
         body = _body(handler)
         if path.endswith("/add"):
