@@ -320,6 +320,7 @@ const soft = (key) => {
         injectedHashes: new Set(),   // 去重：同一块不重复注入
         outboundSeen: new Set(),     // 已补进上下文的桥接主动消息
         turnImages: 0,               // 本轮用户发来的图片数
+        turnStickers: 0,             // 其中表情包数
         turns: 0,                    // 已结束的轮数（每 50 轮重注入画像）
         turnUser: "",
         turnAssistant: "",
@@ -541,7 +542,10 @@ const soft = (key) => {
     const imageCount = message.role === "assistant" ? 0 : (Array.isArray(message.content)
       ? message.content.filter((part) => part?.type === "image").length
       : 0);
+    const stickerCount = message.role === "assistant" ? 0
+      : (String(text || "").match(/\[(?:表情包|表情)[：:]/g) || []).length;
     if (imageCount) state.turnImages += imageCount;
+    if (stickerCount) state.turnStickers += stickerCount;
     if (!text) return;
     if (message.role === "assistant") {
       state.turnAssistant = clip(`${state.turnAssistant}\n${text}`.trim(), 800);
@@ -558,7 +562,9 @@ const soft = (key) => {
     if (skipped(session)) return;
     const state = stateFor(session);
     const imageCount = Number(state.turnImages) || 0;
+    const stickerCount = Math.min(imageCount, Number(state.turnStickers) || 0);
     state.turnImages = 0;
+    state.turnStickers = 0;
     const scopeOf = scopeFromSession(state.id);   // 谁说的 / 在哪个场景
     // 桥接没登记的会话 = 内部维护/测试/DSH 面板，不写记忆
     if (scopeOf.scope === "global" && !String(state.id).startsWith("onebot-")) {
@@ -580,7 +586,11 @@ const soft = (key) => {
     // 剥掉系统唤醒片段，只留真实内容
     let keptUser = cleanNudge(user);
     if (imageCount > 0) {
-      const marker = imageCount === 1 ? "（发来 1 张图片）" : `（发来 ${imageCount} 张图片）`;
+      const plain = Math.max(0, imageCount - stickerCount);
+      const parts = [];
+      if (plain) parts.push(`${plain} 张图片`);
+      if (stickerCount) parts.push(`${stickerCount} 张表情`);
+      const marker = `（发来 ${parts.join("、")}）`;
       keptUser = keptUser ? `${keptUser} ${marker}` : marker;
     }
     state.turnUser = "";
