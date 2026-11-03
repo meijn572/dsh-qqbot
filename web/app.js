@@ -377,9 +377,13 @@ async function dismissStyle(){ const r=await fetch('/api/style/dismiss',{method:
 async function syncGrowth(){ const r=await fetch('/api/growth/sync',{method:'POST'}); const j=await r.json(); alert(j.output||'已同步'); load(); }
 function setLog(n){ logName=n; load(); }
 async function startQr(){ await fetch('/api/bili/qr/start',{method:'POST'}); setTimeout(load,1500); }
-function stickerTagHtml(tags){
+function stickerTagHtml(tags,limit=5){
   const list=(tags||[]).filter(Boolean);
-  return list.length ? list.map(t=>`<span class="tag">${esc(t)}</span>`).join(' ') : '<span class="mut">暂无标签</span>';
+  if(!list.length) return '<span class="mut">暂无标签</span>';
+  const shown=list.slice(0,limit);
+  let html=shown.map(t=>`<span class="tag">${esc(t)}</span>`).join(' ');
+  if(list.length>limit) html+=` <span class="tag">+${list.length-limit}</span>`;
+  return `<span title="${attr(list.join(', '))}">${html}</span>`;
 }
 let stickerEdit={file:'',view:''};
 function stickerEditTags(file,view){
