@@ -27,6 +27,7 @@ const CATS={
   bili:{subs:[['interests','兴趣'],['bili','B站']]}
 };
 let curCat='overview', curSub='overview';
+let stickerDirty=false, stickerSaving=false;
 function renderSubs(){
   const box=$('#subtabs'); const subs=CATS[curCat].subs;
   if(subs.length<2){ box.innerHTML=''; box.style.display='none'; return; }
@@ -36,6 +37,7 @@ function renderSubs(){
 }
 function showTab(cat, sub){
   curCat=cat; curSub=sub;
+  if(sub!=='stickers') stickerDirty=false;
   document.querySelectorAll('.tab[data-cat]').forEach(x=>x.classList.toggle('on', x.dataset.cat===cat));
   document.querySelectorAll('main section').forEach(s=>s.hidden=true);
   const target=$('#'+sub); if(target) target.hidden=false;
@@ -148,6 +150,8 @@ async function lexDel(category,term){
   load();
 }
 async function load(){
+  // 编辑标签时不要被 10 秒轮询清掉输入
+  if(curSub==='stickers' && (stickerDirty || stickerSaving || document.querySelector('#stickers input:focus'))) return;
   const s=await j('/api/status');
   $('#clock').textContent=s.time;
   $('#alive').innerHTML=s.bridge.alive?`桥 ${badge(true)} <span class="mut">${s.bridge.age}s 前心跳</span>`:`桥 ${badge(false)}`;
@@ -294,7 +298,7 @@ async function load(){
         <div><b>${esc(it.name||'')}</b> <span class="mut">${esc(it.category||'')}${it.usage_count?` · 发过 ${it.usage_count} 次`:''}</span></div>
         <div class="mut" style="margin:3px 0">${esc(it.caption||'')}</div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px">
-          <input id="${id}" value="${attr((it.tags||[]).join(', '))}" placeholder="标签，用逗号分隔" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:7px;padding:5px 8px;width:260px">
+          <input id="${id}" value="${attr((it.tags||[]).join(', '))}" oninput="stickerDirty=true" placeholder="标签，用逗号分隔" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:7px;padding:5px 8px;width:260px">
           <button onclick='stickerSaveTags(${JSON.stringify(it.file)}, ${JSON.stringify(id)})'>保存标签</button>
           <button onclick='stickerDelete(${JSON.stringify(it.file)})'>删除</button>
         </div></div>`;
@@ -378,16 +382,28 @@ async function startQr(){ await fetch('/api/bili/qr/start',{method:'POST'}); set
 async function stickerSaveTags(file,id){
   const raw=(document.getElementById(id)?.value||'');
   const tags=raw.split(/[,，、\s]+/).map(x=>x.trim()).filter(Boolean);
-  const r=await fetch('/api/stickers/tags',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file,tags})});
-  const j=await r.json();
-  if(!j.ok) alert(j.error||'保存失败');
-  load();
+  stickerSaving=true;
+  try{
+    const r=await fetch('/api/stickers/tags',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file,tags})});
+    const j=await r.json();
+    if(!j.ok) alert(j.error||'保存失败');
+    else stickerDirty=false;
+  }finally{
+    stickerSaving=false;
+    load();
+  }
 }
 async function stickerDelete(file){
   if(!confirm(`删除这张表情？\n${file}`)) return;
-  const r=await fetch('/api/stickers/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file})});
-  const j=await r.json();
-  if(!j.ok) alert(j.error||'删除失败');
-  load();
+  stickerSaving=true;
+  try{
+    const r=await fetch('/api/stickers/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file})});
+    const j=await r.json();
+    if(!j.ok) alert(j.error||'删除失败');
+    else stickerDirty=false;
+  }finally{
+    stickerSaving=false;
+    load();
+  }
 }
 setInterval(load,10000); load();
