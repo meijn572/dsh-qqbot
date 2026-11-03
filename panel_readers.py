@@ -566,6 +566,33 @@ def sticker_update_tags(rel: str, tags: list) -> dict:
     return {"ok": True, "file": key, "tags": clean}
 
 
+def sticker_update_concepts(rel: str, concepts: list) -> dict:
+    path, key = _sticker_file(rel)
+    if path is None:
+        return {"ok": False, "error": "文件不存在或路径不合法"}
+    ids = []
+    for raw in (concepts if isinstance(concepts, list) else [])[:20]:
+        term = str(raw or "").strip()
+        if term.startswith("concept:"):
+            term = term.split(":", 1)[1]
+        if not term:
+            continue
+        entry = ensure_concept(term, kind="fandom", source="panel")
+        cid = entry.get("id") or concept_id(term)
+        if cid and cid not in ids:
+            ids.append(cid)
+    index = read_json(STICKERS / "index.json") or []
+    if not isinstance(index, list):
+        index = []
+    entry = next((e for e in index if isinstance(e, dict) and str(e.get("file") or "").replace("\\", "/") == key), None)
+    if entry is None:
+        entry = {"file": key, "category": path.parent.name, "caption": "", "tags": []}
+        index.append(entry)
+    entry["concepts"] = ids
+    (STICKERS / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"ok": True, "file": key, "concepts": ids}
+
+
 def rolecard_payload() -> dict:
     import re
 

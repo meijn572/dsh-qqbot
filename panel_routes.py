@@ -37,6 +37,7 @@ from panel_readers import (
     sticker_payload,
     sticker_lookup_payload,
     sticker_delete,
+    sticker_update_concepts,
     sticker_update_tags,
     style_payload,
     sync_growth,
@@ -162,6 +163,9 @@ def handle_post(handler, path: str, parsed) -> None:
     elif path == "/api/stickers/tags":
         body = _body(handler)
         handler._json(sticker_update_tags(str(body.get("file") or ""), body.get("tags") or []))
+    elif path == "/api/stickers/concepts":
+        body = _body(handler)
+        handler._json(sticker_update_concepts(str(body.get("file") or ""), body.get("concepts") or []))
     elif path == "/api/stickers/delete":
         body = _body(handler)
         handler._json(sticker_delete(str(body.get("file") or "")))

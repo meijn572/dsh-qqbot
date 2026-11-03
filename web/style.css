@@ -26,13 +26,13 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0b0f13;border:1px sol
 .item{width:110px;font-size:11px;color:var(--mut)}
 .tag{display:inline-block;background:#1f2937;color:#9fb3c8;border-radius:6px;padding:0 6px;margin:1px}
 .sticker-grid{gap:12px}
-.sticker-item{width:150px;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px;background:#141a21;border:1px solid #232a33;border-radius:12px;color:#c9d4de;font-size:11px}
-.sticker-item .thumb{width:126px;height:126px;object-fit:contain}
+.sticker-item{width:170px;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px;background:#141a21;border:1px solid #232a33;border-radius:12px;color:#c9d4de;font-size:11px}
+.sticker-item .thumb{width:140px;height:140px;object-fit:contain}
 .sticker-tags{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:3px;min-height:18px;max-height:none;overflow:visible}
 .sticker-tags .tag{font-size:11px}
 .sticker-concepts{display:flex;flex-wrap:wrap;justify-content:center;gap:3px}
 .tag.concept{background:#1d2b24;color:#8fe0b0;border:1px solid #2f5b43}
-.sticker-actions{display:flex;gap:4px}
+.sticker-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:4px}
 .sticker-actions button{padding:4px 8px;font-size:11px}
 .sticker-x{background:#3a1f24;border-color:#6b2b35;color:#ffb3bd;padding:2px 12px;font-size:15px;line-height:1.4}
 .sticker-x:hover{background:#55252d}

@@ -286,18 +286,21 @@ async function load(){
     const st=await j('/api/stickers');
     const items=st.items||st.user_items||[];
     window.__stickerTags=Object.fromEntries(items.map(it=>[it.file,(it.tags||[]).join(', ')]));
+    window.__stickerConceptTerms=Object.fromEntries(items.map(it=>[it.file,(it.concepts||[]).map(x=>String(x).replace(/^concept:/,'')).join(', ')]));
     let h='<div class="card"><div class="k">分类统计</div><div style="margin-top:8px">';
     for(const [k,v] of Object.entries(st.categories)) h+=`<span class="tag">${esc(k)} ${v.user}/${v.total}</span> `;
     h+='</div></div>';
     h+=`<div class="card"><div class="k">表情库（${items.length} 张）</div>${st.hidden_images?`<div class="mut" style="margin:4px 0">另有 ${st.hidden_images} 张旧图片没有表情标识，已隐藏。</div>`:''}<div class="items sticker-grid" style="margin-top:10px">`;
     for(let i=0;i<items.length;i++){
-      const it=items[i], view=`st_view_${i}`, xid=`st_del_${i}`;
+      const it=items[i], view=`st_view_${i}`, cview=`st_concepts_${i}`, xid=`st_del_${i}`;
+      const hasConcepts=it.concepts&&it.concepts.length;
       h+=`<div class="item sticker-item">
         <img class="thumb" src="/api/sticker?file=${encodeURIComponent(it.file)}">
         <div id="${view}" class="sticker-tags">${stickerTagHtml(it.tags)}</div>
-        ${it.concepts&&it.concepts.length?`<div class="sticker-concepts">${stickerConceptHtml(it.concepts)}</div>`:''}
+        <div id="${cview}" class="sticker-concepts" ${hasConcepts?'':'hidden'}>${hasConcepts?stickerConceptHtml(it.concepts):''}</div>
         <div class="sticker-actions">
           <button onclick='stickerEditTags(${JSON.stringify(it.file)}, ${JSON.stringify(view)})'>修改标签</button>
+          <button onclick='stickerEditConcepts(${JSON.stringify(it.file)}, ${JSON.stringify(cview)})'>修改概念</button>
           <button onclick='stickerToggleDelete(${JSON.stringify(xid)})'>删除</button>
         </div>
         <button id="${xid}" class="sticker-x" hidden onclick='stickerConfirmDelete(${JSON.stringify(it.file)})'>×</button>
@@ -414,6 +417,33 @@ async function stickerModalSave(){
   if(viewEl) viewEl.innerHTML=stickerTagHtml(saved);
   (window.__stickerTags||{})[file]=saved.join(', ');
   stickerModalClose();
+}
+let stickerConceptEdit={file:'',view:''};
+function stickerEditConcepts(file,view){
+  stickerConceptEdit={file,view};
+  const input=document.getElementById('stickerConceptInput');
+  input.value=(window.__stickerConceptTerms||{})[file]||'';
+  document.getElementById('stickerConceptModal').hidden=false;
+  setTimeout(()=>input.focus(),0);
+}
+function stickerConceptClose(){
+  document.getElementById('stickerConceptModal').hidden=true;
+}
+async function stickerConceptSave(){
+  const raw=document.getElementById('stickerConceptInput').value||'';
+  const concepts=raw.split(/[,，、\s]+/).map(x=>x.trim()).filter(Boolean);
+  const {file,view}=stickerConceptEdit;
+  const r=await fetch('/api/stickers/concepts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file,concepts})});
+  const j=await r.json();
+  if(!j.ok){ alert(j.error||'保存失败'); return; }
+  const saved=j.concepts||[];
+  const viewEl=document.getElementById(view);
+  if(viewEl){
+    viewEl.innerHTML=stickerConceptHtml(saved);
+    viewEl.hidden=!saved.length;
+  }
+  (window.__stickerConceptTerms||{})[file]=saved.map(x=>String(x).replace(/^concept:/,'')).join(', ');
+  stickerConceptClose();
 }
 function stickerToggleDelete(id){
   const el=document.getElementById(id);

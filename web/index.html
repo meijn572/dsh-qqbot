@@ -34,4 +34,14 @@
     </div>
   </div>
 </div>
-<script src="/static/app.js?v=20261104-concept-panel"></script></body></html>
+<div id="stickerConceptModal" class="modal" hidden>
+  <div class="modal-card">
+    <div class="k">修改概念</div>
+    <input id="stickerConceptInput" placeholder="概念词，例如：奶龙, 小恐龙" style="width:100%;box-sizing:border-box;background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:9px 10px;margin:10px 0">
+    <div class="modal-actions">
+      <button onclick="stickerConceptSave()">保存</button>
+      <button onclick="stickerConceptClose()">取消</button>
+    </div>
+  </div>
+</div>
+<script src="/static/app.js?v=20261104-concept-edit"></script></body></html>
