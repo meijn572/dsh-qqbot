@@ -850,6 +850,17 @@ def merge_seconds() -> float:
         return 6.5
 
 
+def _matched_slang(items: list[dict], text: str, limit: int = 6) -> list[dict]:
+    hits = []
+    for item in items:
+        terms = [str(item.get("term") or ""), *[str(a) for a in (item.get("aliases") or [])]]
+        if any(len(term.strip()) >= 2 and term.strip() in (text or "") for term in terms):
+            hits.append(item)
+        if len(hits) >= limit:
+            break
+    return hits
+
+
 async def _process_locked(dsh: Dsh, onebot: OneBot, mtype: str, target: int, chat_key: str, text: str, images: list[str] | None = None) -> str:
     RECENT_TEXT[chat_key] = (text or "")[:500]
     entry = state_entry(chat_key)
@@ -878,13 +889,13 @@ async def _process_locked(dsh: Dsh, onebot: OneBot, mtype: str, target: int, cha
             extras.append(hint)
         if chat_key.startswith("group:"):
             gid = chat_key.split(":", 1)[1]
-            items = load_slang(gid)[:8]
+            items = _matched_slang(load_slang(gid), text)
             if items:
                 slang = "；".join(f"{i.get('term')}→{i.get('meaning') or '（未记）'}" for i in items)
                 extras.append("（群里常用说法：" + slang[:400] + "。自然理解，别硬套、别解释。）")
         elif mtype == "private" and (CONFIG.get("allowed_groups") or []):
             gid = str((CONFIG.get("allowed_groups") or [])[0])
-            items = load_slang(gid)[:6]
+            items = _matched_slang(load_slang(gid), text, limit=6)
             if items:
                 slang = "；".join(f"{i.get('term')}→{i.get('meaning') or '（未记）'}" for i in items)
                 extras.append("（你和主人在群里学到的说法：" + slang[:300] + "。跟主人私聊时也可以自然用，别解释、别硬套。）")
