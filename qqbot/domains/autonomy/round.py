@@ -205,7 +205,12 @@ async def run_round(deps: Deps) -> dict | None:
             deps.add_l0(chat_key, text)
             state["pending_shares"] = pending
             state["unanswered_shares"] = 1
-            deps.last_share[chat_key] = {"topic": item.get("topic") or "", "ts": time.time()}
+            deps.last_share[chat_key] = {
+                "topic": item.get("topic") or "",
+                "text": text,
+                "links": item.get("links") or [],
+                "ts": time.time(),
+            }
             state["shares"] = int(state.get("shares", 0)) + 1
             deferred_sent = True
             log.info("自主刷补发攒下的分享：%s", text[:160])
@@ -223,7 +228,12 @@ async def run_round(deps: Deps) -> dict | None:
             text = compose_share_text(share_line, chosen)
             await deps.send_private(uid, text)
             deps.add_l0(chat_key, text)
-            deps.last_share[chat_key] = {"topic": round_topic, "ts": time.time()}
+            deps.last_share[chat_key] = {
+                "topic": round_topic,
+                "text": text,
+                "links": chosen,
+                "ts": time.time(),
+            }
             state["unanswered_shares"] = int(state.get("unanswered_shares", 0)) + 1
             state["shares"] = int(state.get("shares", 0)) + 1
             log.info("自主刷分享：%s", text[:160])

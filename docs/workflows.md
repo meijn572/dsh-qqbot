@@ -724,6 +724,27 @@ bili_autonomy.share_min_idle_minutes   # 默认 20
 11:30 之后 → 补一条
 ```
 
+### 6.4.2 主人回复分享
+
+发送分享时，`LAST_SHARE` 不只记 topic，还记：
+
+- `text`：实际发出的那句话
+- `links`：视频链接
+- `ts`
+
+主人回复时：
+
+- `record_share_feedback` 只读取、不 pop
+- 下一轮 `_process_locked` 把分享原文放进 bridge-note
+- 提示她“主人这句话可能是在接这个，对不上就别硬认”
+- 这条用户消息处理完后再清掉
+
+否则会出现：
+
+```
+鱼分享过 → 主人回复“这个不错” → 鱼不知道“这个”是什么
+```
+
 ### 6.5 落库
 
 - 每次写 `bili-autonomy/out/YYYY-MM-DD.md`
