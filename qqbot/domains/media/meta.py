@@ -11,7 +11,9 @@ from pathlib import Path
 from qqbot.domains.media.library import (
     MEME_DIR,
     find_by_keyword,
+    find_signature_match,
     index_add,
+    sticker_signature,
 )
 
 
@@ -35,7 +37,11 @@ def _source_rel(source: str) -> str:
     except OSError:
         return ""
     matches = sorted(MEME_DIR.rglob(f"u_{digest}*"))
-    return _rel(matches[0]) if matches else ""
+    if matches:
+        return _rel(matches[0])
+    # 同图被重新压缩/转格式时 hash 不同，但收藏阶段会按感知 hash 合并
+    near = find_signature_match(sticker_signature(path))
+    return _file_rel(near) if near else ""
 
 
 def _file_rel(target: str) -> str:
