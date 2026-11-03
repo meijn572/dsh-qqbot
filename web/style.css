@@ -26,7 +26,10 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0b0f13;border:1px sol
 .item{width:110px;font-size:11px;color:var(--mut)}
 .tag{display:inline-block;background:#1f2937;color:#9fb3c8;border-radius:6px;padding:0 6px;margin:1px}
 .sticker-grid{gap:12px}
-.sticker-item{width:170px;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px;background:#141a21;border:1px solid #232a33;border-radius:12px;color:#c9d4de;font-size:11px}
+.sticker-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+.sticker-toolbar button:disabled{opacity:.45;cursor:not-allowed}
+.sticker-item{width:170px;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px;background:#141a21;border:1px solid #232a33;border-radius:12px;color:#c9d4de;font-size:11px;cursor:pointer}
+.sticker-item.selected{border-color:#4aa8ff;box-shadow:0 0 0 1px #4aa8ff inset,0 6px 20px rgba(74,168,255,.15)}
 .sticker-item .thumb{width:140px;height:140px;object-fit:contain}
 .sticker-tags{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:3px;min-height:18px;max-height:none;overflow:visible}
 .sticker-tags .tag{font-size:11px}

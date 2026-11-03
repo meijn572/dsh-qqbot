@@ -290,20 +290,22 @@ async function load(){
     let h='<div class="card"><div class="k">分类统计</div><div style="margin-top:8px">';
     for(const [k,v] of Object.entries(st.categories)) h+=`<span class="tag">${esc(k)} ${v.user}/${v.total}</span> `;
     h+='</div></div>';
-    h+=`<div class="card"><div class="k">表情库（${items.length} 张）</div>${st.hidden_images?`<div class="mut" style="margin:4px 0">另有 ${st.hidden_images} 张旧图片没有表情标识，已隐藏。</div>`:''}<div class="items sticker-grid" style="margin-top:10px">`;
+    h+=`<div class="card"><div class="k">表情库（${items.length} 张）</div>${st.hidden_images?`<div class="mut" style="margin:4px 0">另有 ${st.hidden_images} 张旧图片没有表情标识，已隐藏。</div>`:''}
+      <div class="sticker-toolbar">
+        <button id="stickerTagsBtn" disabled onclick="stickerEditTagsSelected()">修改标签</button>
+        <button id="stickerConceptsBtn" disabled onclick="stickerEditConceptsSelected()">修改概念</button>
+        <button id="stickerDeleteBtn" disabled onclick="stickerArmDelete()">删除</button>
+        <span id="stickerSelHint" class="mut">先点一张表情</span>
+      </div>
+      <div class="items sticker-grid" style="margin-top:10px">`;
     for(let i=0;i<items.length;i++){
-      const it=items[i], view=`st_view_${i}`, cview=`st_concepts_${i}`, xid=`st_del_${i}`;
+      const it=items[i], view=`st_view_${i}`, cview=`st_concepts_${i}`;
       const hasConcepts=it.concepts&&it.concepts.length;
-      h+=`<div class="item sticker-item">
+      h+=`<div class="item sticker-item" data-file="${attr(it.file)}" data-view="${view}" data-cview="${cview}" data-name="${attr(it.name||'')}" onclick="stickerSelect(this)">
         <img class="thumb" src="/api/sticker?file=${encodeURIComponent(it.file)}">
         <div id="${view}" class="sticker-tags">${stickerTagHtml(it.tags)}</div>
         <div id="${cview}" class="sticker-concepts" ${hasConcepts?'':'hidden'}>${hasConcepts?stickerConceptHtml(it.concepts):''}</div>
-        <div class="sticker-actions">
-          <button onclick='stickerEditTags(${JSON.stringify(it.file)}, ${JSON.stringify(view)})'>修改标签</button>
-          <button onclick='stickerEditConcepts(${JSON.stringify(it.file)}, ${JSON.stringify(cview)})'>修改概念</button>
-          <button onclick='stickerToggleDelete(${JSON.stringify(xid)})'>删除</button>
-        </div>
-        <button id="${xid}" class="sticker-x" hidden onclick='stickerConfirmDelete(${JSON.stringify(it.file)})'>×</button>
+        <button class="sticker-x" hidden onclick="stickerConfirmDelete(event,this)">×</button>
       </div>`;
     }
     h+='</div></div>';
@@ -395,6 +397,49 @@ function stickerTagHtml(tags,limit=5){
   return `<span title="${attr(list.join(', '))}">${html}</span>`;
 }
 let stickerEdit={file:'',view:''};
+let stickerSelected=null;
+function stickerSelect(card){
+  document.querySelectorAll('#stickers .sticker-item.selected').forEach(el=>el.classList.remove('selected'));
+  document.querySelectorAll('#stickers .sticker-x').forEach(el=>el.hidden=true);
+  card.classList.add('selected');
+  stickerSelected={
+    file:card.dataset.file,
+    view:card.dataset.view,
+    cview:card.dataset.cview,
+    card,
+  };
+  for(const id of ['stickerTagsBtn','stickerConceptsBtn','stickerDeleteBtn']){
+    const el=document.getElementById(id); if(el) el.disabled=false;
+  }
+  const hint=document.getElementById('stickerSelHint');
+  if(hint) hint.textContent=`已选 ${card.dataset.name||card.dataset.file}`;
+}
+function stickerClearSelection(){
+  document.querySelectorAll('#stickers .sticker-item.selected').forEach(el=>el.classList.remove('selected'));
+  document.querySelectorAll('#stickers .sticker-x').forEach(el=>el.hidden=true);
+  stickerSelected=null;
+  for(const id of ['stickerTagsBtn','stickerConceptsBtn','stickerDeleteBtn']){
+    const el=document.getElementById(id); if(el) el.disabled=true;
+  }
+  const hint=document.getElementById('stickerSelHint');
+  if(hint) hint.textContent='先点一张表情';
+}
+function stickerEditTagsSelected(){
+  if(!stickerSelected){ alert('先点一张表情'); return; }
+  stickerEditTags(stickerSelected.file,stickerSelected.view);
+}
+function stickerEditConceptsSelected(){
+  if(!stickerSelected){ alert('先点一张表情'); return; }
+  stickerEditConcepts(stickerSelected.file,stickerSelected.cview);
+}
+function stickerArmDelete(){
+  if(!stickerSelected){ alert('先点一张表情'); return; }
+  document.querySelectorAll('#stickers .sticker-x').forEach(el=>el.hidden=true);
+  const x=stickerSelected.card.querySelector('.sticker-x');
+  if(x) x.hidden=false;
+  const hint=document.getElementById('stickerSelHint');
+  if(hint) hint.textContent='再点 × 确认删除';
+}
 function stickerEditTags(file,view){
   stickerEdit={file,view};
   const ta=document.getElementById('stickerModalTags');
@@ -416,6 +461,7 @@ async function stickerModalSave(){
   const viewEl=document.getElementById(view);
   if(viewEl) viewEl.innerHTML=stickerTagHtml(saved);
   (window.__stickerTags||{})[file]=saved.join(', ');
+  stickerClearSelection();
   stickerModalClose();
 }
 let stickerConceptEdit={file:'',view:''};
@@ -443,16 +489,17 @@ async function stickerConceptSave(){
     viewEl.hidden=!saved.length;
   }
   (window.__stickerConceptTerms||{})[file]=saved.map(x=>String(x).replace(/^concept:/,'')).join(', ');
+  stickerClearSelection();
   stickerConceptClose();
 }
-function stickerToggleDelete(id){
-  const el=document.getElementById(id);
-  if(el) el.hidden=!el.hidden;
-}
-async function stickerConfirmDelete(file){
+async function stickerConfirmDelete(ev,btn){
+  if(ev) ev.stopPropagation();
+  if(!stickerSelected) return;
+  const file=stickerSelected.file;
   const r=await fetch('/api/stickers/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file})});
   const j=await r.json();
   if(!j.ok){ alert(j.error||'删除失败'); return; }
+  stickerClearSelection();
   load();
 }
 // 表情页不参与 10 秒轮询，避免编辑时被重绘
