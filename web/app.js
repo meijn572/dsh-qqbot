@@ -27,7 +27,6 @@ const CATS={
   bili:{subs:[['interests','兴趣'],['bili','B站']]}
 };
 let curCat='overview', curSub='overview';
-let stickerDirty=false, stickerSaving=false;
 function renderSubs(){
   const box=$('#subtabs'); const subs=CATS[curCat].subs;
   if(subs.length<2){ box.innerHTML=''; box.style.display='none'; return; }
@@ -37,7 +36,6 @@ function renderSubs(){
 }
 function showTab(cat, sub){
   curCat=cat; curSub=sub;
-  if(sub!=='stickers') stickerDirty=false;
   document.querySelectorAll('.tab[data-cat]').forEach(x=>x.classList.toggle('on', x.dataset.cat===cat));
   document.querySelectorAll('main section').forEach(s=>s.hidden=true);
   const target=$('#'+sub); if(target) target.hidden=false;
@@ -150,8 +148,6 @@ async function lexDel(category,term){
   load();
 }
 async function load(){
-  // 编辑标签时不要被 10 秒轮询清掉输入
-  if(curSub==='stickers' && (stickerDirty || stickerSaving || document.querySelector('#stickers input:focus'))) return;
   const s=await j('/api/status');
   $('#clock').textContent=s.time;
   $('#alive').innerHTML=s.bridge.alive?`桥 ${badge(true)} <span class="mut">${s.bridge.age}s 前心跳</span>`:`桥 ${badge(false)}`;
@@ -291,19 +287,18 @@ async function load(){
     let h='<div class="card"><div class="k">分类统计</div><div style="margin-top:8px">';
     for(const [k,v] of Object.entries(st.categories)) h+=`<span class="tag">${esc(k)} ${v.user}/${v.total}</span> `;
     h+='</div></div>';
-    h+=`<div class="card"><div class="k">表情库（${items.length} 张） <button onclick="stickerRefresh()" style="margin-left:8px">刷新列表</button></div>${st.hidden_images?`<div class="mut" style="margin:4px 0">另有 ${st.hidden_images} 张旧图片没有表情标识，已隐藏；重新发一次可收成表情。</div>`:''}<div class="items" style="margin-top:8px">`;
+    h+=`<div class="card"><div class="k">表情库（${items.length} 张）</div>${st.hidden_images?`<div class="mut" style="margin:4px 0">另有 ${st.hidden_images} 张旧图片没有表情标识，已隐藏。</div>`:''}<div class="items sticker-grid" style="margin-top:10px">`;
     for(let i=0;i<items.length;i++){
-      const it=items[i], id=`st_tags_${i}`, view=`st_view_${i}`, status=`st_status_${i}`;
-      h+=`<div class="item"><img class="thumb" src="/api/sticker?file=${encodeURIComponent(it.file)}">
-        <div><b>${esc(it.name||'')}</b> <span class="mut">${esc(it.category||'')}${it.usage_count?` · 发过 ${it.usage_count} 次`:''}</span></div>
-        <div class="mut" style="margin:3px 0">${esc(it.caption||'')}</div>
-        <div id="${view}" style="margin:5px 0">${stickerTagHtml(it.tags)}</div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px">
-          <input id="${id}" value="${attr((it.tags||[]).join(', '))}" oninput="stickerDirty=true" placeholder="标签，用逗号分隔" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:7px;padding:5px 8px;width:260px">
-          <button onclick='stickerSaveTags(${JSON.stringify(it.file)}, ${JSON.stringify(id)}, ${JSON.stringify(view)}, ${JSON.stringify(status)})'>保存标签</button>
-          <button onclick='stickerDelete(${JSON.stringify(it.file)})'>删除</button>
-          <span id="${status}" class="mut"></span>
-        </div></div>`;
+      const it=items[i], view=`st_view_${i}`, xid=`st_del_${i}`;
+      h+=`<div class="item sticker-item">
+        <img class="thumb" src="/api/sticker?file=${encodeURIComponent(it.file)}">
+        <div id="${view}" class="sticker-tags">${stickerTagHtml(it.tags)}</div>
+        <div class="sticker-actions">
+          <button onclick='stickerEditTags(${JSON.stringify(it.file)}, ${JSON.stringify(view)}, ${JSON.stringify((it.tags||[]).join(", "))})'>修改标签</button>
+          <button onclick='stickerToggleDelete(${JSON.stringify(xid)})'>删除</button>
+        </div>
+        <button id="${xid}" class="sticker-x" hidden onclick='stickerConfirmDelete(${JSON.stringify(it.file)})'>×</button>
+      </div>`;
     }
     h+='</div></div>';
     $('#stickers').innerHTML=h;
@@ -385,44 +380,26 @@ function stickerTagHtml(tags){
   const list=(tags||[]).filter(Boolean);
   return list.length ? list.map(t=>`<span class="tag">${esc(t)}</span>`).join(' ') : '<span class="mut">暂无标签</span>';
 }
-function stickerRefresh(){
-  if(stickerDirty && !confirm('有未保存的标签，仍要刷新列表？')) return;
-  stickerDirty=false;
+async function stickerEditTags(file,view,current){
+  const raw=prompt('标签（用逗号分隔）', current||'');
+  if(raw===null) return;
+  const tags=raw.split(/[,，、\s]+/).map(x=>x.trim()).filter(Boolean);
+  const r=await fetch('/api/stickers/tags',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file,tags})});
+  const j=await r.json();
+  if(!j.ok){ alert(j.error||'保存失败'); return; }
+  const viewEl=document.getElementById(view);
+  if(viewEl) viewEl.innerHTML=stickerTagHtml(j.tags||tags);
+}
+function stickerToggleDelete(id){
+  const el=document.getElementById(id);
+  if(el) el.hidden=!el.hidden;
+}
+async function stickerConfirmDelete(file){
+  const r=await fetch('/api/stickers/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file})});
+  const j=await r.json();
+  if(!j.ok){ alert(j.error||'删除失败'); return; }
   load();
 }
-async function stickerSaveTags(file,id,view,status){
-  const raw=(document.getElementById(id)?.value||'');
-  const tags=raw.split(/[,，、\s]+/).map(x=>x.trim()).filter(Boolean);
-  stickerSaving=true;
-  try{
-    const r=await fetch('/api/stickers/tags',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file,tags})});
-    const j=await r.json();
-    if(!j.ok){ alert(j.error||'保存失败'); return; }
-    const saved=j.tags||tags;
-    document.getElementById(id).value=saved.join(', ');
-    const viewEl=document.getElementById(view);
-    if(viewEl) viewEl.innerHTML=stickerTagHtml(saved);
-    const statusEl=document.getElementById(status);
-    if(statusEl) statusEl.textContent=`已保存 ${saved.length} 个标签`;
-    stickerDirty=false;
-  }finally{
-    stickerSaving=false;
-    // 不整页重绘，保留“已保存”和刚保存的标签
-  }
-}
-async function stickerDelete(file){
-  if(!confirm(`删除这张表情？\n${file}`)) return;
-  stickerSaving=true;
-  try{
-    const r=await fetch('/api/stickers/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file})});
-    const j=await r.json();
-    if(!j.ok) alert(j.error||'删除失败');
-    else stickerDirty=false;
-  }finally{
-    stickerSaving=false;
-    load();
-  }
-}
-// 表情页有输入框，不参与 10 秒轮询，避免把正在输入的内容顶掉
+// 表情页不参与 10 秒轮询，避免编辑时被重绘
 setInterval(()=>{ if(curSub!=='stickers') load(); },10000);
 load();

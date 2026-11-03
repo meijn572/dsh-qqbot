@@ -486,7 +486,10 @@ def sticker_payload() -> dict:
                     user_items.append({"file": rel, "category": folder.name, "size": f.stat().st_size})
                 items.append({"file": rel, "category": folder.name, "size": f.stat().st_size})
     index = read_json(STICKERS / "index.json") or []
-    index_map = {e.get("file"): e for e in index if isinstance(e, dict)}
+    index_map = {
+        str(e.get("file") or "").replace("\\", "/"): e
+        for e in index if isinstance(e, dict)
+    }
     for item in items:
         entry = index_map.get(item["file"], {})
         item["caption"] = entry.get("caption", "")
