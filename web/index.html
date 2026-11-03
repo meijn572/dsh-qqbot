@@ -24,4 +24,14 @@
   <section id="interests" hidden></section>
   <section id="bili" hidden></section>
 </main>
-<script src="/static/app.js?v=20261103-sticker-simple2"></script></body></html>
+<div id="stickerModal" class="modal" hidden>
+  <div class="modal-card">
+    <div class="k">修改标签</div>
+    <textarea id="stickerModalTags" placeholder="用逗号或空格分隔，例如：奶龙, 举旗, 助威"></textarea>
+    <div class="modal-actions">
+      <button onclick="stickerModalSave()">保存</button>
+      <button onclick="stickerModalClose()">取消</button>
+    </div>
+  </div>
+</div>
+<script src="/static/app.js?v=20261103-sticker-modal"></script></body></html>

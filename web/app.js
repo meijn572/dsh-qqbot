@@ -284,6 +284,7 @@ async function load(){
   if(!$('#stickers').hidden){
     const st=await j('/api/stickers');
     const items=st.items||st.user_items||[];
+    window.__stickerTags=Object.fromEntries(items.map(it=>[it.file,(it.tags||[]).join(', ')]));
     let h='<div class="card"><div class="k">分类统计</div><div style="margin-top:8px">';
     for(const [k,v] of Object.entries(st.categories)) h+=`<span class="tag">${esc(k)} ${v.user}/${v.total}</span> `;
     h+='</div></div>';
@@ -294,7 +295,7 @@ async function load(){
         <img class="thumb" src="/api/sticker?file=${encodeURIComponent(it.file)}">
         <div id="${view}" class="sticker-tags">${stickerTagHtml(it.tags)}</div>
         <div class="sticker-actions">
-          <button onclick='stickerEditTags(${JSON.stringify(it.file)}, ${JSON.stringify(view)}, ${JSON.stringify((it.tags||[]).join(", "))})'>修改标签</button>
+          <button onclick='stickerEditTags(${JSON.stringify(it.file)}, ${JSON.stringify(view)})'>修改标签</button>
           <button onclick='stickerToggleDelete(${JSON.stringify(xid)})'>删除</button>
         </div>
         <button id="${xid}" class="sticker-x" hidden onclick='stickerConfirmDelete(${JSON.stringify(it.file)})'>×</button>
@@ -380,15 +381,29 @@ function stickerTagHtml(tags){
   const list=(tags||[]).filter(Boolean);
   return list.length ? list.map(t=>`<span class="tag">${esc(t)}</span>`).join(' ') : '<span class="mut">暂无标签</span>';
 }
-async function stickerEditTags(file,view,current){
-  const raw=prompt('标签（用逗号分隔）', current||'');
-  if(raw===null) return;
+let stickerEdit={file:'',view:''};
+function stickerEditTags(file,view){
+  stickerEdit={file,view};
+  const ta=document.getElementById('stickerModalTags');
+  ta.value=(window.__stickerTags||{})[file]||'';
+  document.getElementById('stickerModal').hidden=false;
+  setTimeout(()=>ta.focus(),0);
+}
+function stickerModalClose(){
+  document.getElementById('stickerModal').hidden=true;
+}
+async function stickerModalSave(){
+  const raw=document.getElementById('stickerModalTags').value||'';
   const tags=raw.split(/[,，、\s]+/).map(x=>x.trim()).filter(Boolean);
+  const {file,view}=stickerEdit;
   const r=await fetch('/api/stickers/tags',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file,tags})});
   const j=await r.json();
   if(!j.ok){ alert(j.error||'保存失败'); return; }
+  const saved=j.tags||tags;
   const viewEl=document.getElementById(view);
-  if(viewEl) viewEl.innerHTML=stickerTagHtml(j.tags||tags);
+  if(viewEl) viewEl.innerHTML=stickerTagHtml(saved);
+  (window.__stickerTags||{})[file]=saved.join(', ');
+  stickerModalClose();
 }
 function stickerToggleDelete(id){
   const el=document.getElementById(id);
