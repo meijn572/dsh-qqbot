@@ -221,11 +221,12 @@ def extract_note_keywords(note: str) -> list[str]:
 
 
 def index_add(rel_path: str, category: str, caption: str, tags: list[str], sig: tuple[int, int, int] | None = None,
-              name: str = "", aliases: list[str] | None = None) -> None:
+              name: str = "", aliases: list[str] | None = None, concepts: list[str] | None = None) -> None:
     entries = load_index()
     existing = next((e for e in entries if e.get("file") == rel_path), None)
     clean_name = str(name or "").strip()
     clean_aliases = [str(a).strip() for a in (aliases or []) if str(a).strip()]
+    clean_concepts = [str(c).strip() for c in (concepts or []) if str(c).strip()]
     tags = clean_sticker_tags(tags, caption, clean_name, category)
     if existing is not None:
         merged = list(existing.get("tags") or [])
@@ -249,6 +250,9 @@ def index_add(rel_path: str, category: str, caption: str, tags: list[str], sig: 
         if clean_aliases:
             old_aliases = list(existing.get("aliases") or [])
             existing["aliases"] = list(dict.fromkeys(old_aliases + clean_aliases))
+        if clean_concepts:
+            old_concepts = list(existing.get("concepts") or [])
+            existing["concepts"] = list(dict.fromkeys(old_concepts + clean_concepts))
         if sig:
             existing["w"], existing["h"], existing["sig"] = sig[0], sig[1], format(sig[2], "016x")
         save_index(entries)
@@ -258,6 +262,8 @@ def index_add(rel_path: str, category: str, caption: str, tags: list[str], sig: 
         entry["name"] = clean_name or caption[:20]
     if clean_aliases:
         entry["aliases"] = clean_aliases
+    if clean_concepts:
+        entry["concepts"] = clean_concepts
     if sig:
         entry["w"], entry["h"], entry["sig"] = sig[0], sig[1], format(sig[2], "016x")
     entries.append(entry)

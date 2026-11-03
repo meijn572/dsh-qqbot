@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from settings import AGENTS, BOT_DIR as BOT, CMEM_BASE, DSH_HOME as HOME, HEALTH_FILE, PANEL_PORT, QR_FILE, SCRIPTS_DIR, STATE_FILE, WORKSPACE
+from qqbot.domains.concepts import concept_id, ensure_concept
 from qqbot.domains.media.meta import lookup_ref as resolve_sticker_ref
 
 DB = HOME / "memory" / "memory.db"
@@ -89,6 +90,7 @@ def lexicon_payload() -> dict:
             continue
         entries.append({
             "category": "network",
+            "id": concept_id(term),
             "scope": "global",
             "term": str(item.get("term") or ""),
             "meaning": str(item.get("meaning") or ""),
@@ -111,11 +113,12 @@ def lexicon_add(category: str, term: str, meaning: str, example: str = "") -> di
         items = data.setdefault("entries", [])
         existing = next((item for item in items if str(item.get("term")) == term), None)
         if existing:
-            existing.update({"meaning": meaning, "example": example})
+            existing.update({"meaning": meaning, "example": example, "id": concept_id(term)})
         else:
-            items.append({"term": term, "meaning": meaning, "example": example, "count": 1, "last_seen": int(time.time())})
+            items.append({"term": term, "meaning": meaning, "example": example, "id": concept_id(term), "count": 1, "last_seen": int(time.time())})
+        ensure_concept(term, kind="meme", scope="global", meaning=meaning, source="lexicon")
         NETWORK_MEMES.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-        return {"ok": True}
+        return {"ok": True, "id": concept_id(term)}
     config = read_json(BOT / "config.json") or {}
     groups = config.get("allowed_groups") or []
     if not groups:

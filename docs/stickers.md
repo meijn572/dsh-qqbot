@@ -183,7 +183,30 @@ apply_record(record)   # 写入 name/tags/caption
 
 bridge 不再自己解析路径。
 
-## 5. 标签规则
+### 4.4 概念引用
+
+表情、词条、记忆之间不直接复制内容，而是共享一个轻量 concept id：
+
+```text
+concept:奶龙
+```
+
+- `$DSH_HOME/concepts.json` 保存概念表
+- 表情索引可以带 `concepts: ["concept:奶龙"]`
+- 词条可以带同名 id
+- 以后记忆事实可以带 `links: ["concept:奶龙"]`
+
+`sticker_meta` 支持可选的 `concepts` 参数：
+
+```json
+{"ref":"file:happy/u_xxx.jpg","name":"奶龙举旗","concepts":"奶龙"}
+```
+
+如果只给 `name` 没给 `concepts`，会按 name 自动建一个明确概念。
+
+当前只做“明确教过/明确给出”的概念，不做自动实体识别。
+
+
 
 标签是检索词，不是聊天记录。
 
@@ -207,7 +230,7 @@ bridge 不再自己解析路径。
 我刚才在看的那个视频里的小恐龙
 ```
 
-## 6. 选图
+## 5. 选图
 
 入口：`qqbot/domains/media/library.py :: resolve_meme`
 
@@ -245,7 +268,7 @@ bridge 不再自己解析路径。
 - `mark_sticker_used` 增加 usage_count / last_used_at
 - bridge 发图
 
-## 7. 发送
+## 6. 发送
 
 模型输出：
 
@@ -265,7 +288,7 @@ MEME_RE 提取 token
 
 `[[meme:...]]` 不应出现在给用户的文本里。
 
-## 8. 面板
+## 7. 面板
 
 页面：`web/app.js` 的表情包 tab。
 
@@ -291,7 +314,7 @@ POST /api/stickers/tags
 POST /api/stickers/delete
 ```
 
-## 9. 触发
+## 8. 触发
 
 工具存在，不代表模型一定会用。bridge 会加轻量提示：
 
@@ -300,7 +323,7 @@ POST /api/stickers/delete
 
 提示只对当前消息生效，不写进 L0。
 
-## 10. 已知限制
+## 9. 已知限制
 
 - 自动语义依赖视觉模型，冷门 IP 可能认不出
 - 主模型可能漏调 `sticker_lookup` / `sticker_meta`
@@ -311,7 +334,7 @@ POST /api/stickers/delete
 - 图片本体不持久化到记忆库，只存引用
 - 面板手动标签不经过自动清洗，由用户负责
 
-## 11. 代码地图
+## 10. 代码地图
 
 | 文件 | 作用 |
 | --- | --- |

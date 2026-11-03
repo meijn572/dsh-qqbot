@@ -8,6 +8,7 @@ import hashlib
 import re
 from pathlib import Path
 
+from qqbot.domains.concepts import concepts_for_terms, ensure_concept
 from qqbot.domains.media.library import (
     MEME_DIR,
     find_by_keyword,
@@ -87,14 +88,29 @@ def apply_record(record: dict) -> dict:
     tags = record.get("tags") or []
     if isinstance(tags, str):
         tags = [t.strip() for t in re.split(r"[,，、\s]+", tags) if t.strip()]
+    raw_concepts = record.get("concepts") or []
+    if isinstance(raw_concepts, str):
+        raw_concepts = [t.strip() for t in re.split(r"[,，、\s]+", raw_concepts) if t.strip()]
+    concept_ids = concepts_for_terms(list(raw_concepts), kind="fandom", source="sticker")
+    name = str(record.get("name") or "").strip()
+    if name and not concept_ids:
+        entry = ensure_concept(
+            name,
+            kind="fandom",
+            meaning=str(record.get("caption") or ""),
+            source="sticker",
+        )
+        if entry.get("id"):
+            concept_ids = [entry["id"]]
     index_add(
         rel,
         Path(rel).parent.name,
         str(record.get("caption") or ""),
         list(tags)[:12],
-        name=str(record.get("name") or ""),
+        name=name,
+        concepts=concept_ids,
     )
-    return {"ok": True, "rel": rel}
+    return {"ok": True, "rel": rel, "concepts": concept_ids}
 
 
 def lookup_ref(ref: str) -> dict:
@@ -113,6 +129,7 @@ def lookup_ref(ref: str) -> dict:
         "name": str(entry.get("name") or ""),
         "category": str(entry.get("category") or Path(rel).parent.name),
         "tags": entry.get("tags") if isinstance(entry.get("tags"), list) else [],
+        "concepts": entry.get("concepts") if isinstance(entry.get("concepts"), list) else [],
         "caption": str(entry.get("caption") or ""),
         "usage_count": int(entry.get("usage_count") or 0),
     }

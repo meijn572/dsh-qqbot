@@ -108,6 +108,7 @@ export async function registerMemeTools({ registerTool, log, endpoint, memeDir }
         source: { type: "string", description: "兼容写法：直接给图片路径" },
         name: { type: "string", description: "这张表情叫什么，比如「奶龙举旗」；不知道就空" },
         tags: { type: "string", description: "逗号或空格分隔的标签，比如「奶龙, 小恐龙, 举旗, 开心」" },
+        concepts: { type: "string", description: "可选：概念词，比如「奶龙」；用于和 lexicon/记忆联动" },
         caption: { type: "string", description: "一句话描述图里是什么、在做什么" },
       },
       output: { schema: { type: "json" }, render: (_a, v) => [{ type: "text", text: JSON.stringify(v) }] },
@@ -123,6 +124,7 @@ export async function registerMemeTools({ registerTool, log, endpoint, memeDir }
           ref,
           name: String(args.name || "").trim(),
           tags: String(args.tags || "").split(/[,，、\s]+/).map((x) => x.trim()).filter(Boolean).slice(0, 12),
+          concepts: String(args.concepts || "").split(/[,，、\s]+/).map((x) => x.trim()).filter(Boolean).slice(0, 6),
           caption: String(args.caption || "").trim(),
           ts: Date.now(),
         };
