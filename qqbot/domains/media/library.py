@@ -224,6 +224,28 @@ def _entry_text(entry: dict) -> tuple[str, str, list[str]]:
     return name, caption, aliases
 
 
+def _habit_score(entry: dict) -> float:
+    """用得多、最近用得多的更符合人的习惯。"""
+    try:
+        usage = max(0, int(entry.get("usage_count") or 0))
+    except (TypeError, ValueError):
+        usage = 0
+    score = min(20, usage) * 1.5
+    try:
+        last = float(entry.get("last_used_at") or 0)
+        if last:
+            age = max(0.0, time.time() - last)
+            if age < 300:
+                score += 12
+            elif age < 3600:
+                score += 8
+            elif age < 86400:
+                score += 4
+    except (TypeError, ValueError):
+        pass
+    return score
+
+
 def _score_entry(entry: dict, query: str, category: str | None = None) -> float | None:
     """本地语义匹配：别名/名称/标签/描述，类别只作为过滤和兜底。"""
     q = str(query or "").strip().lower()
@@ -233,7 +255,7 @@ def _score_entry(entry: dict, query: str, category: str | None = None) -> float 
     tags = [str(t).strip().lower() for t in (entry.get("tags") or []) if str(t).strip()]
     file = str(entry.get("file") or "").lower()
     if not q:
-        return 1.0
+        return _habit_score(entry)
     score = 0.0
     if q == file or q == name.lower() or q in {a.lower() for a in aliases}:
         score += 200
@@ -248,21 +270,11 @@ def _score_entry(entry: dict, query: str, category: str | None = None) -> float 
         score += 25
     if q in file:
         score += 8
-    if any(ch.isalnum() for ch in str(entry.get("file") or "")) and file.startswith(("u_", "happy/", "angry/", "sad/", "confused/")):
-        score += 3
-    # 同一张图最近刚用过就降权，避免连续重复
-    try:
-        last = float(entry.get("last_used_at") or 0)
-        if last:
-            age = max(0.0, time.time() - last)
-            if age < 300:
-                score -= 45
-            elif age < 3600:
-                score -= 15
-    except (TypeError, ValueError):
-        pass
-    score -= min(10.0, float(entry.get("usage_count") or 0) * 0.4)
-    return score if score > 0 else None
+    if score <= 0:
+        return None
+    # 语义命中之后，再按“平时爱用、最近爱用”加分
+    score += _habit_score(entry) * 0.5
+    return score
 
 
 def _best_match(query: str, category: str | None = None) -> tuple[float, dict] | None:
@@ -321,8 +333,8 @@ def pick_meme(category: str, query: str = "") -> str | None:
             candidates.sort(key=lambda item: item[0], reverse=True)
             top = candidates[:min(5, len(candidates))]
             return str(MEME_DIR / str(random.choice(top)[1].get("file")))
-        # 没给具体词时优先用久没发过的，别总是同一张
-        candidates.sort(key=lambda item: float(item[1].get("last_used_at") or 0))
+        # 没给具体词时，优先平时最常发、最近发得多的
+        candidates.sort(key=lambda item: _habit_score(item[1]), reverse=True)
         pool = candidates[:min(6, len(candidates))]
         return str(MEME_DIR / str(random.choice(pool)[1].get("file")))
     # 索引缺失时回退到目录扫描，兼容旧数据；只有泛类别才允许随便挑
