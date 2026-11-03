@@ -696,15 +696,20 @@ plugin client.profile()
 主人回消息后：
 
 - `unanswered_shares` 归零
-- 下一轮先补发一条攒下的分享
+- 不立刻补发
+- 等主人空闲 `deferred_min_idle_minutes`（默认 30 分钟）后的下一轮，再补一条攒下的分享
 - 补发也计入当天分享数
+
+正常新分享也要主人空闲 `share_min_idle_minutes`（默认 20 分钟），否则先攒着，避免打断正在聊的话题。
 
 配置：
 
 ```
-bili_autonomy.max_unanswered_shares  # 默认 2
-bili_autonomy.pending_share_max      # 默认 5
-bili_autonomy.deferred_share_hours   # 默认 6
+bili_autonomy.max_unanswered_shares   # 默认 2
+bili_autonomy.pending_share_max       # 默认 5
+bili_autonomy.deferred_share_hours    # 默认 6
+bili_autonomy.deferred_min_idle_minutes # 默认 30
+bili_autonomy.share_min_idle_minutes   # 默认 20
 ```
 
 效果：
@@ -714,7 +719,9 @@ bili_autonomy.deferred_share_hours   # 默认 6
 8:25 发一条 → 没回
 8:50 想发 → 攒着，不发了
 ...
-主人回消息 → 下一轮补一条
+11:00 主人回消息
+11:05 想补发 → 主人才刚回，先不补
+11:30 之后 → 补一条
 ```
 
 ### 6.5 落库

@@ -30,6 +30,8 @@ def autonomy_cfg() -> dict:
         "max_unanswered_shares": 2,
         "pending_share_max": 5,
         "deferred_share_hours": 6,
+        "deferred_min_idle_minutes": 30,
+        "share_min_idle_minutes": 20,
     }
     merged.update(CONFIG.get("bili_autonomy") or {})
     return merged

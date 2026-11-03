@@ -187,11 +187,15 @@ async def run_round(deps: Deps) -> dict | None:
     max_unanswered = max(1, int(cfg.get("max_unanswered_shares", 2)))
     pending = list(state.get("pending_shares") or [])
     recent_reply = float(state.get("last_user_reply") or 0)
+    idle_minutes = ((time.time() - recent_reply) / 60) if recent_reply else 9999
+    deferred_idle = float(cfg.get("deferred_min_idle_minutes", 30))
+    share_idle = float(cfg.get("share_min_idle_minutes", 20))
     deferred_sent = False
-    # 主人刚回过消息：先把攒下的分享补一条，而不是继续刷新的
+    # 主人刚聊完先不急着补；等对话空下来再发攒下的
     if (pending
             and int(state.get("unanswered_shares", 0)) == 0
             and recent_reply
+            and idle_minutes >= deferred_idle
             and time.time() - recent_reply <= float(cfg.get("deferred_share_hours", 6)) * 3600
             and int(state.get("shares", 0)) < int(cfg.get("share_max_per_day", 3))):
         item = pending.pop(0)
@@ -211,6 +215,10 @@ async def run_round(deps: Deps) -> dict | None:
             pending.append({"topic": round_topic, "line": share_line, "links": chosen, "ts": int(time.time())})
             state["pending_shares"] = pending[-max(1, int(cfg.get("pending_share_max", 5))):]
             log.info("自主刷分享暂存：连续 %s 条没人回，先攒着", max_unanswered)
+        elif idle_minutes < share_idle:
+            pending.append({"topic": round_topic, "line": share_line, "links": chosen, "ts": int(time.time())})
+            state["pending_shares"] = pending[-max(1, int(cfg.get("pending_share_max", 5))):]
+            log.info("自主刷分享暂存：主人还在聊，先不打断（空闲 %.0f 分钟）", idle_minutes)
         else:
             text = compose_share_text(share_line, chosen)
             await deps.send_private(uid, text)
