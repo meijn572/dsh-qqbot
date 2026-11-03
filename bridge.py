@@ -1272,7 +1272,11 @@ async def bili_link_hint(text: str) -> str:
         up = " UP：" + info["up"] if info.get("up") else ""
         mins = f" {info['duration'] // 60}分{info['duration'] % 60}秒" if info.get("duration") else ""
         lines.append(f"{label}{meta}{up}{mins}")
-    return "\n（你收到 B 站视频：" + "；".join(lines) + "。可以调 bili_subtitle 看字幕，画面重要时调 bili_frames 看几帧。）"
+    return ("\n（你收到 B 站视频：" + "；".join(lines)
+            + "。先判断要看什么：人物/构图看 1–3 帧就够；动作/过程/动画不能只靠少数静帧，"
+            "用 bili_frames 多覆盖开头、动作段、结尾，或用 at 指定关键时间点。"
+            "静帧只能证明这一瞬间，没看到过程就直说没看清，不要补动作因果。"
+            "字幕用 bili_subtitle 读。）")
 
 
 async def recent_scene(chat_key: str, limit: int = 6) -> str:
