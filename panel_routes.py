@@ -176,15 +176,18 @@ def handle_post(handler, path: str, parsed) -> None:
         body = _body(handler)
         if path.endswith("/add"):
             handler._json(lexicon_add(
-                str(body.get("category") or "network"),
+                str(body.get("kind") or body.get("category") or "meme"),
                 str(body.get("term") or ""),
                 str(body.get("meaning") or ""),
                 str(body.get("example") or ""),
                 body.get("aliases") or "",
+                str(body.get("status") or "stable"),
+                str(body.get("scope") or ""),
             ))
         else:
             handler._json(lexicon_delete(
-                str(body.get("category") or "network"),
+                str(body.get("id") or ""),
+                str(body.get("category") or ""),
                 str(body.get("term") or ""),
             ))
     elif path == "/api/bridge/restart":

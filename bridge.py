@@ -85,11 +85,9 @@ from qqbot.domains.growth import diary as growth_diary
 from qqbot.domains.group.slang import (
     GROUP_LOG_DIR,
     GROUP_SLANG_DIR,
-    load_network_memes,
     load_slang,
     log_group_message,
     network_meme_hint,
-    save_network_memes,
     save_slang,
 )
 from qqbot.domains.qzone import publish as qzone_publish

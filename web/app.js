@@ -63,14 +63,17 @@ function renderMem(){
   const box=document.getElementById('memlist'); if(box) box.innerHTML=h||'<div class="mut">没有匹配的记忆</div>';
 }
 let lexFilter='all';
+const LEX_KIND={slang:'群黑话',meme:'网络梗',buzzword:'热门词',fandom:'角色/IP',abbreviation:'缩写',emoji:'表情用法',event:'事件'};
+const LEX_STATUS={fresh:'新词',hot:'热门',stable:'稳定',archived:'过气'};
 function renderLex(){
-  const items=(window.__lexEntries||[]).filter(it=>lexFilter==='all'||it.category===lexFilter);
+  const items=(window.__lexEntries||[]).filter(it=>lexFilter==='all'||it.kind===lexFilter);
   let h='';
   for(const it of items){
-    const tag=it.category==='group'?`群黑话 · ${esc(it.scope)}`:'网络梗';
-    const concept=it.id?`<span class="tag concept">${esc(it.id.replace(/^concept:/,''))}</span>`:'';
+    const kind=LEX_KIND[it.kind]||it.kind||'词条';
+    const scope=it.category==='group'?`群 ${esc(it.scope)}`:'全局';
+    const concept=it.concept?`<span class="tag concept">${esc(it.concept.replace(/^concept:/,''))}</span>`:'';
     const aliases=(it.aliases||[]).length?` <span class="mut">别名：${(it.aliases||[]).map(esc).join('、')}</span>`:'';
-    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${tag}</span> <b>${esc(it.term)}</b> ${concept}${aliases} <span class="mut">×${it.count||1}</span> <button style="float:right" onclick="lexDel('${encodeURIComponent(it.category)}','${encodeURIComponent(it.term)}')">删</button><div>${esc(it.meaning||'')}</div></div>`;
+    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${kind} · ${scope}</span> <b>${esc(it.term)}</b> ${concept}${aliases} <span class="tag">${LEX_STATUS[it.status]||it.status}</span> <span class="mut">×${it.count||1}</span> <button style="float:right" onclick="lexDel('${encodeURIComponent(it.id||'')}')">删</button><div>${esc(it.meaning||'')}</div></div>`;
   }
   const box=document.getElementById('lexlist'); if(box) box.innerHTML=h||'<div class="mut">还没有词条</div>';
 }
@@ -138,16 +141,17 @@ async function savePersonaField(field){
 async function lexAdd(){
   const term=document.getElementById('lexTerm')?.value||'';
   const meaning=document.getElementById('lexMeaning')?.value||'';
-  const category=document.getElementById('lexCat')?.value||'network';
+  const kind=document.getElementById('lexCat')?.value||'meme';
   const aliases=document.getElementById('lexAliases')?.value||'';
+  const status=document.getElementById('lexStatus')?.value||'stable';
   if(!term.trim()) return alert('先填词');
-  const r=await fetch('/api/lexicon/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({term,meaning,category,aliases})});
+  const r=await fetch('/api/lexicon/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({term,meaning,kind,aliases,status})});
   const data=await r.json(); if(!data.ok) alert(data.error||'失败'); load();
 }
-async function lexDel(category,term){
-  category=decodeURIComponent(category); term=decodeURIComponent(term);
-  if(!confirm('删掉「'+term+'」？')) return;
-  await fetch('/api/lexicon/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({category,term})});
+async function lexDel(id){
+  id=decodeURIComponent(id);
+  if(!confirm('删掉这个词条？')) return;
+  await fetch('/api/lexicon/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
   load();
 }
 async function load(){
@@ -321,10 +325,11 @@ async function load(){
         <input id="lexTerm" placeholder="词" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px;width:150px">
         <input id="lexMeaning" placeholder="意思" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px;width:320px">
         <input id="lexAliases" placeholder="别名，逗号分隔（可选）" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px;width:190px">
-        <select id="lexCat" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px"><option value="network">网络梗</option><option value="group">群黑话</option></select>
+        <select id="lexCat" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px"><option value="meme">网络梗</option><option value="buzzword">热门词</option><option value="fandom">角色/IP</option><option value="abbreviation">缩写</option><option value="slang">群黑话</option></select>
+        <select id="lexStatus" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px"><option value="stable">稳定</option><option value="hot">热门</option><option value="fresh">新词</option><option value="archived">过气</option></select>
         <button onclick="lexAdd()">添加</button>
       </div>
-      <div style="margin:8px 0"><button onclick="lexFilter='all';renderLex()">全部</button> <button onclick="lexFilter='group';renderLex()">群黑话</button> <button onclick="lexFilter='network';renderLex()">网络梗</button></div>
+      <div style="margin:8px 0"><button onclick="lexFilter='all';renderLex()">全部</button> <button onclick="lexFilter='slang';renderLex()">群黑话</button> <button onclick="lexFilter='meme';renderLex()">网络梗</button> <button onclick="lexFilter='buzzword';renderLex()">热门词</button> <button onclick="lexFilter='fandom';renderLex()">角色/IP</button> <button onclick="lexFilter='abbreviation';renderLex()">缩写</button></div>
       <div id="lexlist"></div></div>`;
     $('#lexicon').innerHTML=h;
     renderLex();

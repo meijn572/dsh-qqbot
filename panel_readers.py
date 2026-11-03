@@ -14,6 +14,13 @@ from urllib.parse import parse_qs, urlparse
 
 from settings import AGENTS, BOT_DIR as BOT, CMEM_BASE, DSH_HOME as HOME, HEALTH_FILE, PANEL_PORT, QR_FILE, SCRIPTS_DIR, STATE_FILE, WORKSPACE
 from qqbot.domains.concepts import concept_id, ensure_concept
+from qqbot.domains.group.lexicon import (
+    KINDS,
+    STATUSES,
+    delete_entry as delete_lexicon_entry,
+    list_entries as list_lexicon_entries,
+    upsert_entry as upsert_lexicon_entry,
+)
 from qqbot.domains.media.meta import lookup_ref as resolve_sticker_ref
 
 DB = HOME / "memory" / "memory.db"
@@ -31,16 +38,21 @@ SLANG_DIR = HOME / "group-slang"
 
 
 def groupslang_payload() -> dict:
-    groups = {}
-    if SLANG_DIR.is_dir():
-        for path in SLANG_DIR.glob("*.json"):
-            if path.stem == "state":
-                continue
-            try:
-                items = json.loads(path.read_text(encoding="utf-8")) or []
-            except Exception:  # noqa: BLE001
-                items = []
-            groups[path.stem] = items
+    groups: dict[str, list[dict]] = {}
+    for entry in list_lexicon_entries(kind="slang"):
+        scope = str(entry.get("scope") or "")
+        if not scope.startswith("group:"):
+            continue
+        gid = scope.split(":", 1)[1]
+        examples = entry.get("examples") or []
+        groups.setdefault(gid, []).append({
+            "term": entry.get("term") or "",
+            "meaning": entry.get("meaning") or "",
+            "example": examples[0] if examples else "",
+            "aliases": entry.get("aliases") or [],
+            "count": int(entry.get("count") or 0),
+            "last_seen": int(entry.get("last_seen") or 0),
+        })
     logs = {}
     log_dir = HOME / "group-log"
     if log_dir.is_dir():
@@ -64,44 +76,28 @@ def groupslang_payload() -> dict:
     return {"groups": groups, "logs": logs, "last_extract": last, "service_slang": learned}
 
 
-NETWORK_MEMES = HOME / "network-memes.json"
-
-
 def lexicon_payload() -> dict:
     entries = []
-    slang = groupslang_payload()
-    for gid, items in (slang.get("groups") or {}).items():
-        for item in items:
-            term = str(item.get("term") or "").strip()
-            if not term:
-                continue
-            entries.append({
-                "category": "group",
-                "scope": gid,
-                "term": term,
-                "aliases": item.get("aliases") if isinstance(item.get("aliases"), list) else [],
-                "meaning": str(item.get("meaning") or ""),
-                "example": str(item.get("example") or ""),
-                "count": int(item.get("count") or 0),
-                "last_seen": item.get("last_seen") or 0,
-            })
-    net = read_json(NETWORK_MEMES) or {}
-    for item in net.get("entries") or []:
-        if not isinstance(item, dict) or not item.get("term"):
-            continue
+    for entry in list_lexicon_entries():
+        scope = str(entry.get("scope") or "global")
+        examples = entry.get("examples") or []
+        category = "group" if scope.startswith("group:") else "network"
         entries.append({
-            "category": "network",
-            "id": concept_id(term),
-            "scope": "global",
-            "term": str(item.get("term") or ""),
-            "aliases": item.get("aliases") if isinstance(item.get("aliases"), list) else [],
-            "meaning": str(item.get("meaning") or ""),
-            "example": str(item.get("example") or ""),
-            "count": int(item.get("count") or 0),
-            "last_seen": item.get("last_seen") or 0,
+            "id": entry.get("id") or "",
+            "concept": concept_id(entry.get("term") or "") if scope == "global" else "",
+            "category": category,
+            "kind": entry.get("kind") or "",
+            "scope": scope.split(":", 1)[1] if category == "group" else "global",
+            "status": entry.get("status") or "stable",
+            "term": entry.get("term") or "",
+            "aliases": entry.get("aliases") or [],
+            "meaning": entry.get("meaning") or "",
+            "example": examples[0] if examples else "",
+            "count": int(entry.get("count") or 0),
+            "last_seen": int(entry.get("last_seen") or 0),
         })
-    entries.sort(key=lambda item: (item["category"], item["term"]))
-    return {"entries": entries}
+    entries.sort(key=lambda item: (item["kind"], item["category"], item["term"]))
+    return {"entries": entries, "kinds": list(KINDS), "statuses": list(STATUSES)}
 
 
 def lexicon_search_payload(query: str) -> dict:
@@ -140,67 +136,67 @@ def lexicon_search_payload(query: str) -> dict:
     }
 
 
-def lexicon_add(category: str, term: str, meaning: str, example: str = "", aliases: str | list = "") -> dict:
+def lexicon_add(kind: str, term: str, meaning: str, example: str = "", aliases: str | list = "",
+                status: str = "stable", scope: str = "") -> dict:
     term = str(term or "").strip()[:40]
     meaning = str(meaning or "").strip()[:300]
     example = str(example or "").strip()[:300]
+    kind = str(kind or "meme").strip()
+    status = str(status or "stable").strip()
+    if kind not in KINDS:
+        kind = "meme"
+    if status not in STATUSES:
+        status = "stable"
     if isinstance(aliases, str):
         aliases = [x.strip() for x in re.split(r"[,，、\s]+", aliases) if x.strip()]
     aliases = [str(x).strip()[:40] for x in (aliases or []) if str(x).strip()][:12]
     if not term:
         return {"ok": False, "error": "term required"}
-    if category == "network":
-        data = read_json(NETWORK_MEMES) or {}
-        items = data.setdefault("entries", [])
-        existing = next((item for item in items if str(item.get("term")) == term), None)
-        if existing:
-            existing.update({"meaning": meaning, "example": example, "id": concept_id(term), "aliases": aliases})
+    if not scope:
+        if kind == "slang":
+            config = read_json(BOT / "config.json") or {}
+            groups = config.get("allowed_groups") or []
+            if not groups:
+                return {"ok": False, "error": "没有配置群号"}
+            scope = f"group:{groups[0]}"
         else:
-            items.append({"term": term, "meaning": meaning, "example": example, "id": concept_id(term), "aliases": aliases, "count": 1, "last_seen": int(time.time())})
-        ensure_concept(term, kind="meme", scope="global", meaning=meaning, source="lexicon")
-        NETWORK_MEMES.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-        return {"ok": True, "id": concept_id(term)}
-    config = read_json(BOT / "config.json") or {}
-    groups = config.get("allowed_groups") or []
-    if not groups:
-        return {"ok": False, "error": "没有配置群号"}
-    gid = str(groups[0])
-    path = SLANG_DIR / f"{gid}.json"
-    items = read_json(path) or []
-    if not isinstance(items, list):
-        items = []
-    existing = next((item for item in items if str(item.get("term")) == term), None)
-    if existing:
-        existing.update({"meaning": meaning, "example": example, "aliases": aliases})
-    else:
-        items.append({"term": term, "meaning": meaning, "example": example, "aliases": aliases, "count": 1, "last_seen": int(time.time())})
-    SLANG_DIR.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
-    return {"ok": True}
+            scope = "global"
+    entry = upsert_lexicon_entry(
+        term,
+        kind=kind,
+        scope=scope,
+        status=status,
+        meaning=meaning,
+        aliases=aliases,
+        examples=[example] if example else [],
+        source="panel",
+    )
+    if not entry:
+        return {"ok": False, "error": "写入失败"}
+    if scope == "global":
+        ensure_concept(term, kind="fandom" if kind == "fandom" else "meme", meaning=meaning, source="lexicon")
+    return {"ok": True, "id": entry.get("id"), "entry": entry}
 
 
-def lexicon_delete(category: str, term: str) -> dict:
+def lexicon_delete(entry_id: str = "", category: str = "", term: str = "") -> dict:
+    entry_id = str(entry_id or "").strip()
+    if entry_id:
+        return {"ok": delete_lexicon_entry(entry_id)}
     term = str(term or "").strip()
     if not term:
-        return {"ok": False, "error": "term required"}
-    if category == "network":
-        data = read_json(NETWORK_MEMES) or {}
-        data["entries"] = [item for item in (data.get("entries") or []) if str(item.get("term")) != term]
-        NETWORK_MEMES.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-        return {"ok": True}
-    changed = False
-    if SLANG_DIR.is_dir():
-        for path in SLANG_DIR.glob("*.json"):
-            if path.stem == "state":
-                continue
-            items = read_json(path) or []
-            if not isinstance(items, list):
-                continue
-            kept = [item for item in items if str(item.get("term")) != term]
-            if len(kept) != len(items):
-                path.write_text(json.dumps(kept, ensure_ascii=False, indent=1), encoding="utf-8")
-                changed = True
-    return {"ok": changed}
+        return {"ok": False, "error": "id required"}
+    targets = list_lexicon_entries()
+    if category == "group":
+        config = read_json(BOT / "config.json") or {}
+        groups = config.get("allowed_groups") or []
+        scope = f"group:{groups[0]}" if groups else ""
+        targets = [e for e in targets if e.get("scope") == scope]
+    elif category == "network":
+        targets = [e for e in targets if e.get("scope") == "global"]
+    target = next((e for e in targets if e.get("term") == term), None)
+    if not target:
+        return {"ok": False, "error": "没找到词条"}
+    return {"ok": delete_lexicon_entry(str(target.get("id") or ""))}
 
 
 PORTS = {

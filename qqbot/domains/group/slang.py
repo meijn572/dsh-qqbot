@@ -1,4 +1,7 @@
-"""群日志与黑话/网络梗存储。"""
+"""群日志与黑话兼容层。
+
+存储已经统一到 lexicon.py；这个模块只保留 bridge 需要的旧接口。
+"""
 from __future__ import annotations
 
 import json
@@ -7,9 +10,10 @@ import time
 from pathlib import Path
 
 from settings import DSH_HOME
+from qqbot.domains.group.lexicon import list_entries, replace_scope, search_entries
 
 log = logging.getLogger("qqbot.group.slang")
-GROUP_SLANG_DIR = DSH_HOME / "group-slang"
+GROUP_SLANG_DIR = DSH_HOME / "group-slang"  # 仅保留旧状态文件路径
 GROUP_LOG_DIR = DSH_HOME / "group-log"
 
 
@@ -29,36 +33,29 @@ def log_group_message(chat_key: str, user_id: int, text: str) -> None:
         log.warning("group log failed: %s", exc)
 
 
+def _legacy_shape(entry: dict) -> dict:
+    examples = entry.get("examples") or []
+    return {
+        "term": entry.get("term") or "",
+        "meaning": entry.get("meaning") or "",
+        "example": examples[0] if examples else "",
+        "aliases": entry.get("aliases") or [],
+        "count": int(entry.get("count") or 0),
+        "first_seen": int(entry.get("first_seen") or 0),
+        "last_seen": int(entry.get("last_seen") or 0),
+    }
+
+
 def load_slang(gid: str) -> list[dict]:
-    path = GROUP_SLANG_DIR / f"{gid}.json"
-    try:
-        data = json.loads(path.read_text(encoding="utf-8")) or []
-        return data if isinstance(data, list) else []
-    except Exception:  # noqa: BLE001
-        return []
+    return [_legacy_shape(e) for e in list_entries(scope=f"group:{gid}")]
 
 
 def save_slang(gid: str, items: list[dict]) -> None:
-    GROUP_SLANG_DIR.mkdir(parents=True, exist_ok=True)
-    (GROUP_SLANG_DIR / f"{gid}.json").write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
-
-
-NETWORK_MEMES_FILE = DSH_HOME / "network-memes.json"
+    replace_scope(f"group:{gid}", items, kind="slang", source="group-log")
 
 
 def load_network_memes() -> list[dict]:
-    try:
-        data = json.loads(NETWORK_MEMES_FILE.read_text(encoding="utf-8"))
-        items = data.get("entries") if isinstance(data, dict) else data
-        return [item for item in (items or []) if isinstance(item, dict) and item.get("term")]
-    except Exception:  # noqa: BLE001
-        return []
-
-
-def save_network_memes(items: list[dict]) -> None:
-    NETWORK_MEMES_FILE.write_text(
-        json.dumps({"entries": items}, ensure_ascii=False, indent=1), encoding="utf-8"
-    )
+    return [_legacy_shape(e) for e in list_entries(scope="global")]
 
 
 def network_meme_hint(text: str) -> str:
@@ -66,13 +63,13 @@ def network_meme_hint(text: str) -> str:
     if not text:
         return ""
     hits = []
-    for item in load_network_memes():
-        term = str(item.get("term") or "").strip()
-        aliases = [str(a).strip() for a in (item.get("aliases") or []) if str(a).strip()]
-        matched = next((x for x in [term, *aliases] if len(x) >= 2 and x in text), "")
+    for entry in search_entries(text, scope="global"):
+        # search_entries 是子串搜索；这里再按 term/alias 精确确认
+        terms = [str(entry.get("term") or ""), *[str(a) for a in (entry.get("aliases") or [])]]
+        matched = next((term for term in terms if len(term) >= 2 and term in text), "")
         if not matched:
             continue
-        meaning = str(item.get("meaning") or "").strip()
+        meaning = str(entry.get("meaning") or "").strip()
         hits.append(f"{matched}→{meaning[:120]}" if meaning else matched)
         if len(hits) >= 4:
             break
