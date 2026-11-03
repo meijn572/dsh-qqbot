@@ -70,6 +70,7 @@ DSH turn/end
 - `tags=["raw", "session:<id>"]`
 - `scope` 来自 session 映射
 - 有 embedder 时写向量
+- 图片消息保留 `主人：<文本>（发来 N 张图片）`；纯图片也写 `（发来 N 张图片）`，避免整轮被跳过
 
 `internalTurn`、未映射会话、系统提示不写入。
 

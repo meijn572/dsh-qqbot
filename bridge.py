@@ -859,7 +859,17 @@ async def _process_locked(dsh: Dsh, onebot: OneBot, mtype: str, target: int, cha
         log.info("new dsh session %s for %s", sid, chat_key)
     try:
         prompt_started = time.time()
-        proj = await dsh.projections(sid)
+        try:
+            proj = await dsh.projections(sid)
+        except RuntimeError as exc:
+            # DSH 重启后旧会话的 projection 可能读不出来；自动换新会话，别让用户看到“卡了”
+            if "Session projection" not in str(exc):
+                raise
+            log.warning("会话投影损坏，切换新会话 (%s): %s", chat_key, exc)
+            sid = await dsh.create_session()
+            set_state(chat_key, sid, 0)
+            proj = await dsh.projections(sid)
+            log.info("new dsh session %s for %s (recovered)", sid, chat_key)
         baseline = int(proj.get("asOfSeq") or 0)
         extras: list[str] = []
         hint = history_hint() if should_hint(text) else ""

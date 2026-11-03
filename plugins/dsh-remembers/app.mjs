@@ -319,6 +319,7 @@ const soft = (key) => {
         id,
         injectedHashes: new Set(),   // 去重：同一块不重复注入
         outboundSeen: new Set(),     // 已补进上下文的桥接主动消息
+        turnImages: 0,               // 本轮用户发来的图片数
         turns: 0,                    // 已结束的轮数（每 50 轮重注入画像）
         turnUser: "",
         turnAssistant: "",
@@ -537,6 +538,10 @@ const soft = (key) => {
     if (isSynthetic(message)) return;   // 别的插件注入的块、time-context 都不要
 
     const text = extractText(message);
+    const imageCount = message.role === "assistant" ? 0 : (Array.isArray(message.content)
+      ? message.content.filter((part) => part?.type === "image").length
+      : 0);
+    if (imageCount) state.turnImages += imageCount;
     if (!text) return;
     if (message.role === "assistant") {
       state.turnAssistant = clip(`${state.turnAssistant}\n${text}`.trim(), 800);
@@ -552,6 +557,8 @@ const soft = (key) => {
     console.log("[dsh-remembers-debug] turn/end session=" + String(session?.id) + " skipped=" + skipped(session));
     if (skipped(session)) return;
     const state = stateFor(session);
+    const imageCount = Number(state.turnImages) || 0;
+    state.turnImages = 0;
     const scopeOf = scopeFromSession(state.id);   // 谁说的 / 在哪个场景
     // 桥接没登记的会话 = 内部维护/测试/DSH 面板，不写记忆
     if (scopeOf.scope === "global" && !String(state.id).startsWith("onebot-")) {
@@ -571,7 +578,11 @@ const soft = (key) => {
     }
     const nickname = String(state.nickname || "").trim();
     // 剥掉系统唤醒片段，只留真实内容
-    const keptUser = cleanNudge(user);
+    let keptUser = cleanNudge(user);
+    if (imageCount > 0) {
+      const marker = imageCount === 1 ? "（发来 1 张图片）" : `（发来 ${imageCount} 张图片）`;
+      keptUser = keptUser ? `${keptUser} ${marker}` : marker;
+    }
     state.turnUser = "";
     state.turnAssistant = "";
     console.log("[dsh-remembers-debug] flush cfg extract=" + config.extract + " captureRaw=" + config.captureRaw + " userLen=" + user.length + " asstLen=" + assistant.length);
