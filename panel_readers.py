@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from settings import AGENTS, BOT_DIR as BOT, CMEM_BASE, DSH_HOME as HOME, HEALTH_FILE, PANEL_PORT, QR_FILE, SCRIPTS_DIR, STATE_FILE, WORKSPACE
+from qqbot.domains.media.meta import lookup_ref as resolve_sticker_ref
 
 DB = HOME / "memory" / "memory.db"
 PERSONA = HOME / "memory" / "persona-chat.md"
@@ -531,6 +532,13 @@ def sticker_delete(rel: str) -> dict:
             meta.pop(old, None)
         (STICKERS / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"ok": True, "file": key}
+
+
+def sticker_lookup_payload(ref: str) -> dict:
+    try:
+        return resolve_sticker_ref(str(ref or ""))
+    except Exception as exc:  # noqa: BLE001
+        return {"found": False, "error": str(exc)}
 
 
 def sticker_update_tags(rel: str, tags: list) -> dict:

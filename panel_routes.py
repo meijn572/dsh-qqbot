@@ -35,6 +35,7 @@ from panel_readers import (
     set_proactive,
     status_payload,
     sticker_payload,
+    sticker_lookup_payload,
     sticker_delete,
     sticker_update_tags,
     style_payload,
@@ -80,6 +81,9 @@ def handle_get(handler, path: str, parsed) -> None:
         handler._json(lexicon_payload())
     elif path == "/api/stickers":
         handler._json(sticker_payload())
+    elif path == "/api/stickers/lookup":
+        ref = (query.get("ref") or [""])[0]
+        handler._json(sticker_lookup_payload(ref))
     elif path == "/api/logs":
         name = (query.get("name") or ["bridge"])[0]
         files = {

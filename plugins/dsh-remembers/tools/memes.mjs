@@ -131,7 +131,28 @@ export async function registerMemeTools({ registerTool, log, endpoint, memeDir }
       },
     }));
 
-    log("meme_tools_registered", { count: 4 });
+    registerTool(defineTool({
+      name: "sticker_lookup",
+      description:
+        "查这张表情在不在表情库里、库里叫什么/什么标签。"
+        + "ref 支持 source:<bridge-note 图片路径> / file:<库内相对路径> / query:<关键词>。"
+        + "用户问「库里有这张吗」「这张叫什么」时先查这个，不要猜。",
+      parameters: {
+        ref: { type: "string", required: true, description: "source:D:\\...\\xxx.jpg / file:happy/u_xxx.jpg / query:黄色小恐龙" },
+      },
+      output: { schema: { type: "json" }, render: (_a, v) => [{ type: "text", text: JSON.stringify(v) }] },
+      execute: async (args) => {
+        const ref = String(args.ref || "").trim();
+        if (!ref) return { ok: false, found: false, error: "缺少 ref" };
+        const base = String(process.env.CMEM_PANEL_URL || "http://127.0.0.1:6080").replace(/\/$/, "");
+        const res = await fetch(base + "/api/stickers/lookup?ref=" + encodeURIComponent(ref), {
+          signal: AbortSignal.timeout(5000),
+        });
+        return res.json().catch(() => ({ ok: false, found: false, error: "查询失败" }));
+      },
+    }));
+
+    log("meme_tools_registered", { count: 5 });
   } catch (error) {
     log("meme_tools_skipped", { reason: "register 失败", error: String(error?.message ?? error) });
   }

@@ -13,6 +13,7 @@ from qqbot.domains.media.library import (
     find_by_keyword,
     find_signature_match,
     index_add,
+    load_index,
     sticker_signature,
 )
 
@@ -94,3 +95,24 @@ def apply_record(record: dict) -> dict:
         name=str(record.get("name") or ""),
     )
     return {"ok": True, "rel": rel}
+
+
+def lookup_ref(ref: str) -> dict:
+    """只读：这张表情在库里是谁；找不到就明确 found=False。"""
+    rel = resolve_ref(ref)
+    if not rel:
+        return {"found": False, "ref": str(ref or "")}
+    entries = load_index()
+    entry = next(
+        (e for e in entries if str(e.get("file") or "").replace("\\", "/") == rel),
+        {},
+    )
+    return {
+        "found": True,
+        "file": rel,
+        "name": str(entry.get("name") or ""),
+        "category": str(entry.get("category") or Path(rel).parent.name),
+        "tags": entry.get("tags") if isinstance(entry.get("tags"), list) else [],
+        "caption": str(entry.get("caption") or ""),
+        "usage_count": int(entry.get("usage_count") or 0),
+    }
