@@ -953,6 +953,69 @@ async def sticker_enrich_loop(dsh: Dsh) -> None:
             log.warning("sticker_enrich_loop err: %s", exc)
 
 
+def _sticker_rel_for_source(source: str) -> str:
+    raw = str(source or "").strip()
+    if not raw:
+        return ""
+    path = Path(raw)
+    try:
+        return str(path.resolve().relative_to(MEME_DIR.resolve())).replace("\\", "/")
+    except Exception:
+        pass
+    try:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+    except OSError:
+        return ""
+    matches = sorted(MEME_DIR.rglob(f"u_{digest}*"))
+    if not matches:
+        return ""
+    return str(matches[0].relative_to(MEME_DIR)).replace("\\", "/")
+
+
+async def sticker_meta_loop() -> None:
+    """主模型看图表意后写队列；这里等收藏完成后补进索引。"""
+    while True:
+        await asyncio.sleep(3)
+        try:
+            if not STICKER_META_QUEUE.exists():
+                continue
+            lines = STICKER_META_QUEUE.read_text(encoding="utf-8").splitlines()
+            if not lines:
+                continue
+            pending = []
+            now = time.time()
+            for line in lines:
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                source = str(rec.get("source") or "")
+                rel = _sticker_rel_for_source(source)
+                if not rel:
+                    # 收藏是后台异步的，给它 3 分钟落盘时间
+                    if now - float(rec.get("ts") or 0) / 1000 < 180:
+                        pending.append(rec)
+                    continue
+                category = Path(rel).parent.name
+                tags = rec.get("tags") or []
+                if isinstance(tags, str):
+                    tags = [t.strip() for t in re.split(r"[,，、\s]+", tags) if t.strip()]
+                index_add(
+                    rel,
+                    category,
+                    str(rec.get("caption") or ""),
+                    list(tags)[:12],
+                    name=str(rec.get("name") or ""),
+                )
+                log.info("表情语义已补：%s %s %s", rel, rec.get("name"), tags)
+            STICKER_META_QUEUE.write_text(
+                "".join(json.dumps(rec, ensure_ascii=False) + "\n" for rec in pending),
+                encoding="utf-8",
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("sticker_meta_loop err: %s", exc)
+
+
 async def enrich_stickers(dsh: Dsh, chat_key: str, images: list[str], context_text: str) -> None:
     """让模型在对话后自己写一条表情包理解（名字/描述/标签），写回索引。"""
     for img in images:
@@ -994,6 +1057,7 @@ async def enrich_stickers(dsh: Dsh, chat_key: str, images: list[str], context_te
 
 
 RECENT_TEXT: dict[str, str] = {}
+STICKER_META_QUEUE = DSH_HOME / "sticker-meta-queue.jsonl"
 LAST_SHARE: dict[str, dict] = {}
 MAINT_STATE_FILE = DSH_HOME / "maintenance-session.json"
 ACTIVITY_SESSION_FILE = DSH_HOME / "activity-session.json"
@@ -1910,6 +1974,7 @@ async def run() -> None:
     asyncio.create_task(report_watch(dsh, onebot))
     asyncio.create_task(session_watch(dsh, onebot))
     asyncio.create_task(sticker_enrich_loop(dsh))
+    asyncio.create_task(sticker_meta_loop())
     asyncio.create_task(autonomy_loop(dsh, onebot))
     backoff = 3
     meta_seen = 0
