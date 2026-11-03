@@ -64,6 +64,7 @@ from qqbot.domains.media.library import (
     is_sticker_rel,
     load_index,
     load_sticker_meta,
+    mark_sticker_used,
     pick_meme,
     remember_sticker_info,
     remember_sticker_meta,
@@ -427,6 +428,8 @@ class OneBot:
                 rel = str(Path(path).resolve().relative_to(MEME_DIR.resolve())).replace("\\", "/")
             except Exception:  # noqa: BLE001
                 rel = ""
+            if rel:
+                mark_sticker_used(rel)
             meta = STICKER_META.get(rel) or {}
             if meta.get("emoji_id"):
                 custom_faces.append((str(meta["emoji_id"]), raw))

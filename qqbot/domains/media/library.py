@@ -179,9 +179,12 @@ def extract_note_keywords(note: str) -> list[str]:
     return words[:3]
 
 
-def index_add(rel_path: str, category: str, caption: str, tags: list[str], sig: tuple[int, int, int] | None = None) -> None:
+def index_add(rel_path: str, category: str, caption: str, tags: list[str], sig: tuple[int, int, int] | None = None,
+              name: str = "", aliases: list[str] | None = None) -> None:
     entries = load_index()
     existing = next((e for e in entries if e.get("file") == rel_path), None)
+    clean_name = str(name or "").strip()
+    clean_aliases = [str(a).strip() for a in (aliases or []) if str(a).strip()]
     if existing is not None:
         merged = list(existing.get("tags") or [])
         for tag in tags:
@@ -191,20 +194,141 @@ def index_add(rel_path: str, category: str, caption: str, tags: list[str], sig: 
         existing["tags"] = merged
         if caption and not existing.get("caption"):
             existing["caption"] = caption
+        if existing.get("caption") and not existing.get("name"):
+            existing["name"] = str(existing["caption"])[:20]
         existing["category"] = category or existing.get("category", "")
+        if clean_name and not existing.get("name"):
+            existing["name"] = clean_name
+        if clean_aliases:
+            old_aliases = list(existing.get("aliases") or [])
+            existing["aliases"] = list(dict.fromkeys(old_aliases + clean_aliases))
         if sig:
             existing["w"], existing["h"], existing["sig"] = sig[0], sig[1], format(sig[2], "016x")
         save_index(entries)
         return
     entry = {"file": rel_path, "category": category, "caption": caption, "tags": tags, "ts": int(time.time())}
+    if clean_name or caption:
+        entry["name"] = clean_name or caption[:20]
+    if clean_aliases:
+        entry["aliases"] = clean_aliases
     if sig:
         entry["w"], entry["h"], entry["sig"] = sig[0], sig[1], format(sig[2], "016x")
     entries.append(entry)
     save_index(entries)
 
 
-def pick_meme(category: str) -> str | None:
-    folder = MEME_DIR / category.lower()
+def _entry_text(entry: dict) -> tuple[str, str, list[str]]:
+    name = str(entry.get("name") or "").strip()
+    caption = str(entry.get("caption") or "").strip()
+    aliases = [str(a).strip() for a in (entry.get("aliases") or []) if str(a).strip()]
+    return name, caption, aliases
+
+
+def _score_entry(entry: dict, query: str, category: str | None = None) -> float | None:
+    """本地语义匹配：别名/名称/标签/描述，类别只作为过滤和兜底。"""
+    q = str(query or "").strip().lower()
+    if category and str(entry.get("category") or "").lower() != category.lower():
+        return None
+    name, caption, aliases = _entry_text(entry)
+    tags = [str(t).strip().lower() for t in (entry.get("tags") or []) if str(t).strip()]
+    file = str(entry.get("file") or "").lower()
+    if not q:
+        return 1.0
+    score = 0.0
+    if q == file or q == name.lower() or q in {a.lower() for a in aliases}:
+        score += 200
+    elif q in name.lower() or any(q in a.lower() for a in aliases):
+        score += 80
+    for tag in tags:
+        if q == tag:
+            score += 60
+        elif q in tag or tag in q:
+            score += 22
+    if q in caption.lower():
+        score += 25
+    if q in file:
+        score += 8
+    if any(ch.isalnum() for ch in str(entry.get("file") or "")) and file.startswith(("u_", "happy/", "angry/", "sad/", "confused/")):
+        score += 3
+    # 同一张图最近刚用过就降权，避免连续重复
+    try:
+        last = float(entry.get("last_used_at") or 0)
+        if last:
+            age = max(0.0, time.time() - last)
+            if age < 300:
+                score -= 45
+            elif age < 3600:
+                score -= 15
+    except (TypeError, ValueError):
+        pass
+    score -= min(10.0, float(entry.get("usage_count") or 0) * 0.4)
+    return score if score > 0 else None
+
+
+def _best_match(query: str, category: str | None = None) -> tuple[float, dict] | None:
+    if not STICKER_META:
+        load_sticker_meta()
+    best: tuple[float, dict] | None = None
+    for entry in load_index():
+        if not is_sticker_rel(str(entry.get("file") or "")):
+            continue
+        path = MEME_DIR / str(entry.get("file") or "")
+        if not path.is_file():
+            continue
+        score = _score_entry(entry, query, category)
+        if score is None:
+            continue
+        if best is None or score > best[0]:
+            best = (score, entry)
+    return best
+
+
+def mark_sticker_used(rel_path: str) -> None:
+    key = str(rel_path or "").replace("\\", "/")
+    entries = load_index()
+    changed = False
+    for entry in entries:
+        if str(entry.get("file") or "").replace("\\", "/") != key:
+            continue
+        entry["usage_count"] = int(entry.get("usage_count") or 0) + 1
+        entry["last_used_at"] = time.time()
+        changed = True
+        break
+    if changed:
+        save_index(entries)
+
+
+def pick_meme(category: str, query: str = "") -> str | None:
+    category = str(category or "").strip().lower()
+    if not category:
+        return None
+    if not STICKER_META:
+        load_sticker_meta()
+    candidates: list[tuple[float, dict]] = []
+    for entry in load_index():
+        if str(entry.get("category") or "").lower() != category:
+            continue
+        if not is_sticker_rel(str(entry.get("file") or "")):
+            continue
+        path = MEME_DIR / str(entry.get("file") or "")
+        if not path.is_file():
+            continue
+        score = _score_entry(entry, query, category) if query else 1.0
+        if score is not None:
+            candidates.append((score, entry))
+    if candidates:
+        if query:
+            candidates.sort(key=lambda item: item[0], reverse=True)
+            top = candidates[:min(5, len(candidates))]
+            return str(MEME_DIR / str(random.choice(top)[1].get("file")))
+        # 没给具体词时优先用久没发过的，别总是同一张
+        candidates.sort(key=lambda item: float(item[1].get("last_used_at") or 0))
+        pool = candidates[:min(6, len(candidates))]
+        return str(MEME_DIR / str(random.choice(pool)[1].get("file")))
+    # 索引缺失时回退到目录扫描，兼容旧数据；只有泛类别才允许随便挑
+    if query:
+        return None
+    folder = MEME_DIR / category
     if not folder.is_dir():
         return None
     files = [
@@ -221,31 +345,51 @@ def pick_meme(category: str) -> str | None:
 
 
 def find_by_keyword(keyword: str) -> str | None:
-    keyword = keyword.strip().lower()
+    keyword = keyword.strip()
     if not keyword:
         return None
-    for entry in reversed(load_index()):
-        if not is_sticker_rel(str(entry.get("file") or "")):
-            continue
-        haystack = (entry.get("caption") or "") + " " + " ".join(entry.get("tags") or []) + " " + (entry.get("file") or "")
-        if keyword in haystack.lower():
-            path = MEME_DIR / entry["file"]
-            if path.is_file():
-                return str(path)
-    return None
+    best = _best_match(keyword)
+    if best is None:
+        return None
+    return str(MEME_DIR / str(best[1].get("file") or ""))
 
 
 def resolve_meme(token: str) -> str | None:
     token = token.strip()
-    lower = token.lower()
-    if lower in STICKER_CATEGORIES:
-        return pick_meme(lower)
-    if token in CATEGORY_CN:
-        return pick_meme(CATEGORY_CN[token])
-    for word, category in CATEGORY_CN.items():
+    if not token:
+        return None
+    category: str | None = None
+    query = token
+    for sep in (":", "："):
+        if sep not in token:
+            continue
+        left, right = token.split(sep, 1)
+        left = left.strip().lower()
+        right = right.strip()
+        if left in STICKER_CATEGORIES:
+            category, query = left, right
+        elif left in CATEGORY_CN:
+            category, query = CATEGORY_CN[left], right
+        if category:
+            break
+    if category and not query:
+        return pick_meme(category)
+    if not category:
+        lower = token.lower()
+        if lower in STICKER_CATEGORIES:
+            return pick_meme(lower)
+        if token in CATEGORY_CN:
+            return pick_meme(CATEGORY_CN[token])
+    # 先按名称/别名/标签/描述找具体图，类别只做过滤和兜底
+    best = _best_match(query, category)
+    if best is not None:
+        return str(MEME_DIR / str(best[1].get("file") or ""))
+    if category:
+        return pick_meme(category, query)
+    for word, fallback in CATEGORY_CN.items():
         if word in token:
-            return pick_meme(category)
-    return find_by_keyword(token)
+            return pick_meme(fallback, token)
+    return None
 
 
 def index_keywords(limit: int = 16) -> list[str]:
