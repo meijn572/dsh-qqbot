@@ -1273,10 +1273,9 @@ async def bili_link_hint(text: str) -> str:
         mins = f" {info['duration'] // 60}分{info['duration'] % 60}秒" if info.get("duration") else ""
         lines.append(f"{label}{meta}{up}{mins}")
     return ("\n（你收到 B 站视频：" + "；".join(lines)
-            + "。先判断要看什么：人物/构图看 1–3 帧就够；动作/过程/动画不能只靠少数静帧，"
-            "用 bili_frames 多覆盖开头、动作段、结尾，或用 at 指定关键时间点。"
-            "bili_frames 走 B 站故事板，秒数会吸附到最近的格；要精确到某一秒，"
-            "用 bili_watch command=frames at=\"25\"（会下载 360p 视频再抽帧）。"
+            + "。看画面优先用 bili_watch：人物/构图用 command=peek 或 sheet；"
+            "动作/过程/精确秒用 command=frames at=\"25\"；长视频先读字幕，再挑关键秒。"
+            "bili_frames 只做快速静态预览或长视频值不值得细看的筛选，不要用它判断动作。"
             "静帧只能证明这一瞬间，没看到过程就直说没看清，不要补动作因果。"
             "字幕用 bili_subtitle 读。）")
 
