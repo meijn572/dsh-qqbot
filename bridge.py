@@ -52,7 +52,6 @@ from qqbot.domains.media.library import (
     STICKER_CATEGORIES,
     STICKER_META,
     STICKER_META_FILE,
-    extract_note_keywords,
     find_by_keyword,
     find_existing_sticker,
     find_index_hit,

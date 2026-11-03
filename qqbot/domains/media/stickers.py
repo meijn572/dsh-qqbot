@@ -8,7 +8,6 @@ from pathlib import Path
 
 from qqbot.domains.media.library import (
     MEME_DIR,
-    extract_note_keywords,
     find_existing_sticker,
     find_signature_match,
     index_add,
@@ -49,8 +48,7 @@ async def collect_sticker(source: Path, override: str | None = None, note: str =
     if existing is not None:
         rel = str(existing.relative_to(MEME_DIR))
         category = existing.parent.name
-        note_tags = extract_note_keywords(note)
-        index_add(rel, category, "", note_tags)
+        index_add(rel, category, "", [])
         remember_sticker_info(source, rel)
         remember_sticker_meta(source, rel)
         log.info("表情包已存在，更新索引：%s", rel)
@@ -59,7 +57,7 @@ async def collect_sticker(source: Path, override: str | None = None, note: str =
     near = find_signature_match(sig)
     if near:
         category = (MEME_DIR / near).parent.name
-        index_add(near, category, "", extract_note_keywords(note))
+        index_add(near, category, "", [])
         remember_sticker_info(source, near)
         remember_sticker_meta(source, near)
         log.info("表情包近似重复，合并到：%s", near)
@@ -72,10 +70,6 @@ async def collect_sticker(source: Path, override: str | None = None, note: str =
     target.write_bytes(raw)
     log.info("收藏表情包 -> %s (%s)", target.name, category)
     tags = list(info.get("tags") or [])
-    if note.strip():
-        for word in extract_note_keywords(note):
-            if word not in tags:
-                tags.append(word)
     index_add(str(target.relative_to(MEME_DIR)), category, info.get("caption", ""), tags, sig)
     remember_sticker_info(source, str(target.relative_to(MEME_DIR)))
     remember_sticker_meta(source, str(target.relative_to(MEME_DIR)))

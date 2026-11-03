@@ -50,6 +50,47 @@ NOTE_STOPWORDS = [
     "放进", "存进", "收进", "库里", "里面", "给我", "我要", "想要", "记得", "记住",
     "吗", "呢", "呀", "啊", "吧", "了", "的", "地", "得", "是", "叫", "把", "和", "跟",
 ]
+SCENE_TAG_WORDS = (
+    "我", "你", "他", "她", "它", "咱", "主人", "群友", "刚才", "刚刚", "今天", "昨天",
+    "现在", "然后", "觉得", "知道", "可以", "就是", "这个", "那个", "什么", "怎么",
+    "为什么", "是不是", "有没有", "已经", "还是", "但是", "因为", "所以", "如果",
+    "时候", "东西", "事情", "视频", "直播", "聊天", "群里", "弹幕", "评论", "b站", "B站",
+    "kpl", "KPL", "token", "表情包", "表情", "图片",
+)
+
+
+def clean_sticker_tags(tags: list[str], caption: str = "", name: str = "", category: str = "",
+                       limit: int = 8) -> list[str]:
+    """标签只留“这张图本身”，不要把聊天上下文整句塞进来。"""
+    cap = str(caption or "").lower()
+    nm = str(name or "").lower()
+    cat = str(category or "").lower()
+    kept: list[tuple[int, int, str]] = []
+    seen: set[str] = set()
+    for index, raw in enumerate(tags or []):
+        value = str(raw or "").strip()
+        if not value or value in seen:
+            continue
+        low = value.lower()
+        if len(value) > 12 or len(value) < 1:
+            continue
+        if any(p in value for p in "，。！？、,!?;；:："):
+            continue
+        if any(w in value for w in SCENE_TAG_WORDS):
+            continue
+        if low in {"inbox", "cache", "tmp", "sticker"}:
+            continue
+        score = 0
+        if low in cap or low in nm:
+            score += 3
+        if len(value) <= 6:
+            score += 2
+        if low == cat:
+            score += 1
+        kept.append((score, index, value))
+        seen.add(value)
+    kept.sort(key=lambda item: (-item[0], item[1]))
+    return [value for _, _, value in kept[:limit]]
 
 
 def load_sticker_meta() -> None:
@@ -185,13 +226,19 @@ def index_add(rel_path: str, category: str, caption: str, tags: list[str], sig: 
     existing = next((e for e in entries if e.get("file") == rel_path), None)
     clean_name = str(name or "").strip()
     clean_aliases = [str(a).strip() for a in (aliases or []) if str(a).strip()]
+    tags = clean_sticker_tags(tags, caption, clean_name, category)
     if existing is not None:
         merged = list(existing.get("tags") or [])
         for tag in tags:
             tag = str(tag).strip()
             if tag and tag not in merged:
                 merged.append(tag)
-        existing["tags"] = merged
+        existing["tags"] = clean_sticker_tags(
+            merged,
+            str(existing.get("caption") or caption or ""),
+            str(existing.get("name") or clean_name or ""),
+            str(existing.get("category") or category or ""),
+        )
         if caption and not existing.get("caption"):
             existing["caption"] = caption
         if existing.get("caption") and not existing.get("name"):
