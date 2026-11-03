@@ -95,12 +95,16 @@ async def run_round(deps: Deps) -> dict | None:
         f"这一轮的方向：{('自由探索，挑一个跟兴趣清单无关、你真好奇的领域' if mode == 'explore' else f'优先看「{topic}」')}。\n"
         "请按真实好奇心走，来源可以自己选：\n"
         f"1) 用 bili_search 搜最多 {max_videos} 条（关键词自定，近期的）；或者直接从推荐流里挑 1-2 条\n"
-        "2) 用 bili_subtitle 读其中 1 条的字幕原文（太长就只看关键部分）；画面/动作很重要的视频，可以再调 bili_frames 看 3-6 帧\n"
+        "2) 用 bili_subtitle 读其中 1 条的字幕原文（太长就只看关键部分）。\n"
+        "   要不要看画面、看多少帧，按时长和内容自己判断，不要固定 3 帧：\n"
+        "   - 短视频少量看；长视频先靠字幕找关键时间点，再用 bili_frames 的 at 定点看，别均匀抽满\n"
+        "   - 纯口播/有字幕且画面不重要，可以不抽；演示、动作、画面信息重要才抽\n"
+        "   - 不限制总帧数，但每一帧都要有理由；单次工具最多 6 帧，需要更多就分几次看关键段\n"
         "   没字幕但像是在讲话的视频，可以用 bili_transcribe 试着转写；它最多等 25 秒，跑不完会给你 job_id，先记下，别在一轮里死等。\n"
         "这一轮只是看，发不发之后再决定。\n"
         "只输出 JSON：{\"topic\":\"这轮主题（短标签，≤12 字；若属于清单里已有方向，直接沿用清单里的名字）\","
         "\"videos\":[{\"bvid\":\"\",\"title\":\"\",\"why\":\"为什么点开\"}],"
-        "\"thought\":\"看完的想法（一两句，第一人称）\"}\n"
+        "\"frames\":0,\"thought\":\"看完的想法（一两句，第一人称）\"}\n"
         "不要输出 JSON 以外的内容。"
     )
     async with deps.lock:
@@ -116,6 +120,10 @@ async def run_round(deps: Deps) -> dict | None:
             return None
         round_topic = str(data.get("topic") or topic or "自由探索")
         thought = str(data.get("thought") or "").strip()
+        try:
+            frames_used = max(0, int(data.get("frames") or 0))
+        except (TypeError, ValueError):
+            frames_used = 0
         videos = data.get("videos") if isinstance(data.get("videos"), list) else []
         mark_aut_seen([v for v in videos if isinstance(v, dict)], round_topic)
         scene = await deps.recent_scene(chat_key)
@@ -243,7 +251,7 @@ async def run_round(deps: Deps) -> dict | None:
     deps.log_activity("bili", f"刷了「{round_topic}」{titles}", thought)
     if thought:
         deps.add_event(f"事件：{time.strftime('%m-%d %H:%M')} 刷到「{round_topic}」{titles}；想法：{thought[:100]}")
-    log.info("自主刷完成：%s（%s 条视频）", round_topic, len(videos))
+    log.info("自主刷完成：%s（%s 条视频，%s 帧）", round_topic, len(videos), frames_used)
     return data
 
 
