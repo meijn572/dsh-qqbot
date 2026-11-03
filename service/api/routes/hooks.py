@@ -176,6 +176,8 @@ def turn_end(store, lock, gate, embedder, body: dict) -> dict:
     tags = ["raw", f"session:{body.get('session') or ''}"]
     for tag in extra_tags[:20]:
         value = str(tag or "").strip()
+        if value.startswith("sticker:") and value.split(":", 1)[1] in {"inbox", "cache", "tmp"}:
+            continue
         if value and len(value) <= 180 and value not in tags:
             tags.append(value)
     vec = None
