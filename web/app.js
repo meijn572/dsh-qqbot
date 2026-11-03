@@ -22,7 +22,7 @@ function mdToHtml(text){
 const CATS={
   overview:{subs:[['overview','概览']]},
   inner:{subs:[['memory','记忆'],['persona','人格'],['guests','群友'],['notebook','小本子'],['mood','心情 · 关系'],['proactive','主动']]},
-  media:{subs:[['stickers','表情包'],['lexicon','梗 · 黑话']]},
+  media:{subs:[['stickers','表情包'],['lexicon','词库']]},
   logs:{subs:[['logs','日志']]},
   bili:{subs:[['interests','兴趣'],['bili','B站']]}
 };
@@ -320,7 +320,7 @@ async function load(){
   if(!$('#lexicon').hidden){
     const lx=await j('/api/lexicon');
     window.__lexEntries=lx.entries||[];
-    let h=`<div class="card"><div class="k">梗 · 黑话 · ${window.__lexEntries.length} 条</div>
+    let h=`<div class="card"><div class="k">词库 · ${window.__lexEntries.length} 条</div>
       <div style="margin:10px 0">
         <input id="lexTerm" placeholder="词" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px;width:150px">
         <input id="lexMeaning" placeholder="意思" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px;width:320px">
@@ -510,7 +510,7 @@ async function stickerConfirmDelete(ev,btn){
   stickerClearSelection();
   load();
 }
-// 表情/黑话有输入框，不参与 10 秒轮询，避免把正在输入的内容顶掉
+// 表情/词库有输入框，不参与 10 秒轮询，避免把正在输入的内容顶掉
 setInterval(()=>{
   if(curSub==='stickers' || curSub==='lexicon') return;
   const el=document.activeElement;

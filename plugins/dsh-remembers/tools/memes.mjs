@@ -174,7 +174,46 @@ export async function registerMemeTools({ registerTool, log, endpoint, memeDir }
       },
     }));
 
-    log("meme_tools_registered", { count: 6 });
+    registerTool(defineTool({
+      name: "lexicon_meta",
+      description:
+        "新增或修改词库词条。用户教一个新词/梗、或明确要求记住/改解释时用。"
+        + "不确定现有解释时先用 lexicon_search 查重；不要凭空编来源。"
+        + "kind 可选 slang/meme/buzzword/fandom/abbreviation；scope 默认 global，群黑话用 group:<群号>。",
+      parameters: {
+        term: { type: "string", required: true, description: "词，比如 奶龙 / yyds / 2G" },
+        meaning: { type: "string", description: "解释" },
+        kind: { type: "string", description: "slang / meme / buzzword / fandom / abbreviation，默认 meme" },
+        scope: { type: "string", description: "global 或 group:<群号>，默认 global" },
+        status: { type: "string", description: "fresh / hot / stable / archived，默认 stable" },
+        aliases: { type: "string", description: "别名，逗号分隔" },
+        example: { type: "string", description: "例句，可选" },
+      },
+      output: { schema: { type: "json" }, render: (_a, v) => [{ type: "text", text: JSON.stringify(v) }] },
+      execute: async (args) => {
+        const term = String(args.term || "").trim();
+        if (!term) return { ok: false, error: "缺少 term" };
+        const base = String(process.env.CMEM_PANEL_URL || "http://127.0.0.1:6080").replace(/\/$/, "");
+        const body = {
+          term,
+          meaning: String(args.meaning || ""),
+          kind: String(args.kind || "meme"),
+          scope: String(args.scope || ""),
+          status: String(args.status || "stable"),
+          aliases: String(args.aliases || ""),
+          example: String(args.example || ""),
+        };
+        const res = await fetch(base + "/api/lexicon/add", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(5000),
+        });
+        return res.json().catch(() => ({ ok: false, error: "写入失败" }));
+      },
+    }));
+
+    log("meme_tools_registered", { count: 7 });
   } catch (error) {
     log("meme_tools_skipped", { reason: "register 失败", error: String(error?.message ?? error) });
   }
