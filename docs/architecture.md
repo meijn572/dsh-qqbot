@@ -170,7 +170,7 @@ growth 只依赖 `qqbot/clients` 和 `settings`，不 import bridge。
 | 文件 | 作用 |
 | --- | --- |
 | `index.mjs` | 2 行，re-export |
-| `app.mjs` | 生命周期/装配：systemPrompt、profile/person/state 注入、turn end、extract、episode |
+| `app.mjs` | 生命周期/装配：systemPrompt、profile/person/state/outbound 注入、turn end、extract、episode |
 | `client.mjs` | 记忆服务 HTTP 客户端 |
 | `config.mjs` | 配置解析 |
 | `hooks/recall.mjs` | 转发 `/hook/pre-step`，返回 recall |

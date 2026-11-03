@@ -26,6 +26,10 @@ def simple_get(path: str, query: dict, store):
         return store.task_list()
     if path == "/notes":
         return store.note_list()
+    if path == "/outbound":
+        scope = str((query.get("scope") or [""])[0])
+        limit = int((query.get("limit") or ["5"])[0])
+        return store.outbound_recent(scope=scope, limit=limit)
     if path == "/diary":
         return store.diary_list()
     return None

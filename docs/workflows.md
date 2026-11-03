@@ -234,6 +234,7 @@ DSH agent/pre-step
 | --- | --- | --- | --- |
 | system prompt | 人格、画像、L4 关系约定 | 插件 `client.persona()` + `client.profile()` → `renderPersona()` | 每次组装 system prompt（每个 model step） |
 | person | 当前发言人、群友画像、非主人提示 | 插件 `client.profileOf()` → `/profiles` | 每个 model step 前 |
+| outbound | 桥接主动发出的私聊/群消息、报告、B 站分享 | 插件 `client.outbound()` → `/outbound` → `createAssistantMessage` | 当前 user 消息之前，按 L0 id 只补一次 |
 | recall | L1 事实、L3 事件 | 插件 `hooks/recall.mjs` → `/hook/pre-step` | 每个 model step 前 |
 | state | 时间、心情、活动、B 站状态、黑话、关系阶段、颜文字/emoji | 插件 pre-step → `/state` | 每个 model step 前，变化才注入 |
 | bridge-note | 表情库提示、群黑话、B 站链接、网络梗、图片/表情路径 | `bridge.py :: _process_locked` | 用户消息进入 DSH 前 |
@@ -724,26 +725,39 @@ bili_autonomy.share_min_idle_minutes   # 默认 20
 11:30 之后 → 补一条
 ```
 
-### 6.4.2 主人回复分享
+### 6.4.2 主动发出的话进入上下文
 
-发送分享时，`LAST_SHARE` 不只记 topic，还记：
+桥接主动发出的内容都会写 L0，并带：
 
-- `text`：实际发出的那句话
-- `links`：视频链接
-- `ts`
-
-主人回复时：
-
-- `record_share_feedback` 只读取、不 pop
-- 下一轮 `_process_locked` 把分享原文放进 bridge-note
-- 提示她“主人这句话可能是在接这个，对不上就别硬认”
-- 这条用户消息处理完后再清掉
-
-否则会出现：
-
+```json
+["raw", "outbound"]
 ```
-鱼分享过 → 主人回复“这个不错” → 鱼不知道“这个”是什么
+
+包括：
+
+- 私聊主动
+- 报告推送
+- B 站分享
+- 群主动
+
+插件 pre-step：
+
+1. 调 `/outbound?scope=当前scope`
+2. 取最近 5 条未注入过的
+3. 用 `createAssistantMessage` 构造 **assistant 消息**
+4. 插到当前 user 消息之前
+5. 每个进程内按 L0 id 去重，只补一次
+
+所以模型看到的是：
+
+```text
+assistant: 刚刷到一个视频……
+user: 这个不错
 ```
+
+不是把分享塞进 user 的 bridge-note。
+
+注意：这是每轮临时注入，不写进 DSH session log；补过一次就停。
 
 ### 6.5 落库
 

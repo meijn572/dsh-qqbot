@@ -109,6 +109,15 @@ export class MemoryClient {
     }
   }
 
+  /** 桥接主动发出的最近消息（L0 outbound 标签）。 */
+  async outbound(scope, limit = 5) {
+    const qs = new URLSearchParams();
+    if (scope) qs.set("scope", scope);
+    qs.set("limit", String(limit));
+    const res = await this.#request("GET", `/outbound?${qs.toString()}`);
+    return Array.isArray(res) ? res : [];
+  }
+
   /**
    * 人格设定：宪法区 + 自我认知区。
    * 两半都空 = 还没设过，插件那侧会整段不注入。服务不可用返回 null。

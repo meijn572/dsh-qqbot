@@ -862,16 +862,6 @@ async def _process_locked(dsh: Dsh, onebot: OneBot, mtype: str, target: int, cha
         proj = await dsh.projections(sid)
         baseline = int(proj.get("asOfSeq") or 0)
         extras: list[str] = []
-        share = LAST_SHARE.pop(chat_key, None)
-        if share:
-            age = time.time() - float(share.get("ts", 0))
-            share_text = str(share.get("text") or "").strip()
-            if share_text and age <= 1800:
-                extras.append(
-                    "（你刚才主动给主人分享过：\n"
-                    + share_text[:800]
-                    + "\n主人现在这句话可能是在接这个；对不上就别硬认，也别假装记得细节。）"
-                )
         hint = history_hint() if should_hint(text) else ""
         if hint:
             extras.append(hint)
@@ -1173,7 +1163,7 @@ def add_l0_message(chat_key: str, text: str) -> None:
     if not text:
         return
     sid = str((state_entry(chat_key) or {}).get("sid") or "")
-    tags = ["raw"] + ([f"session:{sid}"] if sid else [])
+    tags = ["raw", "outbound"] + ([f"session:{sid}"] if sid else [])
     try:
         payload = json.dumps({
             "text": f"我：{text[:1000]}",

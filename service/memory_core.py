@@ -1366,6 +1366,22 @@ class MemoryStore:
             for r in rows
         ]
 
+    def outbound_recent(self, scope: str = "", limit: int = 5) -> list[dict]:
+        """最近由桥接主动发出的 L0（带 outbound 标签）。"""
+        sql = "SELECT id,text,ts,scope,tags FROM memory WHERE tier='L0' AND tags LIKE '%outbound%'"
+        args: list = []
+        if scope:
+            sql += " AND (scope=? OR scope='global')"
+            args.append(str(scope))
+        sql += " ORDER BY id DESC LIMIT ?"
+        args.append(max(1, min(int(limit), 20)))
+        rows = self.conn.execute(sql, args).fetchall()
+        return [
+            {"id": int(r["id"]), "text": str(r["text"]), "ts": float(r["ts"] or 0),
+             "scope": str(r["scope"] or ""), "tags": str(r["tags"] or "")}
+            for r in rows
+        ]
+
     def sleep_add(self, date: str, text: str) -> dict:
         """每天一条：同一天再写就覆盖旧的那条。"""
         now = time.time()

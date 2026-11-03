@@ -24,7 +24,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join as pathJoin } from "node:path";
 
-import { createUserMessage } from "@deepseek-ai/dsh-llm";
+import { createAssistantMessage, createUserMessage } from "@deepseek-ai/dsh-llm";
 
 import { MemoryClient } from "./client.mjs";
 import { PLUGIN_VERSION, resolveConfig } from "./config.mjs";
@@ -318,6 +318,7 @@ const soft = (key) => {
       state = {
         id,
         injectedHashes: new Set(),   // 去重：同一块不重复注入
+        outboundSeen: new Set(),     // 已补进上下文的桥接主动消息
         turns: 0,                    // 已结束的轮数（每 50 轮重注入画像）
         turnUser: "",
         turnAssistant: "",
@@ -372,15 +373,49 @@ const soft = (key) => {
     if (decision.kind !== "enter" || signal?.aborted) return decision;
     if (skipped(agent?.session)) return decision;
     const extra = [];
-    const finish = () => extra.length
-      ? { kind: "enter", messages: [...decision.messages, ...extra] }
-      : decision;
+    const beforeUser = [];
+    const finish = () => {
+      if (!beforeUser.length && !extra.length) return decision;
+      const messages = [...decision.messages];
+      if (beforeUser.length) {
+        let at = messages.length;
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+          if (messages[i]?.role === "user") { at = i; break; }
+        }
+        messages.splice(at, 0, ...beforeUser);
+      }
+      if (extra.length) messages.push(...extra);
+      return { kind: "enter", messages };
+    };
 
     // 记住这一步是谁在说话。turn/end 写记忆时要带昵称，不然 profiles.name 永远是空。
     try {
       const spNow = speakerOf(decision.messages);
       if (spNow && spNow.qq) stateFor(agent.session).nickname = spNow.nickname;
     } catch { /* 忽略：拿不到昵称不影响对话 */ }
+
+    // 桥接主动发出的消息（主动说话/报告/B 站分享）补成 assistant 消息，
+    // 放在当前 user 消息之前，避免被误读成主人说的话。
+    try {
+      const scopeOf = scopeFromSession(agent.session.id);
+      if (scopeOf.scope && scopeOf.scope !== "global") {
+        const items = await client.outbound(scopeOf.scope, 5);
+        const st = stateFor(agent.session);
+        for (const item of [...(items || [])].reverse()) {
+          const id = String(item?.id ?? "");
+          if (!id || st.outboundSeen.has(id)) continue;
+          const text = String(item?.text || "").replace(/^我：/, "").trim();
+          if (!text) continue;
+          st.outboundSeen.add(id);
+          beforeUser.push(createAssistantMessage({
+            content: [{ type: "text", text }],
+            source: { kind: "host:bridge-outbound", plugin: PLUGIN_SOURCE, form: "outbound" },
+          }));
+        }
+      }
+    } catch (error) {
+      log("outbound_error", { error: String(error?.message ?? error) });
+    }
 
     // ---- 多人画像：只注入「当前这个说话的人」，别人的绝不出现 ----
     try {
