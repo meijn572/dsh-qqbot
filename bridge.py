@@ -876,14 +876,6 @@ async def _process_locked(dsh: Dsh, onebot: OneBot, mtype: str, target: int, cha
         hint = history_hint() if should_hint(text) else ""
         if hint:
             extras.append(hint)
-        if not images and re.search(r"(表情包?|库里|这张.{0,6}叫|叫什么|记住.{0,8}(表情|图))", text or ""):
-            extras.append("（表情库：先 sticker_lookup 查 source/file/query；要写入/教名字用 sticker_meta。查不到就说没入库，不要编。）")
-        if re.search(r"(什么意思|啥意思|什么梗|什么黑话|什么热词|解释一下|查一下|别名)", text or ""):
-            extras.append("（词库：先用 lexicon_lookup 查词义；不要只凭印象编。相关表情再用 lexicon_search。）")
-        elif re.search(r"(有没有.{0,8}表情|相关表情|找.{0,8}表情|配.{0,8}表情)", text or ""):
-            extras.append("（词库：用 lexicon_search 同时查词条解释和相关表情。）")
-        elif re.search(r"(教你|这叫|以后.{0,6}叫|收录|加进词库|记住.{0,6}(词|梗|黑话|热词|意思))", text or ""):
-            extras.append("（词库：用户教新词/改解释时用 lexicon_meta；先 lexicon_lookup 查重。）")
         if chat_key.startswith("group:"):
             gid = chat_key.split(":", 1)[1]
             items = load_slang(gid)[:8]
@@ -1423,21 +1415,14 @@ async def schedule_flush(dsh: Dsh, onebot: OneBot, chat_key: str) -> None:
     texts = [t for t in pending.get("texts", []) if t]
     merged = "\n".join(texts)
     notes = []
-    has_sticker = False
     for img in pending.get("images", []):
         img_path = Path(img)
         meta = IMAGE_META.get(str(img_path)) or {}
         if meta.get("sticker"):
-            has_sticker = True
             notes.append(f"[表情包：{img_path}]")
             asyncio.create_task(collect_sticker_bg(img_path, merged))
         else:
             notes.append(f"[图片：{img_path}]")
-    if has_sticker:
-        notes.append(
-            "（表情包提示：认得出角色/梗就调 sticker_meta 写图本身的 name/tags/caption，ref 用上面的 source 路径；"
-            "主人问库里有/叫什么先调 sticker_lookup。标签别写聊天场景。）"
-        )
     if notes:
         merged = (merged + "\n[[bridge-note]]\n" + "\n".join(notes) + "\n[[/bridge-note]]").strip()
     if not merged:
