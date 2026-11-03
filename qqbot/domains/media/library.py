@@ -325,18 +325,20 @@ def pick_meme(category: str, query: str = "") -> str | None:
         path = MEME_DIR / str(entry.get("file") or "")
         if not path.is_file():
             continue
-        score = _score_entry(entry, query, category) if query else 1.0
+        score = _score_entry(entry, query, category) if query else _habit_score(entry)
         if score is not None:
             candidates.append((score, entry))
     if candidates:
         if query:
             candidates.sort(key=lambda item: item[0], reverse=True)
-            top = candidates[:min(5, len(candidates))]
-            return str(MEME_DIR / str(random.choice(top)[1].get("file")))
-        # 没给具体词时，优先平时最常发、最近发得多的
-        candidates.sort(key=lambda item: _habit_score(item[1]), reverse=True)
-        pool = candidates[:min(6, len(candidates))]
-        return str(MEME_DIR / str(random.choice(pool)[1].get("file")))
+            pool = candidates[:min(5, len(candidates))]
+        else:
+            # 没给具体词时，优先平时最常发、最近发得多的
+            candidates.sort(key=lambda item: _habit_score(item[1]), reverse=True)
+            pool = candidates[:min(6, len(candidates))]
+        weights = [max(0.1, score) for score, _ in pool]
+        chosen = random.choices(pool, weights=weights, k=1)[0]
+        return str(MEME_DIR / str(chosen[1].get("file")))
     # 索引缺失时回退到目录扫描，兼容旧数据；只有泛类别才允许随便挑
     if query:
         return None
