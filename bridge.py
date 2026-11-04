@@ -1647,10 +1647,18 @@ async def proactive_say(dsh: Dsh, onebot: OneBot, kind: str, extra: str = "") ->
     uid = int(users[0])
     chat_key = f"private:{uid}"
     sid = await activity_sid(dsh)
-    prompt_text = SPONTANEOUS_PROMPT if kind == "spontaneous" else (
-        f"（你刚刷完 B 站，今天的报告在 {extra}。如果里面有感兴趣、想跟我分享的，"
-        "就说一两句话；没有就只回复 SKIP，不要发别的。）"
-    )
+    try:
+        recent = (await recent_dialogue_text(8)).strip()
+    except Exception:  # noqa: BLE001
+        recent = ""
+    context = f"\n\n最近你们聊过（只作参考，不要逐句复述）：\n{recent[:1200]}" if recent else ""
+    if kind == "spontaneous":
+        prompt_text = SPONTANEOUS_PROMPT + context
+    else:
+        prompt_text = (
+            f"（你刚刷完 B 站，今天的报告在 {extra}。如果里面有感兴趣、想跟我分享的，"
+            "就说一两句话；没有就只回复 SKIP，不要发别的。）" + context
+        )
     async with ACTIVITY_LOCK:
         try:
             reply = await ask(dsh, sid, prompt_text)
