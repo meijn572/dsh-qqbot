@@ -20,6 +20,7 @@ from qqbot.domains.group.lexicon import (
     list_entries as list_lexicon_entries,
     upsert_entry as upsert_lexicon_entry,
 )
+from qqbot.domains.growth import proposals as growth_review
 from qqbot.domains.media.library import clean_facets, clean_label
 from qqbot.domains.media.meta import lookup_ref as resolve_sticker_ref
 
@@ -336,6 +337,91 @@ def cmem_post(path: str, body: dict) -> dict:
             return json.loads(resp.read().decode("utf-8"))
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": str(exc)}
+
+
+def review_payload() -> dict:
+    items = []
+    for item in growth_review.pending():
+        op = (item.get("ops") or [{}])[0]
+        items.append({
+            "id": item.get("id"),
+            "target": item.get("target"),
+            "op": op.get("op") or "add",
+            "text": op.get("text") or "",
+            "from": op.get("from") or "",
+            "reason": item.get("reason") or "",
+            "evidence": item.get("evidence") or [],
+            "created_at": item.get("created_at") or 0,
+        })
+    return {"items": items, "count": len(items)}
+
+
+def review_commitment(item: str, reason: str = "") -> dict:
+    proposal = growth_review.add_commitment(item, reason=reason)
+    return {"ok": proposal is not None, "proposal": proposal}
+
+
+def review_reject(proposal_id: str) -> dict:
+    return {"ok": growth_review.set_status(str(proposal_id or ""), "rejected")}
+
+
+def _apply_section_ops(constitution: str, heading: str, ops: list[dict]) -> str:
+    match = re.search(r"(" + re.escape(heading) + r"\s*\n)(.*?)(?=\n## |\Z)", constitution, re.S)
+    if not match:
+        raise ValueError(f"核心设定里没有 {heading}")
+    bullets = [line for line in match.group(2).splitlines() if line.strip().startswith("- ")]
+    for op in ops:
+        kind = str(op.get("op") or "add")
+        text = str(op.get("text") or "").strip()
+        old = str(op.get("from") or "").strip()
+        if not text:
+            continue
+        if kind == "add":
+            bullets.append("- " + text)
+        elif kind == "modify":
+            target = "- " + old if old else ""
+            hit = next((i for i, line in enumerate(bullets) if line.strip() == target), None)
+            if hit is None:
+                raise ValueError(f"找不到要修改的旧句：{old}")
+            bullets[hit] = "- " + text
+        elif kind == "remove":
+            target = "- " + (old or text)
+            bullets = [line for line in bullets if line.strip() != target]
+    body = "\n".join(bullets)
+    return constitution[:match.start(2)] + body + constitution[match.end(2):]
+
+
+def review_apply(proposal_id: str) -> dict:
+    target_item = next((x for x in growth_review.load_proposals() if x.get("id") == proposal_id), None)
+    if not target_item or target_item.get("status") != "pending":
+        return {"ok": False, "error": "候选不存在或已处理"}
+    target = str(target_item.get("target") or "")
+    ops = target_item.get("ops") or []
+    if target == "commitment":
+        text = str((ops[0] if ops else {}).get("text") or "").strip()
+        if not text:
+            return {"ok": False, "error": "约定为空"}
+        result = cmem_post("/persona/important", {"action": "add", "item": text})
+        if not result.get("ok"):
+            return {"ok": False, "error": result.get("error") or "写入失败"}
+        growth_review.set_status(proposal_id, "applied")
+        return {"ok": True, "target": target}
+    if target not in ("judgment", "relationship"):
+        return {"ok": False, "error": "未知目标"}
+    persona = cmem_get("/persona")
+    constitution = str(persona.get("constitution") or "")
+    heading = "## 判断" if target == "judgment" else "## 关系"
+    try:
+        new_constitution = _apply_section_ops(constitution, heading, ops)
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+    backup = HOME / "persona-roles" / "state" / f"constitution-before-review-{time.strftime('%Y%m%d-%H%M%S')}.md"
+    backup.write_text(constitution, encoding="utf-8")
+    result = cmem_post("/persona", {"constitution": new_constitution})
+    if not result.get("ok"):
+        return {"ok": False, "error": result.get("error") or "写入失败"}
+    growth_review.set_status(proposal_id, "applied")
+    return {"ok": True, "target": target, "backup": backup.name}
 
 
 def style_payload() -> dict:

@@ -1,6 +1,7 @@
 import unittest
 
 from service.persona.schema import (
+    add_self_change,
     render_profile_sections,
     render_self_sections,
     validate_profile_sections,
@@ -18,6 +19,9 @@ class PersonaSchemaTest(unittest.TestCase):
         text = render_self_sections(data)
         self.assertIn("## 最近的变化", text)
         self.assertIn("- 我学会先听完", text)
+        merged = add_self_change(text, "我学会不急着接圆")
+        self.assertIn("- 我学会先听完", merged)
+        self.assertIn("- 我学会不急着接圆", merged)
 
     def test_self_rejects_rules(self):
         with self.assertRaises(ValueError):

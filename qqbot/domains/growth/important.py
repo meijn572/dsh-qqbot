@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from qqbot.clients.memory import cmem_call, context_evidence, l0_recent, persona_context
+from qqbot.domains.growth import proposals as growth_proposals
 from settings import DSH_HOME, OWNER_CHAT_KEY
 
 log = logging.getLogger("qqbot.growth.important")
@@ -93,8 +94,8 @@ async def check_once(turn: Turn) -> str:
     item = str(data.get("item") or "").strip()[:100]
     if not item or data.get("skip") or item in current:
         return ""
-    await cmem_call("POST", "/persona/important", {"action": "add", "item": item})
-    log.info("重要的事：%s", item)
+    growth_proposals.add_commitment(item, reason="重要的事自检")
+    log.info("重要的事候选：%s", item)
     return item
 
 

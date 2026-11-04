@@ -38,6 +38,7 @@ from memory.context import build_context
 from persona.context import build_persona_context
 from persona.api import payload as persona_payload
 from persona.schema import (
+    add_self_change,
     render_profile_sections,
     render_self_sections,
     validate_profile_sections,
@@ -2671,11 +2672,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json(503, {"ok": False, "error": "llm unavailable"})
             return
         cur = store.get_persona()["self_model"] or ""
-        lines = [l for l in cur.split("\n") if l.strip()]
-        lines.append(line)
-        while len("\n".join(lines)) > 4000 and len(lines) > 1:
-            lines.pop(0)
-        new = "\n".join(lines)
+        new = add_self_change(cur, line)
+        if len(new) > 4000:
+            new = new[-4000:]
         with _lock:
             store.set_self_model(new)
         self._json(200, {"ok": True, "line": line, "chars": len(new)})

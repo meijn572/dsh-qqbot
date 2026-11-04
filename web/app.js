@@ -238,6 +238,21 @@ async function load(){
         <div style="margin-top:8px"><button onclick="savePersonaField('user_profile')">保存</button> <button onclick="cancelPersonaField('user_profile')">取消</button> <span id="profileMsg" class="mut"></span></div>
         <div class="mut" style="margin-top:6px">只改「我眼中的主人」，不会动核心设定。</div>
       </div></div>`;
+    const rv=await j('/api/review');
+    if((rv.items||[]).length){
+      h+=`<div class="card" style="border-color:#d29922"><div class="k">人格复盘 · ${rv.count} 条待确认</div>`;
+      for(const it of rv.items){
+        h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px">
+          <span class="badge ok">${esc(it.target)}</span> <b>${esc(it.op)}</b>
+          ${it.from?`<div class="mut">旧：${esc(it.from)}</div>`:''}
+          <div>新：${esc(it.text)}</div>
+          <div class="mut">${esc(it.reason||'')}</div>
+          <div style="margin-top:6px"><button onclick="reviewApply('${encodeURIComponent(it.id)}')">应用</button>
+          <button onclick="reviewReject('${encodeURIComponent(it.id)}')">忽略</button></div>
+        </div>`;
+      }
+      h+='</div>';
+    }
     $('#persona').innerHTML=h;
   }
   if(!$('#guests').hidden){
@@ -386,6 +401,8 @@ async function restartBridge(){ await fetch('/api/bridge/restart',{method:'POST'
 async function setProactive(body){ const r=await fetch('/api/proactive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const j=await r.json(); if(!j.ok&&j.error) alert(j.error); load(); }
 async function applyStyle(){ const r=await fetch('/api/style/apply',{method:'POST'}); const j=await r.json(); alert(j.message||j.error||'已处理'); load(); }
 async function dismissStyle(){ const r=await fetch('/api/style/dismiss',{method:'POST'}); const j=await r.json(); alert(j.message||'已忽略'); load(); }
+async function reviewApply(id){ const r=await fetch('/api/review/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:decodeURIComponent(id)})}); const j=await r.json(); alert(j.ok?'已应用':(j.error||'应用失败')); load(); }
+async function reviewReject(id){ const r=await fetch('/api/review/reject',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:decodeURIComponent(id)})}); const j=await r.json(); if(!j.ok) alert(j.error||'操作失败'); load(); }
 function setLog(n){ logName=n; load(); }
 async function startQr(){ await fetch('/api/bili/qr/start',{method:'POST'}); setTimeout(load,1500); }
 function stickerFacetHtml(it){

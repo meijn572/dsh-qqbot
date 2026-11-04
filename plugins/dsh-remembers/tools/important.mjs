@@ -12,9 +12,9 @@ export async function registerImportantTool({ registerTool, log, endpoint }) {
     registerTool(defineTool({
       name: "remember_important",
       description:
-        "把真正重要、长期有效的事写进核心设定的「非常重要的事」。"
+        "把真正重要、长期有效的事放进「待确认约定」，不直接改核心设定。"
         + "只收真正不能忘的：约定、底线、身份、关系里最关键的事；日常小事、情绪、一次性的经历不要放。"
-        + "最多 8 条，写一句具体的话，不要写标签。",
+        + "主人确认后才会进核心设定的约定块；最多 8 条，写一句具体的话，不要写标签。",
       parameters: {
         item: { type: "string", required: true, description: "一句重要的事，最多 100 字" },
         reason: { type: "string", description: "可选：为什么重要" },
@@ -24,10 +24,11 @@ export async function registerImportantTool({ registerTool, log, endpoint }) {
         const item = String(args.item || "").trim().slice(0, 100);
         if (!item) return { ok: false, error: "item is required" };
         try {
-          const response = await fetch(endpoint + "/persona/important", {
+          const panel = String(process.env.CMEM_PANEL_URL || "http://127.0.0.1:6080").replace(/\/$/, "");
+          const response = await fetch(panel + "/api/review/commitment", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "add", item, reason: String(args.reason || "") }),
+            body: JSON.stringify({ item, reason: String(args.reason || "") }),
             signal: AbortSignal.timeout(5000),
           });
           return { ok: response.ok, status: response.status };

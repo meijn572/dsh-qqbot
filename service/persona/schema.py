@@ -71,6 +71,35 @@ def render_self_sections(data: dict[str, list[str]]) -> str:
     return "\n\n".join(blocks)
 
 
+def parse_self_sections(text: str) -> dict[str, list[str]]:
+    """把渲染后的自我认知读回三段；旧自由文本视为 changes。"""
+    raw = str(text or "")
+    found = {}
+    for key, title in SELF_TITLES.items():
+        match = re.search(r"## " + re.escape(title) + r"\s*\n(.*?)(?=\n## |\Z)", raw, re.S)
+        if not match:
+            continue
+        found[key] = [
+            line[2:].strip()
+            for line in match.group(1).splitlines()
+            if line.strip().startswith("- ")
+        ]
+    if not found and raw.strip():
+        return {"changes": [raw.strip()[:300]], "learned": [], "open_questions": []}
+    return {key: found.get(key, []) for key in SELF_SECTIONS}
+
+
+def add_self_change(text: str, line: str) -> str:
+    """把一条增量变化追加到结构化自我认知，最多保留 4 条。"""
+    changes = parse_self_sections(text)
+    item = str(line or "").strip()
+    if not item:
+        return text
+    changes["changes"] = (changes.get("changes") or [])[-3:] + [item]
+    return render_self_sections(changes)
+
+
+
 def validate_profile_sections(data: Any) -> dict[str, list[str]]:
     if not isinstance(data, dict):
         raise ValueError("sections 必须是对象")

@@ -77,6 +77,7 @@ from qqbot.domains.media.meta import lookup_ref as sticker_lookup_ref
 from qqbot.domains.media.stickers import collect_sticker
 from qqbot.domains.growth import profile as growth_profile
 from qqbot.domains.growth import reflect as growth_reflect
+from qqbot.domains.growth import review as growth_review
 from qqbot.domains.growth import style as growth_style
 from qqbot.domains.growth import emotion as growth_emotion
 from qqbot.domains.growth import important as growth_important
@@ -1855,6 +1856,26 @@ async def run_style_review(dsh: Dsh, chat_key: str) -> bool:
     )
 
 
+async def run_persona_review(dsh: Dsh) -> bool:
+    return await growth_review.run(
+        lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt)
+    )
+
+
+async def persona_review_loop(dsh: Dsh) -> None:
+    await asyncio.sleep(420)
+    while True:
+        try:
+            state = growth_review.load_state()
+            last = float(state.get("last_run") or 0)
+            days = max(1, int(persona_reflect_cfg().get("persona_review_days", 30)))
+            if time.time() - last >= days * 86400:
+                await run_persona_review(dsh)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("人格复盘失败：%s", exc)
+        await asyncio.sleep(6 * 3600)
+
+
 async def style_review_loop(dsh: Dsh) -> None:
     await asyncio.sleep(300)
     while True:
@@ -1970,6 +1991,7 @@ async def run() -> None:
     asyncio.create_task(inject_watch(dsh, onebot))
     asyncio.create_task(group_proactive_loop(dsh, onebot))
     asyncio.create_task(style_review_loop(dsh))
+    asyncio.create_task(persona_review_loop(dsh))
     asyncio.create_task(profile_refresh_loop(dsh))
     asyncio.create_task(qzone_loop(dsh, onebot))
     asyncio.create_task(emotion_check_loop(dsh))

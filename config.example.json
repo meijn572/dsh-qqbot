@@ -60,7 +60,8 @@
     "enabled": true,
     "min_gap_hours": 8,
     "active_hours": "8-24",
-    "style_days": 3
+    "style_days": 3,
+    "persona_review_days": 30
   },
   "group_activity": {
     "followup_seconds": 300,

@@ -43,19 +43,36 @@ async def run(turn: Turn) -> bool:
         + "【最近对话】\n" + (recent or "（最近没聊什么）") + "\n\n"
         + (memories or "（没有长期记忆）") + "\n\n"
         "任务：只重写「自我认知」这一段（不是核心设定，不是主人画像）。\n"
-        "要求：400–900 字，第一人称；把当前自我认知和最近经历、长期记忆合并蒸馏；\n"
+        "要求：用第一人称；把当前自我认知和最近经历、长期记忆合并蒸馏；\n"
         "仍然成立的旧变化要保留，过时、重复、琐碎的压缩掉；写长出来的样子，不写流水账、不写空话。\n"
-        "不要改身份、底线、说话风格、和主人的相处原则；不要新增事实设定。\n"
-        "只输出新的自我认知正文，不要标题、不要解释、不要代码块。"
+        "不要改身份、底线、说话风格、和主人的相处原则；不要新增事实设定；\n"
+        "不要写行为规则、用户事实、工具说明、消息格式。\n"
+        '只输出 JSON，不要标题、不要解释、不要代码块：'
+        '{"changes":["最近的变化"],"learned":["我学到的"],"open_questions":["还没想清"]}\n'
+        "每块最多 4 条，每条一句话；没有就空数组。"
     )
     reply = await turn(prompt)
-    text = re.sub(r"^```(?:markdown)?\s*|\s*```$", "", (reply or "").strip()).strip()
-    if len(text) < 200:
-        log.warning("人格复盘：生成太短 %s 字", len(text))
+    match = re.search(r"\{.*\}", reply or "", re.S)
+    if not match:
+        log.warning("人格复盘：没有拿到 JSON")
         return False
-    if len(text) > 4000:
-        text = text[:4000]
-    result = await cmem_call("POST", "/persona/self", {"text": text})
+    try:
+        sections = json.loads(match.group(0))
+    except Exception:  # noqa: BLE001
+        log.warning("人格复盘：JSON 解析失败")
+        return False
+    if not isinstance(sections, dict):
+        log.warning("人格复盘：JSON 不是对象")
+        return False
+    total = sum(
+        len(str(item).strip())
+        for values in sections.values() if isinstance(values, list)
+        for item in values if str(item).strip()
+    )
+    if total < 80:
+        log.warning("人格复盘：生成太短 %s 字", total)
+        return False
+    result = await cmem_call("POST", "/persona/self", {"sections": sections})
     if not result.get("self_model"):
         log.warning("人格复盘：写入自我认知失败")
         return False
@@ -63,5 +80,5 @@ async def run(turn: Turn) -> bool:
     state["last_run_date"] = time.strftime("%Y-%m-%d")
     state["last_run_at"] = int(time.time())
     save_state(state)
-    log.info("人格复盘完成，自我认知 %s 字", len(text))
+    log.info("人格复盘完成，自我认知 %s 字", total)
     return True

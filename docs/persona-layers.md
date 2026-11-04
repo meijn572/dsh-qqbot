@@ -134,7 +134,45 @@ python scripts/check_persona_boundaries.py
 
 自我演化、画像生成、风格提议的输入仍然使用原来的上下文，只改输出结构和校验。
 
-## 6. 参考
+## 6. 复盘
+
+当前实际周期：
+
+| 复盘 | 周期 | 模式 | 写哪 |
+| --- | --- | --- | --- |
+| 自我认知增量 | 每 20 轮 | 自动 | `self_model` 的 changes |
+| 自我认知整理 | 约 20 小时 | 自动 | `self_model` 三块 |
+| 用户画像 | 约 2 天 | 自动 | `user_profile` 五块 |
+| 说话风格 | 3 天 | 半自动 | 核心 `说话` |
+| 人格复盘 | 30 天 | 半自动 | `判断` / `关系` / `约定` 候选 |
+| 重要的事 | 每日 / 工具触发 | 半自动 | 候选，人工应用 |
+| 性格 / 身份 | 90 天 | 手写 | 核心 |
+| 边界 | 事件触发 | 手写 | 核心 |
+
+人格复盘输入：
+
+```text
+constitution
+self_model
+user_profile
+recent_dialogue(30)
+collect(L1=50, L3=30, L0=50)
+最近 30 天、每个 target 最近 5 条候选
+```
+
+候选存于：
+
+```text
+persona-roles/state/review-proposals.json
+```
+
+状态：
+
+```text
+pending / applied / rejected
+```
+
+## 7. 参考
 
 - [Character Card V2](https://github.com/malfoyslastname/character-card-spec-v2/blob/main/spec_v2.md)：角色描述、示例、系统指令、世界书分开
 - [Letta Memory Blocks](https://docs.letta.com/v1-sdk/memory/memory-blocks/)：system instructions 与 memory blocks 分开

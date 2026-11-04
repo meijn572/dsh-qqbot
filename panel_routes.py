@@ -31,6 +31,10 @@ from panel_readers import (
     persona_payload,
     proactive_payload,
     qr_status,
+    review_apply,
+    review_commitment,
+    review_payload,
+    review_reject,
     save_core_setting,
     save_persona_field,
     set_proactive,
@@ -71,6 +75,8 @@ def handle_get(handler, path: str, parsed) -> None:
         handler._json(guests_payload())
     elif path == "/api/notebook":
         handler._json(notebook_payload())
+    elif path == "/api/review":
+        handler._json(review_payload())
     elif path == "/api/interests":
         handler._json(interests_payload())
     elif path == "/api/groupslang":
@@ -197,6 +203,13 @@ def handle_post(handler, path: str, parsed) -> None:
                 str(body.get("category") or ""),
                 str(body.get("term") or ""),
             ))
+    elif path == "/api/review/apply":
+        handler._json(review_apply(str(_body(handler).get("id") or "")))
+    elif path == "/api/review/reject":
+        handler._json(review_reject(str(_body(handler).get("id") or "")))
+    elif path == "/api/review/commitment":
+        body = _body(handler)
+        handler._json(review_commitment(str(body.get("item") or ""), str(body.get("reason") or "")))
     elif path == "/api/bridge/restart":
         handler._json(restart_bridge())
     else:
