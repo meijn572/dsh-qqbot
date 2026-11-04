@@ -551,7 +551,7 @@ def sticker_payload() -> dict:
     for item in items:
         entry = index_map.get(item["file"], {})
         item["caption"] = entry.get("caption", "")
-        item["name"] = entry.get("name") or item["caption"][:20] or Path(item["file"]).stem
+        item["name"] = entry.get("name") or item["caption"] or Path(item["file"]).stem
         item["tags"] = entry.get("tags") if isinstance(entry.get("tags"), list) else []
         item["concepts"] = entry.get("concepts") if isinstance(entry.get("concepts"), list) else []
         item["usage_count"] = int(entry.get("usage_count") or 0)
