@@ -315,6 +315,16 @@ def mood_payload() -> dict:
 STYLE_PROPOSAL = HOME / "persona-roles" / "state" / "style-proposal.json"
 STYLE_BEGIN = "<!-- style:begin -->"
 STYLE_END = "<!-- style:end -->"
+STYLE_HEADING = "## 说话"
+
+
+def _style_block(constitution: str) -> str:
+    text = str(constitution or "")
+    match = re.search(re.escape(STYLE_BEGIN) + r"(.*?)" + re.escape(STYLE_END), text, re.S)
+    if match:
+        return match.group(1).strip()
+    match = re.search(r"## 说话\s*\n(.*?)(?=\n## |\Z)", text, re.S)
+    return match.group(1).strip() if match else ""
 
 
 def cmem_post(path: str, body: dict) -> dict:
@@ -334,10 +344,7 @@ def style_payload() -> dict:
         proposal = read_json(STYLE_PROPOSAL)
     persona = cmem_get("/persona")
     constitution = str(persona.get("constitution") or "")
-    current = ""
-    match = re.search(re.escape(STYLE_BEGIN) + r"(.*?)" + re.escape(STYLE_END), constitution, re.S)
-    if match:
-        current = match.group(1).strip()
+    current = _style_block(constitution)
     return {"proposal": proposal, "current": current}
 
 
@@ -350,12 +357,16 @@ def apply_style() -> dict:
         return {"ok": False, "error": "提议为空"}
     persona = cmem_get("/persona")
     constitution = str(persona.get("constitution") or "")
-    if STYLE_BEGIN not in constitution or STYLE_END not in constitution:
-        return {"ok": False, "error": "核心设定里没有 style 标记"}
-    new_constitution = re.sub(
-        re.escape(STYLE_BEGIN) + r".*?" + re.escape(STYLE_END),
-        lambda _: STYLE_BEGIN + "\n" + style + "\n" + STYLE_END,
-        constitution, count=1, flags=re.S)
+    if STYLE_BEGIN in constitution and STYLE_END in constitution:
+        new_constitution = re.sub(
+            re.escape(STYLE_BEGIN) + r".*?" + re.escape(STYLE_END),
+            lambda _: STYLE_BEGIN + "\n" + style + "\n" + STYLE_END,
+            constitution, count=1, flags=re.S)
+    else:
+        match = re.search(r"(## 说话\s*\n)(.*?)(?=\n## |\Z)", constitution, re.S)
+        if not match:
+            return {"ok": False, "error": "核心设定里没有「## 说话」段"}
+        new_constitution = constitution[:match.start(2)] + STYLE_BEGIN + "\n" + style + "\n" + STYLE_END + constitution[match.end(2):]
     backup = HOME / "persona-roles" / "state" / f"constitution-before-style-{time.strftime('%Y%m%d-%H%M%S')}.md"
     backup.write_text(constitution, encoding="utf-8")
     result = cmem_post("/persona", {"constitution": new_constitution})

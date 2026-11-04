@@ -21,7 +21,11 @@ Turn = Callable[[str], Awaitable[str]]
 
 
 def style_block(constitution: str) -> str:
-    match = re.search(re.escape(STYLE_BEGIN) + r"(.*?)" + re.escape(STYLE_END), constitution or "", re.S)
+    text = str(constitution or "")
+    match = re.search(re.escape(STYLE_BEGIN) + r"(.*?)" + re.escape(STYLE_END), text, re.S)
+    if match:
+        return match.group(1).strip()
+    match = re.search(r"## 说话\s*\n(.*?)(?=\n## |\Z)", text, re.S)
     return match.group(1).strip() if match else ""
 
 
