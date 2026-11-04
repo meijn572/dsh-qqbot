@@ -234,17 +234,13 @@ def index_add(rel_path: str, category: str, caption: str, tags: list[str], sig: 
     tags = clean_sticker_tags(tags, caption, clean_name, category)
     if existing is not None:
         existing["file"] = rel_path
-        merged = list(existing.get("tags") or [])
+        # 旧标签可能是用户手动写的：只追加新标签，不再对旧标签做清洗/截断
+        merged = [str(t).strip() for t in (existing.get("tags") or []) if str(t).strip()]
         for tag in tags:
             tag = str(tag).strip()
-            if tag and tag not in merged:
+            if tag and tag not in merged and len(merged) < 24:
                 merged.append(tag)
-        existing["tags"] = clean_sticker_tags(
-            merged,
-            str(existing.get("caption") or caption or ""),
-            str(existing.get("name") or clean_name or ""),
-            str(existing.get("category") or category or ""),
-        )
+        existing["tags"] = merged
         if caption and not existing.get("caption"):
             existing["caption"] = caption
         if existing.get("caption") and not existing.get("name"):
