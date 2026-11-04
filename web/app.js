@@ -307,7 +307,7 @@ async function load(){
     for(let i=0;i<items.length;i++){
       const it=items[i], view=`st_view_${i}`, cview=`st_concepts_${i}`;
       const hasConcepts=it.concepts&&it.concepts.length;
-      h+=`<div class="item sticker-item" data-file="${attr(it.file)}" data-view="${view}" data-cview="${cview}" data-name="${attr(it.name||'')}" onclick="stickerSelect(this)">
+      h+=`<div class="item sticker-item" data-file="${attr(it.file)}" data-view="${view}" data-cview="${cview}" data-name="${attr(it.caption || it.name || '')}" onclick="stickerSelect(this)">
         <img class="thumb" src="/api/sticker?file=${encodeURIComponent(it.file)}">
         <div id="${view}" class="sticker-tags">${stickerTagHtml(it.tags)}</div>
         <div id="${cview}" class="sticker-concepts" ${hasConcepts?'':'hidden'}>${hasConcepts?stickerConceptHtml(it.concepts):''}</div>
