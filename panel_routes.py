@@ -41,7 +41,6 @@ from panel_readers import (
     sticker_delete,
     sticker_update_semantics,
     style_payload,
-    sync_growth,
     tail,
 )
 from settings import CONFIG, LOGIN_OUT, QR_FILE, SCRIPTS_DIR
@@ -203,7 +202,5 @@ def handle_post(handler, path: str, parsed) -> None:
             ))
     elif path == "/api/bridge/restart":
         handler._json(restart_bridge())
-    elif path == "/api/growth/sync":
-        handler._json(sync_growth())
     else:
         handler.send_error(404)

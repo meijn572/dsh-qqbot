@@ -386,7 +386,6 @@ async function restartBridge(){ await fetch('/api/bridge/restart',{method:'POST'
 async function setProactive(body){ const r=await fetch('/api/proactive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const j=await r.json(); if(!j.ok&&j.error) alert(j.error); load(); }
 async function applyStyle(){ const r=await fetch('/api/style/apply',{method:'POST'}); const j=await r.json(); alert(j.message||j.error||'已处理'); load(); }
 async function dismissStyle(){ const r=await fetch('/api/style/dismiss',{method:'POST'}); const j=await r.json(); alert(j.message||'已忽略'); load(); }
-async function syncGrowth(){ const r=await fetch('/api/growth/sync',{method:'POST'}); const j=await r.json(); alert(j.output||'已同步'); load(); }
 function setLog(n){ logName=n; load(); }
 async function startQr(){ await fetch('/api/bili/qr/start',{method:'POST'}); setTimeout(load,1500); }
 function stickerFacetHtml(it){

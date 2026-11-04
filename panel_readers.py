@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from settings import AGENTS, BOT_DIR as BOT, CMEM_BASE, DSH_HOME as HOME, HEALTH_FILE, PANEL_PORT, QR_FILE, SCRIPTS_DIR, STATE_FILE, WORKSPACE
+from settings import BOT_DIR as BOT, CMEM_BASE, DSH_HOME as HOME, HEALTH_FILE, PANEL_PORT, QR_FILE, STATE_FILE, WORKSPACE
 from qqbot.domains.group.lexicon import (
     KINDS,
     STATUSES,
@@ -445,8 +445,7 @@ def persona_payload() -> dict:
     persona = cmem_get("/persona")
     if not persona:
         return {"text": "(记忆服务未连接)", "sections": {}, "growth": "", "growth_chars": 0,
-                "important": [], "proposals": {}, "synced": False, "history": [], "role": "大肥鱼",
-                "agents_chars": 0}
+                "important": [], "proposals": {}, "history": [], "role": "大肥鱼"}
     constitution = str(persona.get("constitution") or "")
     self_model = str(persona.get("self_model") or "")
     text = constitution
@@ -461,8 +460,6 @@ def persona_payload() -> dict:
         "important": [],
         "proposals": {},
         "history": [],
-        "synced": True,
-        "agents_chars": len(text),
         "constitution": constitution,
         "self_model": self_model,
         "user_profile": str(persona.get("user_profile") or ""),
@@ -653,7 +650,6 @@ def rolecard_payload() -> dict:
                 proposals = data
         except Exception:
             proposals = {}
-    agents_text = AGENTS.read_text(encoding="utf-8") if AGENTS.exists() else ""
     return {
         "role": ROLE_CARD.stem,
         "card": card,
@@ -664,18 +660,8 @@ def rolecard_payload() -> dict:
         "growth": growth,
         "growth_chars": len(growth),
         "history": history[:10],
-        "synced": bool(growth) and growth in agents_text,
-        "agents_chars": len(agents_text),
         "proposals": proposals,
     }
-
-
-def sync_growth() -> dict:
-    import subprocess
-    import sys
-
-    result = subprocess.run([sys.executable, str(SCRIPTS_DIR / "sync_growth.py")], capture_output=True, text=True, timeout=60)
-    return {"ok": result.returncode == 0, "output": (result.stdout + result.stderr).strip()}
 
 
 def interests_payload() -> dict:
