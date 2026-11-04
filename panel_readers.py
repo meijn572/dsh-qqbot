@@ -27,9 +27,6 @@ DB = HOME / "memory" / "memory.db"
 PERSONA = HOME / "memory" / "persona-chat.md"
 BILI = HOME / "bili-duty"
 STICKERS = BOT / "stickers"
-ROLE_DIR = HOME / "persona-roles"
-ROLE_CARD = ROLE_DIR / "roles" / "小肥鱼.md"
-ROLE_HISTORY = ROLE_DIR / "roles" / ".history"
 AUT_DIR = HOME / "bili-autonomy"
 AUT_INTERESTS = AUT_DIR / "interests.json"
 AUT_STATE = AUT_DIR / "state.json"
@@ -614,54 +611,6 @@ def sticker_update_semantics(rel: str, label: str = "", identity: list | None = 
         entry[field] = clean_facets(values)
     (STICKERS / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"ok": True, "file": key, "label": entry["label"], **{k: entry[k] for k in ("identity", "action", "expression", "generic")}}
-
-
-def rolecard_payload() -> dict:
-    import re
-
-    card = ROLE_CARD.read_text(encoding="utf-8") if ROLE_CARD.exists() else ""
-    match = re.search(r"<!-- persona-growth:begin -->(.*?)<!-- persona-growth:end -->", card, re.S)
-    growth = match.group(1).strip() if match else ""
-    sections = {}
-    for name, begin, end in (
-        ("identity", "<!-- persona-identity:begin -->", "<!-- persona-identity:end -->"),
-        ("style", "<!-- persona-style:begin -->", "<!-- persona-style:end -->"),
-        ("relationship", "<!-- persona-relationship:begin -->", "<!-- persona-relationship:end -->"),
-    ):
-        found = re.search(re.escape(begin) + r"(.*?)" + re.escape(end), card, re.S)
-        sections[name] = found.group(1).strip() if found else ""
-    style = sections.get("style", "")
-    important = []
-    important_match = re.search(r"<!-- persona-important:begin -->(.*?)<!-- persona-important:end -->", card, re.S)
-    if important_match:
-        important = [line[2:].strip() for line in important_match.group(1).splitlines() if line.strip().startswith("- ")]
-    preamble = card.split("<!-- persona-identity:begin -->")[0].strip() if card else ""
-    history = []
-    if ROLE_HISTORY.is_dir():
-        for item in sorted(ROLE_HISTORY.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
-            if item.is_file():
-                history.append({"name": item.name, "size": item.stat().st_size, "time": int(item.stat().st_mtime)})
-    proposals = {}
-    proposal_file = HOME / "persona-roles" / "state" / "section-proposals.json"
-    if proposal_file.exists():
-        try:
-            data = json.loads(proposal_file.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                proposals = data
-        except Exception:
-            proposals = {}
-    return {
-        "role": ROLE_CARD.stem,
-        "card": card,
-        "preamble": preamble,
-        "sections": sections,
-        "style": style,
-        "important": important,
-        "growth": growth,
-        "growth_chars": len(growth),
-        "history": history[:10],
-        "proposals": proposals,
-    }
 
 
 def interests_payload() -> dict:

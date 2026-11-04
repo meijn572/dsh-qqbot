@@ -595,7 +595,7 @@ $DSH_HOME\    运行数据
 | 数据 | 处置 |
 | --- | --- |
 | `memory/memory.db` | 迁移兴趣提取后停止双写，保留备份 |
-| `persona-roles/roles/小肥鱼.md` | 只读归档，不再作为人格源 |
+| `persona-roles/roles/小肥鱼.md` | 已删除；最后版本在 `.history/` 归档，不再作为人格源 |
 | `feiyu-mood` | 评估后归档 |
 | `selfwake` | 评估后归档 |
 | `memory-hygiene` | 合并到新清理任务后归档 |

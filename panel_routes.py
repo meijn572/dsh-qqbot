@@ -31,7 +31,6 @@ from panel_readers import (
     persona_payload,
     proactive_payload,
     qr_status,
-    rolecard_payload,
     save_core_setting,
     save_persona_field,
     set_proactive,
@@ -72,8 +71,6 @@ def handle_get(handler, path: str, parsed) -> None:
         handler._json(guests_payload())
     elif path == "/api/notebook":
         handler._json(notebook_payload())
-    elif path == "/api/rolecard":
-        handler._json(rolecard_payload())
     elif path == "/api/interests":
         handler._json(interests_payload())
     elif path == "/api/groupslang":
