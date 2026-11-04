@@ -34,9 +34,14 @@
     "max_videos_per_round": 3,
     "share_max_per_day": 9999,
     "max_gap_minutes": 90,
-    "start_hour": 18,
+    "start_hour": 12,
     "end_hour": 24,
     "blocks": [
+      {
+        "start": 12,
+        "end": 14,
+        "max": 2
+      },
       {
         "start": 18,
         "end": 21,

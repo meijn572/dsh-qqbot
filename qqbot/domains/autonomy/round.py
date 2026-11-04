@@ -262,25 +262,25 @@ async def run_round(deps: Deps) -> dict | None:
 
 
 def _active_block(cfg: dict, hour: int) -> dict | None:
-    """当前小时属于哪个时段；不在任何时段返回 None。"""
-    if hour < int(cfg.get("start_hour", 18)) or hour >= int(cfg.get("end_hour", 24)):
-        return None
+    """当前小时属于哪个时段；blocks 存在时按 blocks 定义，允许中间留空。"""
     blocks = cfg.get("blocks")
-    if not isinstance(blocks, list):
-        return {"start": int(cfg.get("start_hour", 18)),
-                "end": int(cfg.get("end_hour", 24)),
-                "max": int(cfg.get("daily_max", 8))}
-    for block in blocks:
-        if not isinstance(block, dict):
-            continue
-        try:
-            start, end = int(block.get("start")), int(block.get("end"))
-            cap = int(block.get("max"))
-        except (TypeError, ValueError):
-            continue
-        if start <= hour < end:
-            return {"start": start, "end": end, "max": cap}
-    return None
+    if isinstance(blocks, list):
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            try:
+                start, end = int(block.get("start")), int(block.get("end"))
+                cap = int(block.get("max"))
+            except (TypeError, ValueError):
+                continue
+            if start <= hour < end:
+                return {"start": start, "end": end, "max": cap}
+        return None
+    start = int(cfg.get("start_hour", 12))
+    end = int(cfg.get("end_hour", 24))
+    if hour < start or hour >= end:
+        return None
+    return {"start": start, "end": end, "max": int(cfg.get("daily_max", 8))}
 
 
 def _gap_seconds(cfg: dict) -> float:
