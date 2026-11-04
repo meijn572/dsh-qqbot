@@ -222,13 +222,18 @@ def extract_note_keywords(note: str) -> list[str]:
 
 def index_add(rel_path: str, category: str, caption: str, tags: list[str], sig: tuple[int, int, int] | None = None,
               name: str = "", aliases: list[str] | None = None, concepts: list[str] | None = None) -> None:
+    rel_path = str(rel_path or "").replace("\\", "/")
     entries = load_index()
-    existing = next((e for e in entries if e.get("file") == rel_path), None)
+    existing = next(
+        (e for e in entries if str(e.get("file") or "").replace("\\", "/") == rel_path),
+        None,
+    )
     clean_name = str(name or "").strip()
     clean_aliases = [str(a).strip() for a in (aliases or []) if str(a).strip()]
     clean_concepts = [str(c).strip() for c in (concepts or []) if str(c).strip()]
     tags = clean_sticker_tags(tags, caption, clean_name, category)
     if existing is not None:
+        existing["file"] = rel_path
         merged = list(existing.get("tags") or [])
         for tag in tags:
             tag = str(tag).strip()
