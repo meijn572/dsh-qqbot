@@ -28,29 +28,24 @@
   "bili_autonomy": {
     "enabled": true,
     "min_gap_minutes": 35,
-    "daily_max": 16,
+    "daily_max": 8,
     "quiet_hours": "0-8",
     "free_explore_ratio": 0.4,
     "max_videos_per_round": 3,
     "share_max_per_day": 9999,
     "max_gap_minutes": 90,
-    "start_hour": 10,
-    "end_hour": 23,
+    "start_hour": 18,
+    "end_hour": 24,
     "blocks": [
       {
-        "start": 10,
-        "end": 13,
-        "max": 2
-      },
-      {
-        "start": 13,
-        "end": 18,
-        "max": 4
-      },
-      {
         "start": 18,
-        "end": 23,
-        "max": 4
+        "end": 21,
+        "max": 3
+      },
+      {
+        "start": 21,
+        "end": 24,
+        "max": 3
       }
     ]
   },

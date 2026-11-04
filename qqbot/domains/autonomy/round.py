@@ -263,13 +263,13 @@ async def run_round(deps: Deps) -> dict | None:
 
 def _active_block(cfg: dict, hour: int) -> dict | None:
     """当前小时属于哪个时段；不在任何时段返回 None。"""
-    if hour < int(cfg.get("start_hour", 10)) or hour >= int(cfg.get("end_hour", 23)):
+    if hour < int(cfg.get("start_hour", 18)) or hour >= int(cfg.get("end_hour", 24)):
         return None
     blocks = cfg.get("blocks")
     if not isinstance(blocks, list):
-        return {"start": int(cfg.get("start_hour", 10)),
-                "end": int(cfg.get("end_hour", 23)),
-                "max": int(cfg.get("daily_max", 10))}
+        return {"start": int(cfg.get("start_hour", 18)),
+                "end": int(cfg.get("end_hour", 24)),
+                "max": int(cfg.get("daily_max", 8))}
     for block in blocks:
         if not isinstance(block, dict):
             continue
@@ -318,7 +318,7 @@ async def loop(deps: Deps) -> None:
                     state["next_run_at"] = next_at
                     save_aut_state(state)
                 due = (
-                    int(state.get("rounds", 0)) < int(cfg.get("daily_max", 10))
+                    int(state.get("rounds", 0)) < int(cfg.get("daily_max", 8))
                     and used < int(block.get("max", 99))
                     and now >= next_at
                 )
