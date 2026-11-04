@@ -8,7 +8,13 @@ from pathlib import Path
 from PIL import Image
 
 from qqbot.domains.media.download import download_images
-from qqbot.domains.media.library import category_from_text, extract_note_keywords, should_hint
+from qqbot.domains.media.library import (
+    _score_entry,
+    category_from_text,
+    clean_facets,
+    clean_label,
+    should_hint,
+)
 from qqbot.domains.media.preprocess import native_image, vision_image
 
 
@@ -53,14 +59,25 @@ class MediaTest(unittest.TestCase):
         self.assertFalse(meta[str(path)]["sticker"])
         self.assertEqual(meta[str(path)]["summary"], "[图片]")
 
-    def test_note_keywords(self) -> None:
-        words = extract_note_keywords("把这张哭哭表情收进库里")
-        self.assertIn("哭哭", words)
-
     def test_media_helpers_imported(self) -> None:
         self.assertEqual(category_from_text("开心"), "happy")
         self.assertTrue(should_hint("发个表情"))
         self.assertFalse(should_hint("今天吃什么"))
+
+    def test_label_is_validated_not_generated(self) -> None:
+        self.assertEqual(clean_label("大笑奶龙"), "大笑奶龙")
+        self.assertEqual(clean_label("这是，标点"), "")
+        self.assertEqual(clean_label("一" * 13), "")
+
+    def test_facets_are_clean_and_weighted(self) -> None:
+        self.assertEqual(clean_facets("奶龙, 小恐龙，奶龙"), ["奶龙", "小恐龙"])
+        entry = {
+            "label": "大笑奶龙",
+            "identity": ["奶龙"],
+            "expression": ["大笑"],
+            "generic": ["搞笑"],
+        }
+        self.assertGreater(_score_entry(entry, "奶龙"), _score_entry(entry, "搞笑"))
 
 
 if __name__ == "__main__":

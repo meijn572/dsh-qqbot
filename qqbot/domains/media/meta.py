@@ -5,10 +5,8 @@ bridge 只负责队列和时机；这里负责“这张到底是谁、要写什�
 from __future__ import annotations
 
 import hashlib
-import re
 from pathlib import Path
 
-from qqbot.domains.concepts import concepts_for_terms, ensure_concept
 from qqbot.domains.media.library import (
     MEME_DIR,
     find_by_keyword,
@@ -85,33 +83,18 @@ def apply_record(record: dict) -> dict:
     rel = resolve_ref(ref)
     if not rel:
         return {"ok": False, "pending": ref.startswith("source:") or bool(record.get("source"))}
-    tags = record.get("tags") or []
-    if isinstance(tags, str):
-        tags = [t.strip() for t in re.split(r"[,，、\s]+", tags) if t.strip()]
-    raw_concepts = record.get("concepts") or []
-    if isinstance(raw_concepts, str):
-        raw_concepts = [t.strip() for t in re.split(r"[,，、\s]+", raw_concepts) if t.strip()]
-    concept_ids = concepts_for_terms(list(raw_concepts), kind="fandom", source="sticker")
-    name = str(record.get("name") or "").strip()
-    if name and not concept_ids:
-        entry = ensure_concept(
-            name,
-            kind="fandom",
-            meaning=str(record.get("caption") or ""),
-            source="sticker",
-        )
-        if entry.get("id"):
-            concept_ids = [entry["id"]]
     index_add(
         rel,
         Path(rel).parent.name,
         str(record.get("caption") or ""),
-        list(tags)[:12],
-        name=name,
-        concepts=concept_ids,
-        replace_tags=bool(record.get("replace_tags")),
+        label=str(record.get("label") or ""),
+        identity=record.get("identity") or [],
+        action=record.get("action") or [],
+        expression=record.get("expression") or [],
+        generic=record.get("generic") or [],
+        replace_facets=bool(record.get("replace_facets")),
     )
-    return {"ok": True, "rel": rel, "concepts": concept_ids}
+    return {"ok": True, "rel": rel}
 
 
 def lookup_ref(ref: str) -> dict:
@@ -127,10 +110,12 @@ def lookup_ref(ref: str) -> dict:
     return {
         "found": True,
         "file": rel,
-        "name": str(entry.get("name") or ""),
+        "label": str(entry.get("label") or ""),
         "category": str(entry.get("category") or Path(rel).parent.name),
-        "tags": entry.get("tags") if isinstance(entry.get("tags"), list) else [],
-        "concepts": entry.get("concepts") if isinstance(entry.get("concepts"), list) else [],
+        "identity": entry.get("identity") if isinstance(entry.get("identity"), list) else [],
+        "action": entry.get("action") if isinstance(entry.get("action"), list) else [],
+        "expression": entry.get("expression") if isinstance(entry.get("expression"), list) else [],
+        "generic": entry.get("generic") if isinstance(entry.get("generic"), list) else [],
         "caption": str(entry.get("caption") or ""),
         "usage_count": int(entry.get("usage_count") or 0),
     }

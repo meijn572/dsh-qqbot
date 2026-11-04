@@ -123,7 +123,7 @@ async def classify_sticker(path: Path) -> str:
 
 
 async def describe_sticker(path: Path) -> dict:
-    """让 Qwen3-VL 给表情包输出类别 + 描述 + 标签，供以后按关键词检索。"""
+    """让视觉模型给表情包输出类别、描述和结构化分面。"""
     try:
         key = SF_KEY_FILE.read_text(encoding="utf-8").strip()
         mime, raw = vision_image(path)
@@ -133,7 +133,8 @@ async def describe_sticker(path: Path) -> dict:
     prompt = (
         "看这张聊天表情包，输出 JSON（不要解释）：\n"
         '{"category":"类别英文名","caption":"一句中文描述：里面有谁/什么角色、在做什么、什么表情或文字",'
-        '"tags":["3到6个中文关键词"]}\n'
+        '"identity":["角色/IP/人物，最多3个"],"action":["动作，最多3个"],'
+        '"expression":["表情/情绪，最多3个"],"generic":["泛词，最多3个"]}\n'
         f"类别只能从这些里选：\n{lines}"
     )
     payload = {
@@ -145,7 +146,7 @@ async def describe_sticker(path: Path) -> dict:
                 {"type": "image_url", "image_url": {"url": f"data:image/{mime};base64,{base64.b64encode(raw).decode()}"}},
             ],
         }],
-        "max_tokens": 200,
+        "max_tokens": 260,
         "temperature": 0.1,
     }
     try:
@@ -172,12 +173,17 @@ async def describe_sticker(path: Path) -> dict:
         if not caption:
             cap_match = re.search(r'"caption"\s*:\s*"([^"]*)"', text)
             caption = cap_match.group(1) if cap_match else ""
-        tags = [str(t) for t in (info.get("tags") or []) if str(t).strip()][:8]
-        if not tags:
-            tag_match = re.search(r'"tags"\s*:\s*\[(.*?)\]', text, re.S)
-            if tag_match:
-                tags = [t.strip().strip('"\' ') for t in tag_match.group(1).split(",") if t.strip()][:8]
-        return {"category": category, "caption": caption[:120], "tags": tags}
+        def values(key: str) -> list[str]:
+            raw_values = info.get(key) or []
+            return [str(v).strip() for v in raw_values if str(v).strip()][:3]
+        return {
+            "category": category,
+            "caption": caption[:120],
+            "identity": values("identity"),
+            "action": values("action"),
+            "expression": values("expression"),
+            "generic": values("generic"),
+        }
     except Exception as exc:  # noqa: BLE001
         log.warning("describe_sticker failed: %s", exc)
         return {}

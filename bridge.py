@@ -46,7 +46,6 @@ from qqbot.domains.media.library import (
     CATEGORY_CN,
     IMAGE_META,
     INDEX_FILE,
-    LAST_STICKER_INFO,
     MEME_DIR,
     MEME_RE,
     STICKER_CATEGORIES,
@@ -65,7 +64,6 @@ from qqbot.domains.media.library import (
     load_sticker_meta,
     mark_sticker_used,
     pick_meme,
-    remember_sticker_info,
     remember_sticker_meta,
     resolve_meme,
     save_index,
@@ -956,8 +954,12 @@ async def sticker_enrich_loop(dsh: Dsh) -> None:
             entry = targets[0]
             path = str(MEME_DIR / entry["file"])
             hint = "主人之前发过这张表情包"
-            if entry.get("tags"):
-                hint += "，相关信息：" + "、".join(str(t) for t in entry["tags"][:4])
+            facts = [str(entry.get("label") or "")]
+            for key in ("identity", "action", "expression", "generic"):
+                facts.extend(str(v) for v in (entry.get(key) or []))
+            facts = [f for f in facts if f]
+            if facts:
+                hint += "，已知语义：" + "、".join(facts[:6])
             log.info("后台补写表情理解：%s", entry["file"])
             await enrich_stickers(dsh, chat_key, [path], hint)
         except Exception as exc:  # noqa: BLE001
@@ -983,7 +985,7 @@ async def sticker_meta_loop() -> None:
                     continue
                 result = apply_sticker_meta(rec)
                 if result.get("ok"):
-                    log.info("表情语义已补：%s %s", result.get("rel"), rec.get("name"))
+                    log.info("表情语义已补：%s %s", result.get("rel"), rec.get("label"))
                     continue
                 if result.get("pending") and now - float(rec.get("ts") or 0) / 1000 < 180:
                     pending.append(rec)
@@ -1014,8 +1016,8 @@ async def enrich_stickers(dsh: Dsh, chat_key: str, images: list[str], context_te
             "（内部记录，不要回复用户、不要调用工具）"
             f"刚才收藏了一张表情包：{rel_path}，对话里主人说的是：{context_text[:120]!r}。"
             "用你自己的理解，只输出 JSON："
-            '{"name":"主人怎么称呼它（不知道就空）","description":"一句话描述它长什么样、什么场合用",'
-            '"tags":["2-4个中文关键词"]}'
+            '{"description":"一句话描述它长什么样、什么场合用",'
+            '"identity":["角色/IP"],"action":["动作"],"expression":["表情/情绪"],"generic":["泛词"]}'
         )
         reply = await maintenance_turn(dsh, chat_key, prompt)
         data = {}
@@ -1025,14 +1027,19 @@ async def enrich_stickers(dsh: Dsh, chat_key: str, images: list[str], context_te
                 data = json.loads(match.group(0))
             except Exception:  # noqa: BLE001
                 data = {}
-        if not isinstance(data, dict) or not (data.get("description") or data.get("name") or data.get("tags")):
+        if not isinstance(data, dict) or not any(data.get(k) for k in ("description", "identity", "action", "expression", "generic")):
             log.info("表情包理解没拿到有效 JSON，跳过：%s", rel_path)
             continue
-        tags = [str(t) for t in (data.get("tags") or []) if str(t).strip()][:6]
-        if data.get("name"):
-            tags.insert(0, str(data["name"]))
-        index_add(rel_path, category, str(data.get("description") or ""), tags)
-        log.info("表情包理解已写入：%s %s %s", rel_path, data.get("name"), tags)
+        index_add(
+            rel_path,
+            category,
+            str(data.get("description") or ""),
+            identity=data.get("identity") or [],
+            action=data.get("action") or [],
+            expression=data.get("expression") or [],
+            generic=data.get("generic") or [],
+        )
+        log.info("表情包理解已写入：%s", rel_path)
 
 
 RECENT_TEXT: dict[str, str] = {}
@@ -1434,10 +1441,16 @@ async def schedule_flush(dsh: Dsh, onebot: OneBot, chat_key: str) -> None:
             notes.append(f"[表情包：{img_path}]")
             existing = sticker_lookup_ref(f"source:{img_path}")
             if existing.get("found"):
-                old_tags = "、".join(str(t) for t in (existing.get("tags") or [])[:8]) or "无"
+                facets = []
+                for key in ("identity", "action", "expression", "generic"):
+                    values = "、".join(str(v) for v in (existing.get(key) or [])[:6])
+                    if values:
+                        facets.append(f"{key}={values}")
                 old_caption = str(existing.get("caption") or "")[:80] or "无"
                 notes.append(
-                    f"（库里已有：name={existing.get('name') or '无'}；tags={old_tags}；caption={old_caption}）"
+                    "（库里已有：" + f"label={existing.get('label') or '无'}；"
+                    + "；".join(facets)
+                    + f"；caption={old_caption}）"
                 )
             asyncio.create_task(collect_sticker_bg(img_path, merged))
         else:

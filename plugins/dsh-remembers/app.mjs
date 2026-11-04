@@ -323,6 +323,7 @@ const soft = (key) => {
         turnStickers: 0,             // 其中表情包数
         turnImageRefs: [],           // 图片 attachment id
         turnStickerKinds: [],        // 表情包分类
+        turnStickerLabels: [],       // 表情包在库里的 label
         turns: 0,                    // 已结束的轮数（每 50 轮重注入画像）
         turnUser: "",
         turnAssistant: "",
@@ -551,11 +552,13 @@ const soft = (key) => {
         if (ref) state.turnImageRefs.push(ref);
       }
     }
-    for (const match of String(text || "").matchAll(/\[表情包[：:]([^\]]+)\]/g)) {
+    for (const match of String(text || "").matchAll(/\[表情包[：:]([^\]]+)\](?:\s*（库里已有：([^）]*)）)?/g)) {
       const path = String(match[1] || "").replace(/\\/g, "/");
       const parts = path.split("/").filter(Boolean);
       const kind = parts.length >= 2 ? parts[parts.length - 2] : "sticker";
       if (kind) state.turnStickerKinds.push(kind);
+      const label = String(match[2] || "").match(/(?:^|；)label=([^；)]+)/)?.[1]?.trim();
+      if (label) state.turnStickerLabels.push(label);
     }
     const stickerCount = message.role === "assistant" ? 0
       : (String(text || "").match(/\[(?:表情包|表情)[：:]/g) || []).length;
@@ -579,10 +582,12 @@ const soft = (key) => {
     const stickerCount = Math.min(imageCount, Number(state.turnStickers) || 0);
     const imageRefs = [...new Set(state.turnImageRefs || [])].slice(0, 8);
     const stickerKinds = [...new Set(state.turnStickerKinds || [])].slice(0, 8);
+    const stickerLabels = [...new Set(state.turnStickerLabels || [])].slice(0, 8);
     state.turnImages = 0;
     state.turnStickers = 0;
     state.turnImageRefs = [];
     state.turnStickerKinds = [];
+    state.turnStickerLabels = [];
     const mediaTags = [
       ...imageRefs.map((ref) => `img:${ref}`),
       ...stickerKinds.map((kind) => `sticker:${kind}`),
@@ -607,7 +612,12 @@ const soft = (key) => {
     const nickname = String(state.nickname || "").trim();
     // 剥掉系统唤醒片段，只留真实内容
     let keptUser = cleanNudge(user);
-    if (imageCount > 0) {
+    if (imageCount > 0 && stickerCount > 0 && stickerLabels.length) {
+      const marker = stickerLabels.map((label) => `[[sticker:${label}]]`).join(" ");
+      keptUser = keptUser ? `${keptUser} ${marker}` : marker;
+      const plain = Math.max(0, imageCount - stickerCount);
+      if (plain) keptUser += `（另有 ${plain} 张图片）`;
+    } else if (imageCount > 0) {
       const plain = Math.max(0, imageCount - stickerCount);
       const parts = [];
       if (plain) parts.push(`${plain} 张图片`);

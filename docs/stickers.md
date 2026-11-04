@@ -1,115 +1,130 @@
 # 表情包系统
 
-表情包不是普通图片。它同时有：
+表情包有两条独立的描述线：
 
-- 图片文件
-- 语义（名称、标签、描述、分类）
-- 使用习惯（发过几次、最近什么时候发）
-- 对话里的引用（主人发过、鱼要发）
+```text
+label       记忆/展示用的短名
+facets      检索用的结构化语义
+```
 
-这套系统把“图片”和“语义”分开：图片放目录，语义放索引，bridge 只负责时机，主模型通过工具补充理解。
+不再使用 `tags` / `concepts`。
 
 ## 1. 分层
 
 ```text
-QQ 消息
-  → bridge 下载到 inbox
-  → domains/media/stickers.py 收藏 / 去重 / 视觉分类
-  → domains/media/library.py 索引 / 选图 / 标签清洗
-  → domains/media/meta.py 引用解析 / 查询 / 写语义
+QQ 消息图片
+  → bridge / domains/media/download.py
+  → vision.py 识别类别、caption、facets
+  → stickers.py 收藏、去重
+  → library.py 索引、选图、分面匹配
+  → bridge 发送 [[meme:...]]
 
-DSH 主模型
-  → tools/memes.mjs 里的 sticker_lookup / sticker_meta
-  → sticker_meta 只写队列
-  → bridge 的 sticker_meta_loop 消费队列
-  → media.meta.apply_record 落 index
+主模型看到图后
+  → tools/memes.mjs sticker_meta
+  → 写队列
+  → bridge sticker_meta_loop
+  → media.meta.apply_record
+  → library.index_add
 ```
 
-职责边界：
-
-| 层 | 负责 |
+| 层 | 职责 |
 | --- | --- |
-| `bridge.py` | 收图、发图、队列轮询、触发提示 |
-| `qqbot/domains/media` | 图片、索引、去重、语义解析、选图 |
-| `dsh-remembers` | 只做 DSH 工具适配 |
-| 面板 | 人工查看、改标签、删除 |
+| `bridge.py` | 收图、发图、队列轮询、给模型看旧语义 |
+| `qqbot/domains/media` | 下载、视觉、收藏、索引、匹配 |
+| `plugins/dsh-remembers/tools/memes.mjs` | DSH 工具适配 |
+| 面板 | 人工查看、改语义、删除 |
 
 ## 2. 数据文件
 
 ```text
 stickers/
   happy/
-    u_05c84e1c43efe84d.jpg
-  confused/
+    u_xxx.jpg
   ...
-  index.json      # 语义索引
-  meta.json       # OneBot 表情元数据（emoji_id / summary 等）
+  index.json
+  meta.json
 ```
 
-索引条目：
+`index.json` 条目：
 
 ```json
 {
-  "file": "happy/u_05c84e1c43efe84d.jpg",
-  "name": "奶龙举旗",
+  "file": "happy/u_xxx.jpg",
   "category": "happy",
-  "caption": "黄色小恐龙举旗笑",
-  "tags": ["奶龙", "小恐龙", "举旗", "开心"],
-  "aliases": ["奶龙"],
-  "usage_count": 4,
-  "last_used_at": 1793710000,
-  "w": 500,
-  "h": 500,
-  "sig": "003c3e3e7e3e3c00"
+  "caption": "黄色圆滚小人仰头大笑",
+  "label": "大笑奶龙",
+  "identity": ["奶龙"],
+  "action": ["躺倒"],
+  "expression": ["大笑", "开心"],
+  "generic": ["搞笑", "可爱"],
+  "usage_count": 3,
+  "last_used_at": 179...
 }
 ```
 
-字段说明：
+### label
 
-- `name`：人类可读的名字
-- `category`：粗分类，只做 fallback
-- `caption`：一句描述
-- `tags`：真正的检索主索引
-- `aliases`：用户教过的别名
-- `usage_count` / `last_used_at`：使用习惯
-- `sig`：感知签名，用于近似图去重
+- 2–10 字
+- 只用于记忆/展示
+- 模型看到图后写
+- 不从 facets/caption 自动拼
+- 空就是空
 
-## 3. 收藏流程
-
-入口：`qqbot/domains/media/stickers.py :: collect_sticker`
+### facets
 
 ```text
-收到表情
-  → 大小检查
-  → 规范化格式（GIF 保留，其他转 JPEG 视情况）
-  → sha256 前 16 位作为 u_<hash>
-  → 已有同名文件？
-      是：复用，不重复收藏
-  → 感知签名近似匹配？
-      是：合并到已有条目
-  → 视觉模型 describe_sticker
-      category / caption / 3–6 个 tags
-  → 落盘 + index_add
+identity    角色/IP/人物
+action      动作
+expression  表情/情绪
+generic     泛词
 ```
 
-关键变化：
+检索时加权：
 
-- **不再把聊天记录里的关键词塞进标签**
-- 视觉标签和用户手动标签才是标签来源
-- 近似图会走 `find_signature_match`，不会因为重压缩多出一张
+```text
+identity   100
+action      50
+expression  40
+generic     10
+caption     15
+```
 
-## 4. 语义写入
+`label` 不参与检索。
 
-### 4.1 主模型写
+## 3. 收集流程
 
-工具：`dsh-remembers/tools/memes.mjs :: sticker_meta`
+1. 下载图片，判断是不是表情包
+2. 视觉模型输出：
 
 ```json
 {
-  "ref": "source:D:\\...\\inbox\\xxx.jpg",
-  "name": "奶龙举旗",
-  "tags": "奶龙, 小恐龙, 举旗, 开心",
-  "caption": "黄色小恐龙举旗笑"
+  "category": "happy",
+  "caption": "黄色圆滚小人仰头大笑",
+  "identity": ["奶龙"],
+  "action": ["躺倒"],
+  "expression": ["大笑", "开心"],
+  "generic": ["搞笑", "可爱"]
+}
+```
+
+3. 按文件 hash 和感知签名去重
+4. 写入索引
+
+视觉模型不负责起 `label`；label 由主模型看到图后写。
+
+## 4. 主模型写入
+
+工具：`sticker_meta`
+
+```json
+{
+  "ref": "source:D:\\...\\xxx.jpg",
+  "label": "大笑奶龙",
+  "identity": "奶龙, 小恐龙",
+  "action": "躺倒",
+  "expression": "大笑, 开心",
+  "generic": "搞笑, 可爱",
+  "caption": "黄色圆滚小人躺着仰头大笑"
 }
 ```
 
@@ -121,181 +136,65 @@ file:<库内相对路径>
 query:<关键词>
 ```
 
-默认保留已有标签，只追加新标签。如果模型看过旧标签后要完整改写或删除旧标签，传：
+### 旧语义
 
-```json
-{"replace_tags": true}
+bridge-note 会带：
+
+```text
+[表情包：D:\...\xxx.jpg]
+（库里已有：label=...；identity=...；action=...；expression=...；generic=...；caption=...）
 ```
 
-如果 `bridge-note` 里带了 `（库里已有：...）`，那是在写入前给模型看的旧 name/tags/caption。
+模型先看旧语义再决定是否改。
 
-工具只写队列：
+### 合并/替换
+
+默认：
+
+```text
+旧 facets 保留
+新 facets 清洗后追加
+label 只有非空才更新
+```
+
+要完整替换 facets：
+
+```json
+{"replace_facets": true}
+```
+
+label 由模型写，不做自动覆盖保护；空 label 不会清空已有值。
+
+## 5. 队列
+
+`sticker_meta` 不直接写库，只追加：
 
 ```text
 $DSH_HOME/sticker-meta-queue.jsonl
 ```
 
-bridge 的 `sticker_meta_loop` 每 3 秒消费一次：
+bridge 每 3 秒消费：
+
+- 收藏尚未落盘 → 保留，最多 180 秒
+- 落盘后 → 解析 `source/file/query`
+- 写入索引
+- 成功从队列删除
+
+## 6. 选图
+
+`resolve_meme(token)`：
+
+1. 支持 `类别:关键词`
+2. 按 facets 加权搜索
+3. 类别只作过滤/兜底
+4. 没命中就返回 `None`，不硬配
+
+使用习惯：
 
 ```text
-source 未落盘 → 最多重试 180 秒
-file / query  → 立即解析
-解析成功     → media.meta.apply_record → library.index_add
+用得多、最近用得多 → 加分
+不是“越新越优先”
 ```
-
-这样不会污染当前对话，也不会强制多跑一次主模型。
-
-### 4.2 主模型查
-
-工具：`sticker_lookup`
-
-```json
-{"ref":"source:D:\\...\\inbox\\xxx.jpg"}
-```
-
-返回：
-
-```json
-{
-  "found": true,
-  "file": "happy/u_xxx.jpg",
-  "name": "奶龙举旗",
-  "category": "happy",
-  "tags": ["奶龙", "举旗"],
-  "caption": "黄色小恐龙举旗笑",
-  "usage_count": 4
-}
-```
-
-查不到：
-
-```json
-{"found": false}
-```
-
-查询走面板只读接口：
-
-```http
-GET /api/stickers/lookup?ref=...
-```
-
-### 4.3 解析器
-
-业务逻辑在 `qqbot/domains/media/meta.py`：
-
-```python
-resolve_ref(ref)       # source/file/query → 库内相对路径
-lookup_ref(ref)        # 只读查询
-apply_record(record)   # 写入 name/tags/caption
-```
-
-bridge 不再自己解析路径。
-
-### 4.4 概念引用
-
-表情、词条、记忆之间不直接复制内容，而是共享一个轻量 concept id：
-
-```text
-concept:奶龙
-```
-
-- `$DSH_HOME/concepts.json` 保存概念表
-- 表情索引可以带 `concepts: ["concept:奶龙"]`
-- 词条可以带同名 id
-- 以后记忆事实可以带 `links: ["concept:奶龙"]`
-
-`sticker_meta` 支持可选的 `concepts` 参数：
-
-```json
-{"ref":"file:happy/u_xxx.jpg","name":"奶龙举旗","concepts":"奶龙"}
-```
-
-如果只给 `name` 没给 `concepts`，会按 name 自动建一个明确概念。
-
-当前只做“明确教过/明确给出”的概念，不做自动实体识别。
-
-
-
-标签是检索词，不是聊天记录。
-
-自动写入时只清洗**新标签**：
-
-- 超过 12 字丢弃
-- 带标点/整句丢弃
-- 含“我/你/他/主人/刚才/视频/KPL/token”等场景词丢弃
-- 新标签每次最多 8 个
-
-已有标签不再被自动清洗或截断；它们可能是用户手动写的，默认只做追加，最多保留 24 个。模型明确传 `replace_tags=true` 时，才用这次提供的标签完整替换。
-
-手动编辑不受自动清洗限制，但仍建议：
-
-```text
-奶龙, 小恐龙, 举旗, 开心, happy
-```
-
-不要写：
-
-```text
-我刚才在看的那个视频里的小恐龙
-```
-
-## 5. 选图
-
-入口：`qqbot/domains/media/library.py :: resolve_meme`
-
-```text
-[[meme:happy]]
-[[meme:奶龙]]
-[[meme:happy:摇旗]]
-```
-
-解析顺序：
-
-```text
-1. 精确 file / name / alias
-2. 标签精确命中
-3. 标签包含
-4. caption 包含
-5. 类别 fallback
-```
-
-类别只做兜底，不是主索引。
-
-同分时按“使用习惯”加权：
-
-```text
-使用次数 × 1.5
-最近 5 分钟发过：+12
-最近 1 小时：+8
-最近 1 天：+4
-```
-
-用户偏好是“常用的、最近常用的优先”，不是“没发过的优先”。
-
-找到具体图后：
-
-- `mark_sticker_used` 增加 usage_count / last_used_at
-- bridge 发图
-
-## 6. 发送
-
-模型输出：
-
-```text
-[[meme:奶龙]]
-```
-
-bridge 的 `OneBot.send`：
-
-```text
-MEME_RE 提取 token
-  → resolve_meme
-  → 读文件
-  → 普通图 / 动画表情 / custom_face
-  → 发送，并 mark_sticker_used
-```
-
-`[[meme:...]]` 不应出现在给用户的文本里。
 
 ## 7. 面板
 
@@ -305,69 +204,76 @@ MEME_RE 提取 token
 
 ```text
 表情图
-标签（最多显示 5 个，剩余显示 +N）
-概念（如果有）
+label
+identity / action / expression / generic 分面
 ```
 
-整页顶部只有三个操作：
+操作：
 
 ```text
-[修改标签] [修改概念] [删除]
+[修改语义] [删除]
 ```
 
-先点一张表情选中，再点操作按钮。
+先选中，再操作。
 
-- 修改标签：弹窗编辑，保存后只更新标签块，不整页刷新
-- 修改概念：弹窗编辑，保存后更新绿色概念块
-- 删除：选中卡片下方出现红色 `×`，再点 `×` 才删除
-- 删除完成或保存完成，选中状态清除，界面回到干净状态
-- 表情页不参与 10 秒自动刷新，避免顶掉编辑
+- 修改语义：弹窗编辑 label + 四类分面
+- 删除：选中后出现红色 `×`，再点确认
+- 表情页不参与 10 秒自动刷新
 
 接口：
 
 ```http
 GET  /api/stickers
 GET  /api/stickers/lookup?ref=...
-POST /api/stickers/tags
-POST /api/stickers/concepts
+POST /api/stickers/semantics
 POST /api/stickers/delete
 ```
 
 ## 8. 触发
 
-不再按消息逐条加“你应该调用 X”的提示。现在的原则是：
+不再逐条加“你应该调用 X”的提示。
 
-- 工具描述负责说明能力
+- 工具描述说明能力
 - `AGENTS.md` 只留一句全局规则
-- bridge-note 只提供事实，例如 `[表情包：D:\...\xxx.jpg]`
-- 如果这张图已经在库里，会再附一条 `（库里已有：name=...；tags=...；caption=...）`
-- 不替模型做判断
+- bridge-note 只提供事实：图片路径、库里已有语义
+- 模型自行决定是否调用 `sticker_lookup` / `sticker_meta`
 
-模型看到图、路径、旧语义和工具描述后自行决定是否调用 `sticker_lookup` / `sticker_meta`。认不出时允许不写，用户也可以在面板手动补。
+## 9. 记忆里的表情
 
-## 9. 已知限制
+用户发表情时，L0 只保留一个短标记：
 
-- 自动语义依赖视觉模型，冷门 IP 可能认不出
-- 主模型可能漏调 `sticker_lookup` / `sticker_meta`
-- `source` 依赖原图文件还在；inbox 被清理后只能靠 `file` / `query`
-- `last:` 还没有接（需要按会话记录最近表情）
-- `query:` 只能命中已有 name/tags/caption，不能凭空理解“奶龙”
-- 近似图依赖感知签名，极端裁剪/改色可能匹配不上
+```text
+主人：[[sticker:大笑奶龙]]
+```
+
+- 有 label 才写 label
+- 没有 label 仍写“发来 N 张表情”
+- 不写 facets、caption、文件路径
+- 不进 L1/L3，不参与召回
+
+## 10. 已知限制
+
+- 视觉模型认不出冷门 IP 时，identity 可能为空
+- label 依赖主模型主动写；没写就显示“未命名”
+- 同一角色可能有多个写法，需要模型或面板收敛
+- 一张图有多个角色时，identity 是列表
+- `source` 依赖原图还在；inbox 清理后只能用 `file` / `query`
+- `last:` 还没接
+- 近似图依赖感知签名，极端裁剪可能匹配不上
 - 图片本体不持久化到记忆库，只存引用
-- 面板手动标签不经过自动清洗，由用户负责
 
-## 10. 代码地图
+## 11. 代码地图
 
 | 文件 | 作用 |
 | --- | --- |
 | `qqbot/domains/media/download.py` | 下载、识别 sticker |
-| `qqbot/domains/media/vision.py` | 视觉分类/描述 |
+| `qqbot/domains/media/vision.py` | 视觉分类、caption、facets |
 | `qqbot/domains/media/stickers.py` | 收藏、去重 |
-| `qqbot/domains/media/library.py` | 索引、选图、标签清洗 |
-| `qqbot/domains/media/meta.py` | source/file/query 解析、查/写 |
-| `bridge.py` | 队列、发送 |
+| `qqbot/domains/media/library.py` | 索引、分面匹配、选图 |
+| `qqbot/domains/media/meta.py` | source/file/query 解析、读写 |
+| `bridge.py` | 队列、旧语义提示、发送 |
 | `plugins/dsh-remembers/tools/memes.mjs` | `sticker_lookup` / `sticker_meta` |
 | `panel_readers.py` / `panel_routes.py` | 面板 API |
 | `web/app.js` / `style.css` | 面板交互 |
 
-词库相关见 [词库系统](lexicon.md)。
+词库见 [词库系统](lexicon.md)。

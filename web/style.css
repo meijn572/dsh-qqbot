@@ -31,10 +31,13 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0b0f13;border:1px sol
 .sticker-item{width:170px;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px;background:#141a21;border:1px solid #232a33;border-radius:12px;color:#c9d4de;font-size:11px;cursor:pointer}
 .sticker-item.selected{border-color:#4aa8ff;box-shadow:0 0 0 1px #4aa8ff inset,0 6px 20px rgba(74,168,255,.15)}
 .sticker-item .thumb{width:140px;height:140px;object-fit:contain}
+.sticker-label{font-size:12px;color:#e6edf3;font-weight:600;text-align:center;line-height:1.35}
 .sticker-tags{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:3px;min-height:18px;max-height:none;overflow:visible}
 .sticker-tags .tag{font-size:11px}
-.sticker-concepts{display:flex;flex-wrap:wrap;justify-content:center;gap:3px}
-.tag.concept{background:#1d2b24;color:#8fe0b0;border:1px solid #2f5b43}
+.facet-identity{background:#1d2b3a;color:#9fd0ff;border:1px solid #2f5b7a}
+.facet-action{background:#2b2419;color:#ffd28f;border:1px solid #6b542b}
+.facet-expression{background:#2b1d24;color:#ffb3c8;border:1px solid #6b2b42}
+.facet-generic{background:#20242a;color:#aab6c2;border:1px solid #3a424c}
 .sticker-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:4px}
 .sticker-actions button{padding:4px 8px;font-size:11px}
 .sticker-x{background:#3a1f24;border-color:#6b2b35;color:#ffb3bd;padding:2px 12px;font-size:15px;line-height:1.4}
@@ -43,6 +46,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#0b0f13;border:1px sol
 .modal[hidden]{display:none}
 .modal-card{width:420px;max-width:calc(100vw - 40px);background:#141a21;border:1px solid #2c3b4d;border-radius:14px;padding:18px;box-shadow:0 16px 50px rgba(0,0,0,.5)}
 .modal-card textarea{width:100%;height:120px;margin:10px 0;background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:10px;font:inherit;resize:vertical}
+.sticker-sem-fields{display:flex;flex-direction:column;gap:8px;margin:12px 0}
+.sticker-sem-fields input{width:100%;box-sizing:border-box;background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:9px 10px;font:inherit}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end}
 
 .video-row{padding:10px 0;border-top:1px solid #1e252e}

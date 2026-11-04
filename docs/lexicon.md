@@ -142,7 +142,7 @@ status=fresh/hot/stable/archived
 ```
 
 - `terms`：词条解释
-- `stickers`：按 `name/tags/caption/concepts` 命中的表情
+- `stickers`：按 `identity/action/expression/generic/caption` 命中的表情
 
 最多各 8 条。
 
@@ -182,7 +182,7 @@ status=fresh/hot/stable/archived
 每条显示：
 
 ```text
-[kind · scope] term [concept] [status] ×count
+[kind · scope] term [status] ×count
 别名：...
 解释
 ```
@@ -222,22 +222,16 @@ status=fresh/hot/stable/archived
 
 工具描述和 `AGENTS.md` 的一句全局规则负责引导，bridge 只提供事实。
 
-## 6. 概念层
+## 6. 和表情的边界
 
-全局词条可以带概念 id：
+词库负责“词是什么意思”，表情负责“这张图是什么”。
 
-```text
-concept:yyds
-```
+- 词条用 `term/aliases`
+- 表情用 `label + identity/action/expression/generic`
+- `lexicon_search` 可以同时返回词条和相关表情，但两边各自存储
+- 没有共享的 `concept:` 层
 
-概念层是可选的，不是查询必需：
-
-- 词条/表情查询优先走 term、alias、tag、caption
-- 概念只用于以后跨词库/表情/记忆聚合
-- 不做自动实体识别
-- 不做 concept CRUD
-
-详见 [表情包系统](stickers.md#44-概念引用)。
+详见 [表情包系统](stickers.md)。
 
 ## 7. 已知限制
 
@@ -246,7 +240,7 @@ concept:yyds
 - `lexicon_lookup` 是子串匹配，不是语义向量检索
 - 别名需要手动维护
 - 过气词默认仍可能被查到，只在展示时标 `archived`
-- 删除只清 `lexicon.json` 条目，不级联清概念表或记忆里的 `concept:` 引用
+- 删除只清 `lexicon.json` 条目，不级联清表情或记忆
 - 模型可能漏调工具；面板仍可兜底
 
 ## 8. 代码地图

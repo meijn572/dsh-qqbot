@@ -13,7 +13,6 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from settings import AGENTS, BOT_DIR as BOT, CMEM_BASE, DSH_HOME as HOME, HEALTH_FILE, PANEL_PORT, QR_FILE, SCRIPTS_DIR, STATE_FILE, WORKSPACE
-from qqbot.domains.concepts import concept_id, ensure_concept
 from qqbot.domains.group.lexicon import (
     KINDS,
     STATUSES,
@@ -21,6 +20,7 @@ from qqbot.domains.group.lexicon import (
     list_entries as list_lexicon_entries,
     upsert_entry as upsert_lexicon_entry,
 )
+from qqbot.domains.media.library import clean_facets, clean_label
 from qqbot.domains.media.meta import lookup_ref as resolve_sticker_ref
 
 DB = HOME / "memory" / "memory.db"
@@ -84,7 +84,6 @@ def lexicon_payload() -> dict:
         category = "group" if scope.startswith("group:") else "network"
         entries.append({
             "id": entry.get("id") or "",
-            "concept": concept_id(entry.get("term") or "") if scope == "global" else "",
             "category": category,
             "kind": entry.get("kind") or "",
             "scope": scope.split(":", 1)[1] if category == "group" else "global",
@@ -139,10 +138,11 @@ def lexicon_search_payload(query: str) -> dict:
     stickers = []
     for item in sticker_payload().get("items") or []:
         hay = " ".join([
-            str(item.get("name") or ""),
             str(item.get("caption") or ""),
-            " ".join(str(t) for t in (item.get("tags") or [])),
-            " ".join(str(t) for t in (item.get("concepts") or [])),
+            " ".join(str(t) for t in (item.get("identity") or [])),
+            " ".join(str(t) for t in (item.get("action") or [])),
+            " ".join(str(t) for t in (item.get("expression") or [])),
+            " ".join(str(t) for t in (item.get("generic") or [])),
         ]).lower()
         if q in hay:
             stickers.append(item)
@@ -190,8 +190,6 @@ def lexicon_add(kind: str, term: str, meaning: str, example: str = "", aliases: 
     )
     if not entry:
         return {"ok": False, "error": "写入失败"}
-    if scope == "global":
-        ensure_concept(term, kind="fandom" if kind == "fandom" else "meme", meaning=meaning, source="lexicon")
     return {"ok": True, "id": entry.get("id"), "entry": entry}
 
 
@@ -551,13 +549,15 @@ def sticker_payload() -> dict:
     for item in items:
         entry = index_map.get(item["file"], {})
         item["caption"] = entry.get("caption", "")
-        item["name"] = entry.get("name") or item["caption"] or Path(item["file"]).stem
-        item["tags"] = entry.get("tags") if isinstance(entry.get("tags"), list) else []
-        item["concepts"] = entry.get("concepts") if isinstance(entry.get("concepts"), list) else []
+        item["label"] = entry.get("label") or ""
+        item["identity"] = entry.get("identity") if isinstance(entry.get("identity"), list) else []
+        item["action"] = entry.get("action") if isinstance(entry.get("action"), list) else []
+        item["expression"] = entry.get("expression") if isinstance(entry.get("expression"), list) else []
+        item["generic"] = entry.get("generic") if isinstance(entry.get("generic"), list) else []
         item["usage_count"] = int(entry.get("usage_count") or 0)
     item_map = {item["file"]: item for item in items}
     user_items = [item_map[x["file"]] for x in user_items if x["file"] in item_map]
-    items.sort(key=lambda x: (x["category"], str(x.get("name") or x["file"])))
+    items.sort(key=lambda x: (x["category"], str(x.get("label") or x["file"])))
     user_items.sort(key=lambda x: x["file"], reverse=True)
     return {"categories": categories, "items": items[:200], "user_items": user_items[:60], "hidden_images": hidden}
 
@@ -599,52 +599,24 @@ def sticker_lookup_payload(ref: str) -> dict:
         return {"found": False, "error": str(exc)}
 
 
-def sticker_update_tags(rel: str, tags: list) -> dict:
+def sticker_update_semantics(rel: str, label: str = "", identity: list | None = None,
+                             action: list | None = None, expression: list | None = None,
+                             generic: list | None = None) -> dict:
     path, key = _sticker_file(rel)
     if path is None:
         return {"ok": False, "error": "文件不存在或路径不合法"}
-    clean = []
-    for tag in (tags if isinstance(tags, list) else [])[:30]:
-        value = str(tag or "").strip()
-        if value and len(value) <= 40 and value not in clean:
-            clean.append(value)
     index = read_json(STICKERS / "index.json") or []
     if not isinstance(index, list):
         index = []
     entry = next((e for e in index if isinstance(e, dict) and str(e.get("file") or "").replace("\\", "/") == key), None)
     if entry is None:
-        entry = {"file": key, "category": path.parent.name, "caption": "", "tags": []}
+        entry = {"file": key, "category": path.parent.name, "caption": ""}
         index.append(entry)
-    entry["tags"] = clean
+    entry["label"] = clean_label(label)
+    for field, values in (("identity", identity), ("action", action), ("expression", expression), ("generic", generic)):
+        entry[field] = clean_facets(values)
     (STICKERS / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1), encoding="utf-8")
-    return {"ok": True, "file": key, "tags": clean}
-
-
-def sticker_update_concepts(rel: str, concepts: list) -> dict:
-    path, key = _sticker_file(rel)
-    if path is None:
-        return {"ok": False, "error": "文件不存在或路径不合法"}
-    ids = []
-    for raw in (concepts if isinstance(concepts, list) else [])[:20]:
-        term = str(raw or "").strip()
-        if term.startswith("concept:"):
-            term = term.split(":", 1)[1]
-        if not term:
-            continue
-        entry = ensure_concept(term, kind="fandom", source="panel")
-        cid = entry.get("id") or concept_id(term)
-        if cid and cid not in ids:
-            ids.append(cid)
-    index = read_json(STICKERS / "index.json") or []
-    if not isinstance(index, list):
-        index = []
-    entry = next((e for e in index if isinstance(e, dict) and str(e.get("file") or "").replace("\\", "/") == key), None)
-    if entry is None:
-        entry = {"file": key, "category": path.parent.name, "caption": "", "tags": []}
-        index.append(entry)
-    entry["concepts"] = ids
-    (STICKERS / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1), encoding="utf-8")
-    return {"ok": True, "file": key, "concepts": ids}
+    return {"ok": True, "file": key, "label": entry["label"], **{k: entry[k] for k in ("identity", "action", "expression", "generic")}}
 
 
 def rolecard_payload() -> dict:

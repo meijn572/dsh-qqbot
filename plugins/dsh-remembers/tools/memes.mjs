@@ -99,19 +99,21 @@ export async function registerMemeTools({ registerTool, log, endpoint, memeDir }
       name: "sticker_meta",
       description:
         "给表情包写语义信息。你看到表情图、也认得出角色/梗/动作时调用一次。"
-        + "ref 支持 source:<图片路径> / file:<库内相对路径> / query:<描述>；"
-        + "最简单是 source: 加 bridge-note 里的完整图片路径。"
-        + "tags 用逗号分隔，只写图本身（角色、外观、动作、情绪），不要写聊天场景。"
-        + "bridge-note 里如果带「库里已有」信息，先看旧 name/tags；默认保留旧标签只追加，"
-        + "要完整改写或删旧标签时传 replace_tags=true。"
+        + "ref 支持 source:<图片路径> / file:<库内相对路径> / query:<描述>。"
+        + "label 是给记忆/展示用的短名（2-10字），比如「大笑奶龙」；不要从标签拼。"
+        + "identity/action/expression/generic 是检索分面，用逗号分隔。"
+        + "bridge-note 里带「库里已有」时先看旧 label/分面；默认保留旧分面只追加，"
+        + "要完整改写时传 replace_facets=true。"
         + "系统会把它补进表情库索引，不回复用户。",
       parameters: {
         ref: { type: "string", description: "source:D:\\...\\xxx.jpg 或 file:happy/u_xxx.jpg 或 query:黄色小恐龙" },
         source: { type: "string", description: "兼容写法：直接给图片路径" },
-        name: { type: "string", description: "这张表情叫什么，比如「奶龙举旗」；不知道就空" },
-        tags: { type: "string", description: "逗号或空格分隔的标签，比如「奶龙, 小恐龙, 举旗, 开心」" },
-        concepts: { type: "string", description: "可选：概念词，比如「奶龙」；用于和 lexicon/记忆联动" },
-        replace_tags: { type: "boolean", description: "默认 false=保留旧标签只追加；true=用这次 tags 完整替换（删旧标签时用）" },
+        label: { type: "string", description: "短名，2-10字，比如「大笑奶龙」；不知道就空" },
+        identity: { type: "string", description: "身份/角色/IP，逗号分隔，比如「奶龙,小恐龙」" },
+        action: { type: "string", description: "动作，逗号分隔，比如「举旗,抱饭」" },
+        expression: { type: "string", description: "表情/情绪，逗号分隔，比如「大笑,开心」" },
+        generic: { type: "string", description: "泛词，逗号分隔，比如「搞笑,可爱」" },
+        replace_facets: { type: "boolean", description: "默认 false=保留旧分面只追加；true=用这次分面完整替换" },
         caption: { type: "string", description: "一句话描述图里是什么、在做什么" },
       },
       output: { schema: { type: "json" }, render: (_a, v) => [{ type: "text", text: JSON.stringify(v) }] },
@@ -123,24 +125,27 @@ export async function registerMemeTools({ registerTool, log, endpoint, memeDir }
         if (!ref) return { ok: false, error: "缺少 ref（source:/file:/query:）" };
         if (ref.startsWith("last:")) return { ok: false, error: "last 还没接，先用 source/file/query" };
         if (!home) return { ok: false, error: "没有 DSH_HOME，无法写表情队列" };
+        const split = (value) => String(value || "").split(/[,，、\s]+/).map((x) => x.trim()).filter(Boolean).slice(0, 12);
         const record = {
           ref,
-          name: String(args.name || "").trim(),
-          tags: String(args.tags || "").split(/[,，、\s]+/).map((x) => x.trim()).filter(Boolean).slice(0, 12),
-          concepts: String(args.concepts || "").split(/[,，、\s]+/).map((x) => x.trim()).filter(Boolean).slice(0, 6),
-          replace_tags: Boolean(args.replace_tags),
+          label: String(args.label || "").trim(),
+          identity: split(args.identity),
+          action: split(args.action),
+          expression: split(args.expression),
+          generic: split(args.generic),
+          replace_facets: Boolean(args.replace_facets),
           caption: String(args.caption || "").trim(),
           ts: Date.now(),
         };
         await appendFile(join(home, "sticker-meta-queue.jsonl"), JSON.stringify(record) + "\n", "utf8");
-        return { ok: true, queued: true, ref: record.ref, name: record.name, tags: record.tags };
+        return { ok: true, queued: true, ref: record.ref, label: record.label };
       },
     }));
 
     registerTool(defineTool({
       name: "sticker_lookup",
       description:
-        "查这张表情在不在表情库里、库里叫什么/什么标签。"
+        "查这张表情在不在表情库里、库里叫什么、有哪些分面。"
         + "ref 支持 source:<bridge-note 图片路径> / file:<库内相对路径> / query:<关键词>。"
         + "用户问「库里有这张吗」「这张叫什么」时先查这个，不要猜。",
       parameters: {

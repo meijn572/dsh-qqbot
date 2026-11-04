@@ -71,9 +71,8 @@ function renderLex(){
   for(const it of items){
     const kind=LEX_KIND[it.kind]||it.kind||'词条';
     const scope=it.category==='group'?`群 ${esc(it.scope)}`:'全局';
-    const concept=it.concept?`<span class="tag concept">${esc(it.concept.replace(/^concept:/,''))}</span>`:'';
     const aliases=(it.aliases||[]).length?` <span class="mut">别名：${(it.aliases||[]).map(esc).join('、')}</span>`:'';
-    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${kind} · ${scope}</span> <b>${esc(it.term)}</b> ${concept}${aliases} <span class="tag">${LEX_STATUS[it.status]||it.status}</span> <span class="mut">×${it.count||1}</span> <button style="float:right" onclick="lexDel('${encodeURIComponent(it.id||'')}')">删</button><div>${esc(it.meaning||'')}</div></div>`;
+    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${kind} · ${scope}</span> <b>${esc(it.term)}</b>${aliases} <span class="tag">${LEX_STATUS[it.status]||it.status}</span> <span class="mut">×${it.count||1}</span> <button style="float:right" onclick="lexDel('${encodeURIComponent(it.id||'')}')">删</button><div>${esc(it.meaning||'')}</div></div>`;
   }
   const box=document.getElementById('lexlist'); if(box) box.innerHTML=h||'<div class="mut">还没有词条</div>';
 }
@@ -291,26 +290,24 @@ async function load(){
   if(!$('#stickers').hidden){
     const st=await j('/api/stickers');
     const items=st.items||st.user_items||[];
-    window.__stickerTags=Object.fromEntries(items.map(it=>[it.file,(it.tags||[]).join(', ')]));
-    window.__stickerConceptTerms=Object.fromEntries(items.map(it=>[it.file,(it.concepts||[]).map(x=>String(x).replace(/^concept:/,'')).join(', ')]));
+    window.__stickerData=Object.fromEntries(items.map(it=>[it.file,it]));
     let h='<div class="card"><div class="k">分类统计</div><div style="margin-top:8px">';
     for(const [k,v] of Object.entries(st.categories)) h+=`<span class="tag">${esc(k)} ${v.user}/${v.total}</span> `;
     h+='</div></div>';
     h+=`<div class="card"><div class="k">表情库（${items.length} 张）</div>${st.hidden_images?`<div class="mut" style="margin:4px 0">另有 ${st.hidden_images} 张旧图片没有表情标识，已隐藏。</div>`:''}
       <div class="sticker-toolbar">
-        <button id="stickerTagsBtn" disabled onclick="stickerEditTagsSelected()">修改标签</button>
-        <button id="stickerConceptsBtn" disabled onclick="stickerEditConceptsSelected()">修改概念</button>
+        <button id="stickerSemanticsBtn" disabled onclick="stickerEditSemanticsSelected()">修改语义</button>
         <button id="stickerDeleteBtn" disabled onclick="stickerArmDelete()">删除</button>
         <span id="stickerSelHint" class="mut">先点一张表情</span>
       </div>
       <div class="items sticker-grid" style="margin-top:10px">`;
     for(let i=0;i<items.length;i++){
-      const it=items[i], view=`st_view_${i}`, cview=`st_concepts_${i}`;
-      const hasConcepts=it.concepts&&it.concepts.length;
-      h+=`<div class="item sticker-item" data-file="${attr(it.file)}" data-view="${view}" data-cview="${cview}" data-name="${attr(it.caption || it.name || '')}" onclick="stickerSelect(this)">
+      const it=items[i];
+      const shown=[it.label, it.caption].filter(Boolean).join(' · ');
+      h+=`<div class="item sticker-item" data-file="${attr(it.file)}" data-name="${attr(shown || it.file)}" onclick="stickerSelect(this)">
         <img class="thumb" src="/api/sticker?file=${encodeURIComponent(it.file)}">
-        <div id="${view}" class="sticker-tags">${stickerTagHtml(it.tags)}</div>
-        <div id="${cview}" class="sticker-concepts" ${hasConcepts?'':'hidden'}>${hasConcepts?stickerConceptHtml(it.concepts):''}</div>
+        <div class="sticker-label">${esc(it.label || '未命名')}</div>
+        <div class="sticker-tags">${stickerFacetHtml(it)}</div>
         <button class="sticker-x" hidden onclick="stickerConfirmDelete(event,this)">×</button>
       </div>`;
     }
@@ -392,31 +389,23 @@ async function dismissStyle(){ const r=await fetch('/api/style/dismiss',{method:
 async function syncGrowth(){ const r=await fetch('/api/growth/sync',{method:'POST'}); const j=await r.json(); alert(j.output||'已同步'); load(); }
 function setLog(n){ logName=n; load(); }
 async function startQr(){ await fetch('/api/bili/qr/start',{method:'POST'}); setTimeout(load,1500); }
-function stickerConceptHtml(concepts){
-  const list=(concepts||[]).map(x=>String(x).replace(/^concept:/,'')).filter(Boolean);
-  return list.map(t=>`<span class="tag concept">${esc(t)}</span>`).join(' ');
+function stickerFacetHtml(it){
+  const groups=[['identity',it.identity],['action',it.action],['expression',it.expression],['generic',it.generic]];
+  const parts=[];
+  for(const [kind,values] of groups){
+    for(const value of (values||[]).slice(0,4)){
+      parts.push(`<span class="tag facet-${kind}">${esc(value)}</span>`);
+    }
+  }
+  return parts.length?parts.join(' '):'<span class="mut">未标注</span>';
 }
-function stickerTagHtml(tags,limit=5){
-  const list=(tags||[]).filter(Boolean);
-  if(!list.length) return '<span class="mut">暂无标签</span>';
-  const shown=list.slice(0,limit);
-  let html=shown.map(t=>`<span class="tag">${esc(t)}</span>`).join(' ');
-  if(list.length>limit) html+=` <span class="tag">+${list.length-limit}</span>`;
-  return `<span title="${attr(list.join(', '))}">${html}</span>`;
-}
-let stickerEdit={file:'',view:''};
 let stickerSelected=null;
 function stickerSelect(card){
   document.querySelectorAll('#stickers .sticker-item.selected').forEach(el=>el.classList.remove('selected'));
   document.querySelectorAll('#stickers .sticker-x').forEach(el=>el.hidden=true);
   card.classList.add('selected');
-  stickerSelected={
-    file:card.dataset.file,
-    view:card.dataset.view,
-    cview:card.dataset.cview,
-    card,
-  };
-  for(const id of ['stickerTagsBtn','stickerConceptsBtn','stickerDeleteBtn']){
+  stickerSelected={file:card.dataset.file,card};
+  for(const id of ['stickerSemanticsBtn','stickerDeleteBtn']){
     const el=document.getElementById(id); if(el) el.disabled=false;
   }
   const hint=document.getElementById('stickerSelHint');
@@ -426,19 +415,43 @@ function stickerClearSelection(){
   document.querySelectorAll('#stickers .sticker-item.selected').forEach(el=>el.classList.remove('selected'));
   document.querySelectorAll('#stickers .sticker-x').forEach(el=>el.hidden=true);
   stickerSelected=null;
-  for(const id of ['stickerTagsBtn','stickerConceptsBtn','stickerDeleteBtn']){
+  for(const id of ['stickerSemanticsBtn','stickerDeleteBtn']){
     const el=document.getElementById(id); if(el) el.disabled=true;
   }
   const hint=document.getElementById('stickerSelHint');
   if(hint) hint.textContent='先点一张表情';
 }
-function stickerEditTagsSelected(){
+function stickerEditSemanticsSelected(){
   if(!stickerSelected){ alert('先点一张表情'); return; }
-  stickerEditTags(stickerSelected.file,stickerSelected.view);
+  const it=(window.__stickerData||{})[stickerSelected.file]||{};
+  document.getElementById('stickerSemLabel').value=it.label||'';
+  document.getElementById('stickerSemIdentity').value=(it.identity||[]).join(', ');
+  document.getElementById('stickerSemAction').value=(it.action||[]).join(', ');
+  document.getElementById('stickerSemExpression').value=(it.expression||[]).join(', ');
+  document.getElementById('stickerSemGeneric').value=(it.generic||[]).join(', ');
+  document.getElementById('stickerSemanticModal').hidden=false;
+  setTimeout(()=>document.getElementById('stickerSemLabel').focus(),0);
 }
-function stickerEditConceptsSelected(){
-  if(!stickerSelected){ alert('先点一张表情'); return; }
-  stickerEditConcepts(stickerSelected.file,stickerSelected.cview);
+function stickerSemanticClose(){
+  document.getElementById('stickerSemanticModal').hidden=true;
+}
+async function stickerSemanticSave(){
+  if(!stickerSelected) return;
+  const split=(id)=>document.getElementById(id).value.split(/[,，、\s]+/).map(x=>x.trim()).filter(Boolean);
+  const body={
+    file:stickerSelected.file,
+    label:document.getElementById('stickerSemLabel').value.trim(),
+    identity:split('stickerSemIdentity'),
+    action:split('stickerSemAction'),
+    expression:split('stickerSemExpression'),
+    generic:split('stickerSemGeneric'),
+  };
+  const r=await fetch('/api/stickers/semantics',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json();
+  if(!j.ok){ alert(j.error||'保存失败'); return; }
+  stickerSemanticClose();
+  stickerClearSelection();
+  load();
 }
 function stickerArmDelete(){
   if(!stickerSelected){ alert('先点一张表情'); return; }
@@ -447,58 +460,6 @@ function stickerArmDelete(){
   if(x) x.hidden=false;
   const hint=document.getElementById('stickerSelHint');
   if(hint) hint.textContent='再点 × 确认删除';
-}
-function stickerEditTags(file,view){
-  stickerEdit={file,view};
-  const ta=document.getElementById('stickerModalTags');
-  ta.value=(window.__stickerTags||{})[file]||'';
-  document.getElementById('stickerModal').hidden=false;
-  setTimeout(()=>ta.focus(),0);
-}
-function stickerModalClose(){
-  document.getElementById('stickerModal').hidden=true;
-}
-async function stickerModalSave(){
-  const raw=document.getElementById('stickerModalTags').value||'';
-  const tags=raw.split(/[,，、\s]+/).map(x=>x.trim()).filter(Boolean);
-  const {file,view}=stickerEdit;
-  const r=await fetch('/api/stickers/tags',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file,tags})});
-  const j=await r.json();
-  if(!j.ok){ alert(j.error||'保存失败'); return; }
-  const saved=j.tags||tags;
-  const viewEl=document.getElementById(view);
-  if(viewEl) viewEl.innerHTML=stickerTagHtml(saved);
-  (window.__stickerTags||{})[file]=saved.join(', ');
-  stickerClearSelection();
-  stickerModalClose();
-}
-let stickerConceptEdit={file:'',view:''};
-function stickerEditConcepts(file,view){
-  stickerConceptEdit={file,view};
-  const input=document.getElementById('stickerConceptInput');
-  input.value=(window.__stickerConceptTerms||{})[file]||'';
-  document.getElementById('stickerConceptModal').hidden=false;
-  setTimeout(()=>input.focus(),0);
-}
-function stickerConceptClose(){
-  document.getElementById('stickerConceptModal').hidden=true;
-}
-async function stickerConceptSave(){
-  const raw=document.getElementById('stickerConceptInput').value||'';
-  const concepts=raw.split(/[,，、\s]+/).map(x=>x.trim()).filter(Boolean);
-  const {file,view}=stickerConceptEdit;
-  const r=await fetch('/api/stickers/concepts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file,concepts})});
-  const j=await r.json();
-  if(!j.ok){ alert(j.error||'保存失败'); return; }
-  const saved=j.concepts||[];
-  const viewEl=document.getElementById(view);
-  if(viewEl){
-    viewEl.innerHTML=stickerConceptHtml(saved);
-    viewEl.hidden=!saved.length;
-  }
-  (window.__stickerConceptTerms||{})[file]=saved.map(x=>String(x).replace(/^concept:/,'')).join(', ');
-  stickerClearSelection();
-  stickerConceptClose();
 }
 async function stickerConfirmDelete(ev,btn){
   if(ev) ev.stopPropagation();

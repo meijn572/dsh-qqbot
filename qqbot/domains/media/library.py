@@ -44,12 +44,6 @@ CATEGORY_CN = {
     "调侃": "teasing", "得意": "teasing", "嘲讽": "teasing",
     "收到": "reply", "好的": "reply", "点头": "reply",
 }
-NOTE_STOPWORDS = [
-    "现在", "能不能", "可不可以", "可以", "帮我", "收藏", "这个", "那个", "这张", "那张",
-    "表情包", "表情", "图片", "一下", "请问", "怎么", "为什么", "是不是", "有没有",
-    "放进", "存进", "收进", "库里", "里面", "给我", "我要", "想要", "记得", "记住",
-    "吗", "呢", "呀", "啊", "吧", "了", "的", "地", "得", "是", "叫", "把", "和", "跟",
-]
 SCENE_TAG_WORDS = (
     "我", "你", "他", "她", "它", "咱", "主人", "群友", "刚才", "刚刚", "今天", "昨天",
     "现在", "然后", "觉得", "知道", "可以", "就是", "这个", "那个", "什么", "怎么",
@@ -59,38 +53,43 @@ SCENE_TAG_WORDS = (
 )
 
 
-def clean_sticker_tags(tags: list[str], caption: str = "", name: str = "", category: str = "",
-                       limit: int = 8) -> list[str]:
-    """标签只留“这张图本身”，不要把聊天上下文整句塞进来。"""
-    cap = str(caption or "").lower()
-    nm = str(name or "").lower()
-    cat = str(category or "").lower()
-    kept: list[tuple[int, int, str]] = []
-    seen: set[str] = set()
-    for index, raw in enumerate(tags or []):
+FACET_KEYS = ("identity", "action", "expression", "generic")
+FACET_WEIGHTS = {"identity": 100, "action": 50, "expression": 40, "generic": 10}
+
+
+def clean_facets(values: list[str] | str | None, limit: int = 12) -> list[str]:
+    """清洗一个语义分面；不做跨分面猜测。"""
+    if isinstance(values, str):
+        values = re.split(r"[,，、\s]+", values)
+    kept = []
+    for raw in values or []:
         value = str(raw or "").strip()
-        if not value or value in seen:
+        if not value or value in kept:
             continue
-        low = value.lower()
         if len(value) > 12 or len(value) < 1:
             continue
         if any(p in value for p in "，。！？、,!?;；:："):
             continue
         if any(w in value for w in SCENE_TAG_WORDS):
             continue
-        if low in {"inbox", "cache", "tmp", "sticker"}:
-            continue
-        score = 0
-        if low in cap or low in nm:
-            score += 3
-        if len(value) <= 6:
-            score += 2
-        if low == cat:
-            score += 1
-        kept.append((score, index, value))
-        seen.add(value)
-    kept.sort(key=lambda item: (-item[0], item[1]))
-    return [value for _, _, value in kept[:limit]]
+        kept.append(value)
+        if len(kept) >= limit:
+            break
+    return kept
+
+
+def clean_label(value: str) -> str:
+    """label 只校验，不生成；空就是空。"""
+    label = str(value or "").strip().replace("\n", " ")
+    if not label or len(label) > 12 or "[[" in label or "]]" in label:
+        return ""
+    if any(p in label for p in "，。！？、,!?;；:："):
+        return ""
+    return label
+
+
+def _entry_facets(entry: dict) -> dict[str, list[str]]:
+    return {key: [str(v).strip() for v in (entry.get(key) or []) if str(v).strip()] for key in FACET_KEYS}
 
 
 def load_sticker_meta() -> None:
@@ -149,7 +148,11 @@ def remember_sticker_info(source: Path, rel: str) -> None:
     LAST_STICKER_INFO[str(source)] = {
         "file": rel,
         "caption": str(entry.get("caption") or ""),
-        "tags": list(entry.get("tags") or []),
+        "label": str(entry.get("label") or ""),
+        "identity": list(entry.get("identity") or []),
+        "action": list(entry.get("action") or []),
+        "expression": list(entry.get("expression") or []),
+        "generic": list(entry.get("generic") or []),
     }
 
 
@@ -205,81 +208,55 @@ def find_signature_match(sig: tuple[int, int, int] | None) -> str | None:
     return None
 
 
-def extract_note_keywords(note: str) -> list[str]:
-    text = (note or "").strip()
-    if not text:
-        return []
-    for word in sorted(NOTE_STOPWORDS, key=len, reverse=True):
-        text = text.replace(word, " ")
-    parts = re.findall(r"[\u4e00-\u9fa5A-Za-z0-9]{2,8}", text)
-    words: list[str] = []
-    for part in parts:
-        part = part.strip()
-        if part and part not in words:
-            words.append(part)
-    return words[:3]
-
-
-def index_add(rel_path: str, category: str, caption: str, tags: list[str], sig: tuple[int, int, int] | None = None,
-              name: str = "", aliases: list[str] | None = None, concepts: list[str] | None = None,
-              replace_tags: bool = False) -> None:
+def index_add(rel_path: str, category: str, caption: str, *,
+              identity: list[str] | str | None = None,
+              action: list[str] | str | None = None,
+              expression: list[str] | str | None = None,
+              generic: list[str] | str | None = None,
+              label: str = "",
+              sig: tuple[int, int, int] | None = None,
+              replace_facets: bool = False) -> None:
     rel_path = str(rel_path or "").replace("\\", "/")
     entries = load_index()
     existing = next(
         (e for e in entries if str(e.get("file") or "").replace("\\", "/") == rel_path),
         None,
     )
-    clean_name = str(name or "").strip()
-    clean_aliases = [str(a).strip() for a in (aliases or []) if str(a).strip()]
-    clean_concepts = [str(c).strip() for c in (concepts or []) if str(c).strip()]
-    tags = clean_sticker_tags(tags, caption, clean_name, category)
+    incoming = {
+        "identity": clean_facets(identity),
+        "action": clean_facets(action),
+        "expression": clean_facets(expression),
+        "generic": clean_facets(generic),
+    }
+    new_label = clean_label(label)
     if existing is not None:
         existing["file"] = rel_path
-        if replace_tags:
-            existing["tags"] = tags
-        else:
-            # 旧标签可能是用户手动写的：默认只追加，不自动删除
-            merged = [str(t).strip() for t in (existing.get("tags") or []) if str(t).strip()]
-            for tag in tags:
-                tag = str(tag).strip()
-                if tag and tag not in merged and len(merged) < 24:
-                    merged.append(tag)
-            existing["tags"] = merged
+        for key in FACET_KEYS:
+            values = incoming[key]
+            if replace_facets:
+                existing[key] = values
+            else:
+                old = [str(v).strip() for v in (existing.get(key) or []) if str(v).strip()]
+                existing[key] = list(dict.fromkeys(old + values))[:24]
+        if new_label:
+            existing["label"] = new_label
         if caption and not existing.get("caption"):
             existing["caption"] = caption
-        if existing.get("caption") and not existing.get("name"):
-            existing["name"] = str(existing["caption"])[:20]
         existing["category"] = category or existing.get("category", "")
-        if clean_name and not existing.get("name"):
-            existing["name"] = clean_name
-        if clean_aliases:
-            old_aliases = list(existing.get("aliases") or [])
-            existing["aliases"] = list(dict.fromkeys(old_aliases + clean_aliases))
-        if clean_concepts:
-            old_concepts = list(existing.get("concepts") or [])
-            existing["concepts"] = list(dict.fromkeys(old_concepts + clean_concepts))
         if sig:
             existing["w"], existing["h"], existing["sig"] = sig[0], sig[1], format(sig[2], "016x")
         save_index(entries)
         return
-    entry = {"file": rel_path, "category": category, "caption": caption, "tags": tags, "ts": int(time.time())}
-    if clean_name or caption:
-        entry["name"] = clean_name or caption[:20]
-    if clean_aliases:
-        entry["aliases"] = clean_aliases
-    if clean_concepts:
-        entry["concepts"] = clean_concepts
+    entry = {"file": rel_path, "category": category, "caption": caption, "ts": int(time.time())}
+    if new_label:
+        entry["label"] = new_label
+    for key in FACET_KEYS:
+        if incoming[key]:
+            entry[key] = incoming[key]
     if sig:
         entry["w"], entry["h"], entry["sig"] = sig[0], sig[1], format(sig[2], "016x")
     entries.append(entry)
     save_index(entries)
-
-
-def _entry_text(entry: dict) -> tuple[str, str, list[str]]:
-    name = str(entry.get("name") or "").strip()
-    caption = str(entry.get("caption") or "").strip()
-    aliases = [str(a).strip() for a in (entry.get("aliases") or []) if str(a).strip()]
-    return name, caption, aliases
 
 
 def _habit_score(entry: dict) -> float:
@@ -305,32 +282,27 @@ def _habit_score(entry: dict) -> float:
 
 
 def _score_entry(entry: dict, query: str, category: str | None = None) -> float | None:
-    """本地语义匹配：别名/名称/标签/描述，类别只作为过滤和兜底。"""
+    """按 label 和 identity/action/expression/generic 分面加权匹配。"""
     q = str(query or "").strip().lower()
     if category and str(entry.get("category") or "").lower() != category.lower():
         return None
-    name, caption, aliases = _entry_text(entry)
-    tags = [str(t).strip().lower() for t in (entry.get("tags") or []) if str(t).strip()]
-    file = str(entry.get("file") or "").lower()
     if not q:
         return _habit_score(entry)
+    caption = str(entry.get("caption") or "").lower()
+    file = str(entry.get("file") or "").lower()
     score = 0.0
-    if q == file or q == name.lower() or q in {a.lower() for a in aliases}:
-        score += 200
-    elif q in name.lower() or any(q in a.lower() for a in aliases):
-        score += 80
-    for tag in tags:
-        if q == tag:
-            score += 60
-        elif q in tag or tag in q:
-            score += 22
-    if q in caption.lower():
-        score += 25
+    for key, weight in FACET_WEIGHTS.items():
+        values = [str(v).strip().lower() for v in (entry.get(key) or []) if str(v).strip()]
+        if q in values:
+            score += weight
+        elif any(q in value or value in q for value in values):
+            score += weight * 0.45
+    if q in caption:
+        score += 15
     if q in file:
-        score += 8
+        score += 5
     if score <= 0:
         return None
-    # 语义命中之后，再按“平时爱用、最近爱用”加分
     score += _habit_score(entry) * 0.5
     return score
 
@@ -469,7 +441,10 @@ def index_keywords(limit: int = 16) -> list[str]:
     for entry in load_index():
         if not is_sticker_rel(str(entry.get("file") or "")):
             continue
-        for word in entry.get("tags") or []:
+        candidates = []
+        for key in FACET_KEYS:
+            candidates.extend(str(v) for v in (entry.get(key) or []))
+        for word in candidates:
             word = str(word).strip()
             if len(word) >= 2 and word not in words:
                 words.append(word)
@@ -481,7 +456,10 @@ def find_index_hit(text: str) -> tuple[str, str] | None:
     for entry in reversed(load_index()):
         if not is_sticker_rel(str(entry.get("file") or "")):
             continue
-        for word in (entry.get("tags") or []):
+        candidates = []
+        for key in FACET_KEYS:
+            candidates.extend(str(v) for v in (entry.get(key) or []))
+        for word in candidates:
             word = str(word).strip()
             if len(word) >= 2 and word in text:
                 path = MEME_DIR / entry["file"]

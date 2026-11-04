@@ -22,7 +22,7 @@ log = logging.getLogger("qqbot.media.stickers")
 
 
 async def collect_sticker(source: Path, override: str | None = None, note: str = "") -> str | None:
-    """分类并落库，返回类别名。override 优先（用户明确说了类别）。note 会进标签便于以后检索。"""
+    """分类并落库，返回类别名。override 优先（用户明确说了类别）。"""
     if source.stat().st_size > 8 * 1024 * 1024:
         return None
     raw = source.read_bytes()
@@ -48,7 +48,7 @@ async def collect_sticker(source: Path, override: str | None = None, note: str =
     if existing is not None:
         rel = str(existing.relative_to(MEME_DIR))
         category = existing.parent.name
-        index_add(rel, category, "", [])
+        index_add(rel, category, "")
         remember_sticker_info(source, rel)
         remember_sticker_meta(source, rel)
         log.info("表情包已存在，更新索引：%s", rel)
@@ -57,7 +57,7 @@ async def collect_sticker(source: Path, override: str | None = None, note: str =
     near = find_signature_match(sig)
     if near:
         category = (MEME_DIR / near).parent.name
-        index_add(near, category, "", [])
+        index_add(near, category, "")
         remember_sticker_info(source, near)
         remember_sticker_meta(source, near)
         log.info("表情包近似重复，合并到：%s", near)
@@ -69,8 +69,16 @@ async def collect_sticker(source: Path, override: str | None = None, note: str =
     target = folder / filename
     target.write_bytes(raw)
     log.info("收藏表情包 -> %s (%s)", target.name, category)
-    tags = list(info.get("tags") or [])
-    index_add(str(target.relative_to(MEME_DIR)), category, info.get("caption", ""), tags, sig)
+    index_add(
+        str(target.relative_to(MEME_DIR)),
+        category,
+        info.get("caption", ""),
+        identity=info.get("identity") or [],
+        action=info.get("action") or [],
+        expression=info.get("expression") or [],
+        generic=info.get("generic") or [],
+        sig=sig,
+    )
     remember_sticker_info(source, str(target.relative_to(MEME_DIR)))
     remember_sticker_meta(source, str(target.relative_to(MEME_DIR)))
     return category

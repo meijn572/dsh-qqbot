@@ -24,24 +24,20 @@
   <section id="interests" hidden></section>
   <section id="bili" hidden></section>
 </main>
-<div id="stickerModal" class="modal" hidden>
+<div id="stickerSemanticModal" class="modal" hidden>
   <div class="modal-card">
-    <div class="k">修改标签</div>
-    <textarea id="stickerModalTags" placeholder="用逗号或空格分隔，例如：奶龙, 举旗, 助威"></textarea>
+    <div class="k">修改表情语义</div>
+    <div class="sticker-sem-fields">
+      <input id="stickerSemLabel" placeholder="label：短名，例如 大笑奶龙">
+      <input id="stickerSemIdentity" placeholder="identity：身份/IP，例如 奶龙, 小恐龙">
+      <input id="stickerSemAction" placeholder="action：动作，例如 举旗, 抱饭">
+      <input id="stickerSemExpression" placeholder="expression：表情/情绪，例如 大笑, 开心">
+      <input id="stickerSemGeneric" placeholder="generic：泛词，例如 搞笑, 可爱">
+    </div>
     <div class="modal-actions">
-      <button onclick="stickerModalSave()">保存</button>
-      <button onclick="stickerModalClose()">取消</button>
+      <button onclick="stickerSemanticSave()">保存</button>
+      <button onclick="stickerSemanticClose()">取消</button>
     </div>
   </div>
 </div>
-<div id="stickerConceptModal" class="modal" hidden>
-  <div class="modal-card">
-    <div class="k">修改概念</div>
-    <input id="stickerConceptInput" placeholder="概念词，例如：奶龙, 小恐龙" style="width:100%;box-sizing:border-box;background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:9px 10px;margin:10px 0">
-    <div class="modal-actions">
-      <button onclick="stickerConceptSave()">保存</button>
-      <button onclick="stickerConceptClose()">取消</button>
-    </div>
-  </div>
-</div>
-<script src="/static/app.js?v=20261104-sticker-full-caption"></script></body></html>
+<script src="/static/app.js?v=20261104-sticker-facets"></script></body></html>
