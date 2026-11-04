@@ -75,6 +75,7 @@ from qqbot.domains.media.library import (
     should_hint,
 )
 from qqbot.domains.media.meta import apply_record as apply_sticker_meta
+from qqbot.domains.media.meta import lookup_ref as sticker_lookup_ref
 from qqbot.domains.media.stickers import collect_sticker
 from qqbot.domains.growth import profile as growth_profile
 from qqbot.domains.growth import reflect as growth_reflect
@@ -1431,6 +1432,13 @@ async def schedule_flush(dsh: Dsh, onebot: OneBot, chat_key: str) -> None:
         meta = IMAGE_META.get(str(img_path)) or {}
         if meta.get("sticker"):
             notes.append(f"[表情包：{img_path}]")
+            existing = sticker_lookup_ref(f"source:{img_path}")
+            if existing.get("found"):
+                old_tags = "、".join(str(t) for t in (existing.get("tags") or [])[:8]) or "无"
+                old_caption = str(existing.get("caption") or "")[:80] or "无"
+                notes.append(
+                    f"（库里已有：name={existing.get('name') or '无'}；tags={old_tags}；caption={old_caption}）"
+                )
             asyncio.create_task(collect_sticker_bg(img_path, merged))
         else:
             notes.append(f"[图片：{img_path}]")

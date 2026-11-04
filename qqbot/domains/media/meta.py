@@ -109,6 +109,7 @@ def apply_record(record: dict) -> dict:
         list(tags)[:12],
         name=name,
         concepts=concept_ids,
+        replace_tags=bool(record.get("replace_tags")),
     )
     return {"ok": True, "rel": rel, "concepts": concept_ids}
 

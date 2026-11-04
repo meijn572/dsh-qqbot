@@ -221,7 +221,8 @@ def extract_note_keywords(note: str) -> list[str]:
 
 
 def index_add(rel_path: str, category: str, caption: str, tags: list[str], sig: tuple[int, int, int] | None = None,
-              name: str = "", aliases: list[str] | None = None, concepts: list[str] | None = None) -> None:
+              name: str = "", aliases: list[str] | None = None, concepts: list[str] | None = None,
+              replace_tags: bool = False) -> None:
     rel_path = str(rel_path or "").replace("\\", "/")
     entries = load_index()
     existing = next(
@@ -234,13 +235,16 @@ def index_add(rel_path: str, category: str, caption: str, tags: list[str], sig: 
     tags = clean_sticker_tags(tags, caption, clean_name, category)
     if existing is not None:
         existing["file"] = rel_path
-        # 旧标签可能是用户手动写的：只追加新标签，不再对旧标签做清洗/截断
-        merged = [str(t).strip() for t in (existing.get("tags") or []) if str(t).strip()]
-        for tag in tags:
-            tag = str(tag).strip()
-            if tag and tag not in merged and len(merged) < 24:
-                merged.append(tag)
-        existing["tags"] = merged
+        if replace_tags:
+            existing["tags"] = tags
+        else:
+            # 旧标签可能是用户手动写的：默认只追加，不自动删除
+            merged = [str(t).strip() for t in (existing.get("tags") or []) if str(t).strip()]
+            for tag in tags:
+                tag = str(tag).strip()
+                if tag and tag not in merged and len(merged) < 24:
+                    merged.append(tag)
+            existing["tags"] = merged
         if caption and not existing.get("caption"):
             existing["caption"] = caption
         if existing.get("caption") and not existing.get("name"):

@@ -102,6 +102,8 @@ export async function registerMemeTools({ registerTool, log, endpoint, memeDir }
         + "ref 支持 source:<图片路径> / file:<库内相对路径> / query:<描述>；"
         + "最简单是 source: 加 bridge-note 里的完整图片路径。"
         + "tags 用逗号分隔，只写图本身（角色、外观、动作、情绪），不要写聊天场景。"
+        + "bridge-note 里如果带「库里已有」信息，先看旧 name/tags；默认保留旧标签只追加，"
+        + "要完整改写或删旧标签时传 replace_tags=true。"
         + "系统会把它补进表情库索引，不回复用户。",
       parameters: {
         ref: { type: "string", description: "source:D:\\...\\xxx.jpg 或 file:happy/u_xxx.jpg 或 query:黄色小恐龙" },
@@ -109,6 +111,7 @@ export async function registerMemeTools({ registerTool, log, endpoint, memeDir }
         name: { type: "string", description: "这张表情叫什么，比如「奶龙举旗」；不知道就空" },
         tags: { type: "string", description: "逗号或空格分隔的标签，比如「奶龙, 小恐龙, 举旗, 开心」" },
         concepts: { type: "string", description: "可选：概念词，比如「奶龙」；用于和 lexicon/记忆联动" },
+        replace_tags: { type: "boolean", description: "默认 false=保留旧标签只追加；true=用这次 tags 完整替换（删旧标签时用）" },
         caption: { type: "string", description: "一句话描述图里是什么、在做什么" },
       },
       output: { schema: { type: "json" }, render: (_a, v) => [{ type: "text", text: JSON.stringify(v) }] },
@@ -125,6 +128,7 @@ export async function registerMemeTools({ registerTool, log, endpoint, memeDir }
           name: String(args.name || "").trim(),
           tags: String(args.tags || "").split(/[,，、\s]+/).map((x) => x.trim()).filter(Boolean).slice(0, 12),
           concepts: String(args.concepts || "").split(/[,，、\s]+/).map((x) => x.trim()).filter(Boolean).slice(0, 6),
+          replace_tags: Boolean(args.replace_tags),
           caption: String(args.caption || "").trim(),
           ts: Date.now(),
         };
