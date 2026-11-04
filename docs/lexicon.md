@@ -1,0 +1,262 @@
+# 词库系统
+
+词库统一存梗、黑话、热词、角色/IP、缩写和事件，不再按“群黑话 / 网络梗”拆文件。
+
+核心是三个维度：
+
+```text
+kind    类型
+scope   作用域
+status  生命周期
+```
+
+## 1. 存储
+
+主文件：
+
+```text
+$DSH_HOME/lexicon.json
+```
+
+结构：
+
+```json
+{
+  "version": 1,
+  "legacy_imported": true,
+  "entries": [
+    {
+      "id": "lex:global:yyds",
+      "term": "yyds",
+      "kind": "buzzword",
+      "scope": "global",
+      "status": "hot",
+      "meaning": "永远的神",
+      "aliases": ["永远滴神"],
+      "examples": [],
+      "count": 3,
+      "first_seen": 179...,
+      "last_seen": 179...,
+      "source": "panel"
+    }
+  ]
+}
+```
+
+### kind
+
+```text
+slang         群黑话
+meme          网络梗
+buzzword      热门词
+fandom        角色/IP 梗
+abbreviation  缩写
+emoji         表情/emoji 用法
+event         时事/临时梗
+```
+
+### scope
+
+```text
+global          全局
+group:<群号>    某个群
+```
+
+群黑话只是 `scope=group:<群号>`，不再单独存文件。
+
+### status
+
+```text
+fresh      新词
+hot        正在流行
+stable     稳定
+archived   过气
+```
+
+### id
+
+```text
+lex:global:yyds
+lex:group:1132633236:2G
+```
+
+`id` 带 scope，避免不同群的同名词互相覆盖。
+
+## 2. 迁移
+
+首次加载自动导入旧数据：
+
+```text
+$DSH_HOME/group-slang/<gid>.json → kind=slang, scope=group:<gid>
+$DSH_HOME/network-memes.json     → kind=meme, scope=global
+```
+
+旧文件保留，不再作为主存储；新写入只走 `lexicon.json`。
+
+## 3. 工具
+
+### `lexicon_lookup`：只查词
+
+```json
+{"q":"2G"}
+```
+
+返回：
+
+```json
+{
+  "terms": [
+    {
+      "term": "2G",
+      "kind": "slang",
+      "scope": "group:1132633236",
+      "meaning": "说人网速慢、消息过时……"
+    }
+  ]
+}
+```
+
+可选过滤：
+
+```text
+scope=global / group:<群号>
+kind=slang/meme/buzzword/fandom/abbreviation
+status=fresh/hot/stable/archived
+```
+
+最多返回 20 条词条。
+
+### `lexicon_search`：词 + 表情
+
+```json
+{"q":"奶龙"}
+```
+
+返回：
+
+```json
+{
+  "terms": [...],
+  "stickers": [...]
+}
+```
+
+- `terms`：词条解释
+- `stickers`：按 `name/tags/caption/concepts` 命中的表情
+
+最多各 8 条。
+
+### `lexicon_meta`：新增/修改
+
+```json
+{
+  "term": "yyds",
+  "meaning": "永远的神",
+  "kind": "buzzword",
+  "scope": "global",
+  "status": "hot",
+  "aliases": "永远滴神"
+}
+```
+
+同一个 `term + scope` 会更新，不会重复建。
+
+### 删除
+
+模型没有删除工具，删除只在面板做，并且按 `id` 删。
+
+## 4. 面板
+
+入口：
+
+```text
+表情 / 词库
+```
+
+筛选：
+
+```text
+全部 | 群黑话 | 网络梗 | 热门词 | 角色/IP | 缩写
+```
+
+每条显示：
+
+```text
+[kind · scope] term [concept] [status] ×count
+别名：...
+解释
+```
+
+添加时可选：
+
+- kind
+- status
+- aliases
+
+删除按 `id`，不会误删别的群同名词。
+
+词库输入框不参与 10 秒自动刷新，避免输入被顶掉。
+
+## 5. bridge 里的使用
+
+### 群黑话
+
+只注入当前消息里实际出现的词或别名：
+
+```text
+消息里出现“2G” → 只带 2G 的解释
+没出现 → 不注入
+```
+
+不再每条群消息都塞前 8 条。
+
+### 网络词
+
+`network_meme_hint` 命中 `term` 或 `aliases` 时，附一句解释。
+
+### 不做的事
+
+- 不按每条消息强制“你应该调用 X”
+- 不把词库内容整段塞进系统提示
+- 不自动猜测未教过的词
+
+工具描述和 `AGENTS.md` 的一句全局规则负责引导，bridge 只提供事实。
+
+## 6. 概念层
+
+全局词条可以带概念 id：
+
+```text
+concept:yyds
+```
+
+概念层是可选的，不是查询必需：
+
+- 词条/表情查询优先走 term、alias、tag、caption
+- 概念只用于以后跨词库/表情/记忆聚合
+- 不做自动实体识别
+- 不做 concept CRUD
+
+详见 [表情包系统](stickers.md#44-概念引用)。
+
+## 7. 已知限制
+
+- 群黑话的 scope 用群号；换群后旧 scope 不会自动迁移
+- `lexicon_search` 只查词库 + 表情，不查 L0/L1 记忆
+- `lexicon_lookup` 是子串匹配，不是语义向量检索
+- 别名需要手动维护
+- 过气词默认仍可能被查到，只在展示时标 `archived`
+- 删除只清 `lexicon.json` 条目，不级联清概念表或记忆里的 `concept:` 引用
+- 模型可能漏调工具；面板仍可兜底
+
+## 8. 代码地图
+
+| 文件 | 作用 |
+| --- | --- |
+| `qqbot/domains/group/lexicon.py` | 统一存储、迁移、upsert、查询 |
+| `qqbot/domains/group/slang.py` | bridge 兼容层、群日志、网络梗提示 |
+| `bridge.py` | 群黑话匹配注入、网络梗提示 |
+| `plugins/dsh-remembers/tools/memes.mjs` | `lexicon_lookup` / `lexicon_search` / `lexicon_meta` |
+| `panel_readers.py` | 词库投影、增删、搜索 |
+| `panel_routes.py` | 面板 API |
+| `web/app.js` / `style.css` | 词库页面 |

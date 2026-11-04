@@ -320,17 +320,20 @@ MEME_RE 提取 token
 GET  /api/stickers
 GET  /api/stickers/lookup?ref=...
 POST /api/stickers/tags
+POST /api/stickers/concepts
 POST /api/stickers/delete
 ```
 
 ## 8. 触发
 
-工具存在，不代表模型一定会用。bridge 会加轻量提示：
+不再按消息逐条加“你应该调用 X”的提示。现在的原则是：
 
-- 消息里有表情包 → 提醒可调用 `sticker_meta`
-- 文字里出现“表情/库里/这张叫什么/记住” → 提醒先 `sticker_lookup`
+- 工具描述负责说明能力
+- `AGENTS.md` 只留一句全局规则
+- bridge-note 只提供事实，例如 `[表情包：D:\...\xxx.jpg]`
+- 不替模型做判断
 
-提示只对当前消息生效，不写进 L0。
+模型看到图、路径和工具描述后自行决定是否调用 `sticker_lookup` / `sticker_meta`。认不出时允许不写，用户也可以在面板手动补。
 
 ## 9. 已知限制
 
@@ -352,7 +355,9 @@ POST /api/stickers/delete
 | `qqbot/domains/media/stickers.py` | 收藏、去重 |
 | `qqbot/domains/media/library.py` | 索引、选图、标签清洗 |
 | `qqbot/domains/media/meta.py` | source/file/query 解析、查/写 |
-| `bridge.py` | 队列、提示、发送 |
+| `bridge.py` | 队列、发送 |
 | `plugins/dsh-remembers/tools/memes.mjs` | `sticker_lookup` / `sticker_meta` |
 | `panel_readers.py` / `panel_routes.py` | 面板 API |
 | `web/app.js` / `style.css` | 面板交互 |
+
+词库相关见 [词库系统](lexicon.md)。
