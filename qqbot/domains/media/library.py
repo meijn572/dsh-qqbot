@@ -217,6 +217,7 @@ def index_add(rel_path: str, category: str, caption: str, *,
               sig: tuple[int, int, int] | None = None,
               replace_facets: bool = False) -> None:
     rel_path = str(rel_path or "").replace("\\", "/")
+    caption = str(caption or "").strip()[:80]
     entries = load_index()
     existing = next(
         (e for e in entries if str(e.get("file") or "").replace("\\", "/") == rel_path),
@@ -297,12 +298,14 @@ def _score_entry(entry: dict, query: str, category: str | None = None) -> float 
             score += weight
         elif any(q in value or value in q for value in values):
             score += weight * 0.45
-    if q in caption:
-        score += 15
-    if q in file:
-        score += 5
     if score <= 0:
-        return None
+        # caption/file 只在分面全空时兜底，不参与主排序
+        if q in caption:
+            score = 15
+        elif q in file:
+            score = 5
+        else:
+            return None
     score += _habit_score(entry) * 0.5
     return score
 

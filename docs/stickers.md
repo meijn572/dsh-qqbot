@@ -70,6 +70,14 @@ stickers/
 - 不从 facets/caption 自动拼
 - 空就是空
 
+### caption
+
+- 可选
+- 80 字以内
+- 只做画面补充和检索兜底
+- facets 没有命中时才参与匹配
+- 不写进 L0，不进记忆
+
 ### facets
 
 ```text
@@ -86,10 +94,9 @@ identity   100
 action      50
 expression  40
 generic     10
-caption     15
 ```
 
-`label` 不参与检索。
+`caption` 只在 facets 没命中时作为兜底（15 分），`label` 不参与检索。
 
 ## 3. 收集流程
 

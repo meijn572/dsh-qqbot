@@ -79,6 +79,15 @@ class MediaTest(unittest.TestCase):
         }
         self.assertGreater(_score_entry(entry, "奶龙"), _score_entry(entry, "搞笑"))
 
+    def test_caption_is_only_fallback(self) -> None:
+        entry = {
+            "label": "奶龙举旗",
+            "identity": ["奶龙"],
+            "caption": "举着一面小旗子",
+        }
+        self.assertIsNotNone(_score_entry(entry, "奶龙"))
+        self.assertEqual(_score_entry(entry, "小旗子"), 15)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

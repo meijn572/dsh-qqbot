@@ -137,14 +137,14 @@ def lexicon_search_payload(query: str) -> dict:
     terms = lexicon_lookup_payload(q).get("terms") or []
     stickers = []
     for item in sticker_payload().get("items") or []:
-        hay = " ".join([
-            str(item.get("caption") or ""),
+        facet_hay = " ".join([
             " ".join(str(t) for t in (item.get("identity") or [])),
             " ".join(str(t) for t in (item.get("action") or [])),
             " ".join(str(t) for t in (item.get("expression") or [])),
             " ".join(str(t) for t in (item.get("generic") or [])),
         ]).lower()
-        if q in hay:
+        caption = str(item.get("caption") or "").lower()
+        if q in facet_hay or (q not in facet_hay and q in caption):
             stickers.append(item)
     return {
         "query": q,

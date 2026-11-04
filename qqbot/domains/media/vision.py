@@ -178,7 +178,7 @@ async def describe_sticker(path: Path) -> dict:
             return [str(v).strip() for v in raw_values if str(v).strip()][:3]
         return {
             "category": category,
-            "caption": caption[:120],
+            "caption": caption[:80],
             "identity": values("identity"),
             "action": values("action"),
             "expression": values("expression"),

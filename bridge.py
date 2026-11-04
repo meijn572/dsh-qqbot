@@ -1016,7 +1016,7 @@ async def enrich_stickers(dsh: Dsh, chat_key: str, images: list[str], context_te
             "（内部记录，不要回复用户、不要调用工具）"
             f"刚才收藏了一张表情包：{rel_path}，对话里主人说的是：{context_text[:120]!r}。"
             "用你自己的理解，只输出 JSON："
-            '{"description":"一句话描述它长什么样、什么场合用",'
+            '{"description":"一句话描述，80字以内",'
             '"identity":["角色/IP"],"action":["动作"],"expression":["表情/情绪"],"generic":["泛词"]}'
         )
         reply = await maintenance_turn(dsh, chat_key, prompt)
