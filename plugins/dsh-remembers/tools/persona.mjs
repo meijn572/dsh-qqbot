@@ -15,15 +15,21 @@ export async function registerPersonaTool({ registerTool, log, client, config, p
     registerTool(defineTool({
       name: "persona_update",
       description:
-        "整段改写你「对自己的认知」（不是身份设定那段，那段你改不了）。"
-        + "当你发现自己身上一条稳定的特质、偏好、口头习惯，而那段里还没写；"
-        + "或者实际经历和那段写的不一致时，用它把那段换成新的。"
-        + "保持简洁、只写稳定的东西，不要把流水账堆进去。",
+        "只更新你「最近的变化 / 我学到的 / 还没想清」三块自我认知，不碰核心设定。"
+        + "只写第一人称的叙事和发现；不要写行为规则、用户事实、工具说明、消息格式。"
+        + "整组替换，先看当前内容再写；没想清就留空数组。",
       parameters: {
-        content: {
-          type: "string",
-          required: true,
-          description: "自我认知段的完整新内容（Markdown）。整段替换，所以先看当前内容再写。",
+        changes: {
+          type: "array", items: { type: "string" },
+          description: "最近你身上发生的变化，最多 4 条",
+        },
+        learned: {
+          type: "array", items: { type: "string" },
+          description: "你学到的、确认的东西，最多 4 条",
+        },
+        open_questions: {
+          type: "array", items: { type: "string" },
+          description: "还没想清的问题，最多 4 条",
         },
       },
       output: {
@@ -39,13 +45,21 @@ export async function registerPersonaTool({ registerTool, log, client, config, p
       },
       isConcurrencySafe: () => false,
       async execute(args) {
-        const content = String(args?.content ?? "").trim();
-        if (!content) throw new Error("persona_update: content 不能为空");
-        const res = await client.setSelfModel(content);
+        const clean = (value) => (Array.isArray(value) ? value : [])
+          .map((item) => String(item ?? "").trim()).filter(Boolean).slice(0, 4);
+        const sections = {
+          changes: clean(args?.changes),
+          learned: clean(args?.learned),
+          open_questions: clean(args?.open_questions),
+        };
+        if (!sections.changes.length && !sections.learned.length && !sections.open_questions.length) {
+          throw new Error("persona_update: 三块都为空");
+        }
+        const res = await client.setSelfModel({ sections });
         if (!res?.ok) throw new Error("persona_update: 服务端拒绝或连不上");
         persona.triedAt = 0;                 // 下一轮组装前一定重新拉一次
         await refreshPersona(true);
-        return { ok: true, chars: Number(res?.chars?.self_model ?? content.length) };
+        return { ok: true, chars: Number(res?.chars?.self_model ?? 0) };
       },
     }));
     log("persona_tool_registered", { name: "persona_update" });

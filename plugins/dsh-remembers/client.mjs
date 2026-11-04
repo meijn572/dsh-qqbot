@@ -136,8 +136,8 @@ export class MemoryClient {
   }
 
   /** 只写自我认知区。宪法区没有对应参数，服务端层面就改不了。 */
-  async setSelfModel(text) {
-    return this.#request("POST", "/persona/self", { text });
+  async setSelfModel(payload) {
+    return this.#request("POST", "/persona/self", typeof payload === "string" ? { text: payload } : payload);
   }
 
   /**

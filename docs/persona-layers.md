@@ -1,0 +1,139 @@
+# 人格分层
+
+人格不是一个自由文本大块，而是几层不同生命周期的数据。
+
+## 1. 层
+
+```text
+AGENTS.md              接口契约
+核心设定               稳定人格
+自我认知               动态叙事
+用户画像               关于主人的事实
+重要约定               长期承诺
+L0–L4                  经历与事实
+```
+
+### AGENTS
+
+只放：
+
+- QQ 消息条数
+- 群聊昵称
+- `[[meme:...]]`
+- `[[sticker:...]]`
+- 输出格式
+
+不放人格、行为政策、画像。
+
+### 核心设定
+
+固定六块：
+
+```text
+身份
+性格与判断
+说话
+关系与边界
+约定
+记忆与成长
+```
+
+只允许面板半自动维护：
+
+```text
+人工编辑
++ 风格提议
++ 复盘候选
++ 人工确认
+```
+
+模型没有写核心设定的工具。
+
+`<!-- important:begin -->` / `<!-- important:end -->` 必须保留，服务端靠它同步 `important.md`。
+
+### 自我认知
+
+只写：
+
+```text
+changes
+learned
+open_questions
+```
+
+服务端渲染为：
+
+```text
+## 最近的变化
+## 我学到的
+## 还没想清
+```
+
+不允许规则、用户事实、工具说明、消息格式。
+
+### 用户画像
+
+只写：
+
+```text
+stable_facts
+preferences
+values
+interaction
+boundaries
+```
+
+服务端渲染为固定 section。不允许“回答时应该……”这类指令。
+
+### 重要约定
+
+只追加列表。不混进核心设定和画像。
+
+### 记忆
+
+L0–L4 仍然只负责经历和事实，不承担人格规则。
+
+## 2. 写入路径
+
+| 层 | 写入接口 | 模型权限 |
+| --- | --- | --- |
+| 核心设定 | 面板 `/persona` | 无 |
+| 自我认知 | `/persona/self` + `persona_update` | 只能写三块 |
+| 用户画像 | `/persona/user` | 只能写五块 |
+| 重要约定 | `/persona/important` | 只能追加 |
+| 记忆 | 现有 ingest/extract | 只能写记忆 |
+
+## 3. 校验
+
+`service/persona/schema.py`：
+
+- 只允许固定字段
+- 数组 + 字符串
+- 单条长度限制
+- 禁止跨层关键词
+- 服务端渲染，不信任模型输出的标题
+
+核心设定由 `scripts/check_persona_boundaries.py` 做只读检查。
+
+## 4. 边界检查
+
+```bash
+python scripts/check_persona_boundaries.py
+```
+
+检查：
+
+- 核心设定六个 section
+- important 块完整
+- 自我认知没有规则/事实
+- 画像没有指令/人格
+- AGENTS 没有人格/行为政策
+
+## 5. 流程输入不变
+
+自我演化、画像生成、风格提议的输入仍然使用原来的上下文，只改输出结构和校验。
+
+## 6. 参考
+
+- [Character Card V2](https://github.com/malfoyslastname/character-card-spec-v2/blob/main/spec_v2.md)：角色描述、示例、系统指令、世界书分开
+- [Letta Memory Blocks](https://docs.letta.com/v1-sdk/memory/memory-blocks/)：system instructions 与 memory blocks 分开

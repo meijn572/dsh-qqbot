@@ -37,6 +37,12 @@ from memory_core import MemoryInput, MemoryStore
 from memory.context import build_context
 from persona.context import build_persona_context
 from persona.api import payload as persona_payload
+from persona.schema import (
+    render_profile_sections,
+    render_self_sections,
+    validate_profile_sections,
+    validate_self_sections,
+)
 from api.routes.persona import set_persona
 from api.routes.memory import forget, ingest, search
 from api.routes.read import simple_get
@@ -526,12 +532,15 @@ class Handler(BaseHTTPRequestHandler):
         半张卡。
         """
         body = self._body()
-        raw = body.get("text")
-        if raw is None:
-            raw = body.get("content")
-        text = str(raw or "")
+        if body.get("sections") is not None:
+            text = render_self_sections(validate_self_sections(body.get("sections")))
+        else:
+            raw = body.get("text")
+            if raw is None:
+                raw = body.get("content")
+            text = str(raw or "")
         if not text.strip():
-            raise ValueError("text is required")
+            raise ValueError("sections/text is required")
         with _lock:
             data = store.set_self_model(text)
         self._json(200, self._persona_payload(data))
@@ -1643,24 +1652,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def _set_user_profile(self) -> None:
         body = self._body()
-        # 后端终极防护：新值为空但原值有内容 → 拒绝（除非 force=true）
-        try:
-            new_val = str(body.get("user_profile") or "")
-            old_val = str(store.get_user_profile() or "")
-            if not new_val.strip() and old_val.strip() and not body.get("force"):
-                self._json(400, {
-                    "ok": False,
-                    "error": "拒绝清空：原画像有 " + str(len(old_val)) + " 字符，要清空请传 force=true",
-                })
-                return
-        except Exception:
-            pass
-
-        # 兼容两种字段名（前端发 user_profile，旧版发 text）
-        raw = body.get("user_profile")
-        if raw is None:
-            raw = body.get("text")
-        text = str(raw or "").strip()
+        if body.get("sections") is not None:
+            text = render_profile_sections(validate_profile_sections(body.get("sections")))
+        else:
+            # 兼容两种字段名（前端发 user_profile，旧版发 text）
+            raw = body.get("user_profile")
+            if raw is None:
+                raw = body.get("text")
+            text = str(raw or "").strip()
+        if not text and str(store.get_user_profile() or "").strip() and not body.get("force"):
+            self._json(400, {
+                "ok": False,
+                "error": "拒绝清空：原画像有内容，要清空请传 force=true",
+            })
+            return
         store.set_user_profile(text)
         self._json(200, {"ok": True, "chars": len(text)})
 

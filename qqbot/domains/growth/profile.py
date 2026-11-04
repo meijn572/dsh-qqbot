@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from typing import Awaitable, Callable
 
@@ -24,26 +25,44 @@ async def run(turn: Turn) -> bool:
         log.info("画像刷新：素材不够")
         return False
     prompt = (
-        "（内部维护，不要回复用户）根据完整人格、最近对话和长期记忆，写一份「我眼中的主人」。\n\n"
+        "（内部维护，不要回复用户）根据完整人格、最近对话和长期记忆，整理一份「我眼中的主人」。\n\n"
         + (persona_text or "（空）") + "\n\n"
         + "【最近对话】\n" + (recent or "（最近没聊什么）") + "\n\n"
         + memory_text + "\n\n"
-        "要求：300–600 字；直接写画像正文，不要加「我眼中的主人」前缀；通篇用第二人称「你」称呼主人，"
-        "每条都带「你」或「你的」，不要省略主语写成无人称条目，也不要写成「我」或「他」；"
-        "只写长期稳定的——身份、习惯、偏好、在意的事、雷区、相处方式；"
-        "不写一次性事件、不写猜测、不写你自己。"
-        "不写 AI/插件/记忆系统的内部机制（兴趣清单、权重、提示词、配置、模型）。"
-        "不确定的身份和昵称归属直接不写；群友不是主人，别把群友的事记到主人头上。"
-        "只写有明确依据的；记忆互相矛盾时，以主人明确说过的为准。"
-        "只输出画像正文，不要解释。"
+        "只输出 JSON，不要解释，不要代码块：\n"
+        '{"stable_facts":["长期稳定的身份/习惯"],'
+        '"preferences":["喜欢/不喜欢/娱乐偏好"],'
+        '"values":["价值与目标"],'
+        '"interaction":["他希望怎么被回应"],'
+        '"boundaries":["明确的雷区和边界"]}\n'
+        "要求：只用「主人/他」称呼，不写「你」；每条一句话，具体、有依据；"
+        "不写一次性事件、不写猜测、不写你自己；"
+        "不写 AI/插件/记忆系统/提示词/配置/模型；"
+        "群友不是主人；不确定的身份和昵称归属直接不写；"
+        "没有内容的 section 用空数组。"
     )
     reply = await turn(prompt)
-    text = (reply or "").strip()
-    if len(text) < 150:
-        log.info("画像刷新：生成太短 %s 字", len(text))
+    match = re.search(r"\{.*\}", reply or "", re.S)
+    if not match:
+        log.info("画像刷新：没有拿到 JSON")
         return False
-    text = text[:1200]
-    result = await cmem_call("POST", "/persona/user", {"user_profile": text})
+    try:
+        data = json.loads(match.group(0))
+    except Exception:  # noqa: BLE001
+        log.info("画像刷新：JSON 解析失败")
+        return False
+    if not isinstance(data, dict):
+        log.info("画像刷新：JSON 不是对象")
+        return False
+    total = sum(
+        len(str(item).strip())
+        for values in data.values() if isinstance(values, list)
+        for item in values if str(item).strip()
+    )
+    if total < 80:
+        log.info("画像刷新：内容太短 %s 字", total)
+        return False
+    result = await cmem_call("POST", "/persona/user", {"sections": data})
     if not result.get("ok"):
         log.warning("画像刷新：写入失败 %s", result)
         return False
@@ -52,5 +71,5 @@ async def run(turn: Turn) -> bool:
         STATE.write_text(json.dumps({"last_run": int(time.time())}, ensure_ascii=False), encoding="utf-8")
     except Exception:  # noqa: BLE001
         pass
-    log.info("画像已更新：%s 字", len(text))
+    log.info("画像已更新：%s 字", total)
     return True
