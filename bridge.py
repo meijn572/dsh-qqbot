@@ -1981,6 +1981,25 @@ async def memory_batch_loop() -> None:
         await asyncio.sleep(300)
 
 
+async def observation_archive_loop() -> None:
+    """每天凌晨把可观察数据归档到 data/raw，供之后整理观察。"""
+    await asyncio.sleep(600)
+    while True:
+        try:
+            if time.localtime().tm_hour == 4:
+                day = time.strftime("%Y-%m-%d")
+                manifest = Path(D) / "data" / "raw" / day / "manifest.json"
+                if not manifest.exists():
+                    subprocess.run(
+                        [sys.executable, str(Path(D) / "scripts" / "archive_observations.py")],
+                        cwd=str(D), capture_output=True, timeout=120,
+                    )
+                    log.info("观察数据已归档：%s", day)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("观察归档失败：%s", exc)
+        await asyncio.sleep(3600)
+
+
 async def run() -> None:
     sync_session_scopes()
     load_sticker_meta()
@@ -1998,6 +2017,7 @@ async def run() -> None:
     asyncio.create_task(important_check_loop(dsh))
     asyncio.create_task(important_file_loop(dsh))
     asyncio.create_task(memory_batch_loop())
+    asyncio.create_task(observation_archive_loop())
     asyncio.create_task(growth_diary.loop(CONFIG.get("diary") or {}))
     asyncio.create_task(group_slang_loop(dsh))
     asyncio.create_task(report_watch(dsh, onebot))
