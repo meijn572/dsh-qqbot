@@ -1,29 +1,28 @@
-# 表情元数据与离线复盘
+# 表情元数据与定时复盘
 
 状态：方案，未实现。
 
 ## 1. 目标
 
-实时流程只保证表情“能用”，离线复盘负责把语义整理好。
+实时只负责“能用”，定时复盘负责“整理好”。
 
 ```text
 实时
   小模型先填一版
-  标记待整理
+  meta_status=pending_review
   表情马上可搜、可发
 
-离线
-  大模型看图片 + 用户原话
-  不看小模型已填的语义
-  重写正式语义
-  标记已整理
+定时
+  取这段时间新出现的表情
+  按 rel 去重
+  每张复盘一次
+  pending_review → 不看现有字段
+  reviewed       → 可以参考现有字段
 ```
 
-不引入 `provisional_*` 字段。
+不设 `provisional_*`，不设 `manual`，不按单条 `review_due` 排队。
 
 ## 2. 数据结构
-
-沿用原来的字段：
 
 ```json
 {
@@ -37,69 +36,65 @@
 
   "meta_status": "pending_review",
   "meta_source": "vision",
-  "review_version": 0,
   "evidence": [
     {"text": "这是奶龙", "ts": 1793890000}
   ],
-  "last_review_at": 0
+  "reviewed_at": 0
 }
 ```
 
 ### meta_status
 
 ```text
-pending_review   待整理
-reviewed         已整理
+pending_review   未复盘
+reviewed         已复盘
 ```
 
-不设 `manual` 状态。
+只决定复盘时模型能不能看到现有字段。
 
 ### meta_source
 
 ```text
-vision    小模型实时写的初始值
-model     离线大模型整理
-panel     面板人工修改
+vision    小模型实时写的
+model     定时复盘写的
+panel     面板手写的
 ```
 
-面板改了字段时：
+只用于审计，不阻止后续复盘。
+
+面板手写：
 
 ```text
-meta_source = panel
 meta_status = reviewed
+meta_source = panel
 ```
 
-离线复盘跳过 `meta_source=panel`，避免覆盖人工结果。
+下一轮复盘仍然会看到这些字段，并且可以修改。
 
 ### evidence
 
 只放用户提供的上下文：
 
 ```text
-用户说“这是奶龙”
-用户说“这张叫..."
-用户对这张图的补充描述
+“这是奶龙”
+“这张叫...”
+“这是刚才那个...”
 ```
 
 不放：
 
 ```text
 小模型生成的 category/caption/facets
-大模型之前生成的语义
+复盘模型之前生成的字段
 ```
 
-离线复盘只读 `evidence`，不读已填语义字段。
+最多保留 10 条，按 message_id 去重。
 
-### review_version
+### reviewed_at
 
-每收到一次新 evidence 就加一。
+最后一次复盘时间。
 
-用于判断：
-
-```text
-这条 reviewed 之后有没有新信息
-有新信息 → 重新进入 pending_review
-```
+没有 `review_version`，定时窗口本身负责控制复盘次数。
 
 ## 3. 实时收藏
 
@@ -109,109 +104,149 @@ meta_status = reviewed
   → 写入普通字段
   → meta_status=pending_review
   → meta_source=vision
-  → 表情立即可搜、可发
+  → 立即可搜、可发
 ```
 
-小模型只是初始值，不是最终语义。
+小模型结果只是初始值。
 
-## 4. 离线复盘
+## 4. 定时复盘
+
+### 窗口
 
 ```text
-选 meta_status=pending_review
-  → 取图片本体
-  → 取 evidence 里的用户原话
-  → 不把现有 category/caption/facets/label 放进 prompt
-  → 大模型独立判断
-  → 写正式字段
+默认每 12 小时一次
+可配置
+```
+
+每次取上次窗口之后的新表情出现记录：
+
+```text
+occurrences since last_review_at
+→ 按 rel 去重
+→ 每个 rel 只复盘一次
+```
+
+不扫全部历史，不重复复盘没有再次出现的表情。
+
+### 选择
+
+```text
+pending_review
+  未复盘过
+  复盘时隐藏现有字段
+
+reviewed
+  已复盘过
+  复盘时可以参考现有字段
+```
+
+两种情况都会进入复盘。
+
+### prompt
+
+#### pending_review
+
+```text
+图片
++ evidence 里的用户原话
+
+不给：
+category / caption / facets / label
+```
+
+#### reviewed
+
+```text
+图片
++ 现有 category/caption/facets/label
++ 新的 evidence
+
+让模型决定是否修正
+```
+
+### 写回
+
+```text
+有效输出
+  → 覆盖字段
   → meta_status=reviewed
   → meta_source=model
-  → last_review_at=now
+  → reviewed_at=now
+
+changed=false
+  → 不写字段
+  → 只更新 reviewed_at
 ```
 
-### 为什么不让大模型看已填字
-
-如果小模型把图认成“普通卡通角色”，大模型看到这个描述后可能被锚定，不再认真看图。
-
-所以：
-
-```text
-小模型结果只用于实时兜底
-离线复盘从图片重新判断
-```
-
-### 复盘失败
+### 失败
 
 ```text
 没有有效 JSON
   → 不清空旧字段
-  → 保持 pending_review
+  → 保持原状态
   → 下次再试
 ```
 
-## 5. 迟到的解释
-
-`reviewed` 不能是终态。
-
-这一版只处理两种常见情况：
+## 5. 状态和可见性
 
 ```text
-A. 发图后紧接着解释
-B. 第一次发图没解释，后来再次发同一张并解释
+pending_review
+  → 模型看不到现有语义
+  → 独立看图片判断
+
+reviewed
+  → 模型可以看到现有语义
+  → 做增量修正
 ```
 
-其他情况不做自动关联。
-
-### 情况 A：发图后紧接着补一句
-
-在当前合并窗口内：
+搜索不受状态限制：
 
 ```text
-merge_seconds = 12 秒（私聊）
-group_merge_seconds = 20 秒（群聊）
+pending_review 也能搜到
+reviewed 优先
 ```
 
-文本和图本来就会进同一批：
+## 6. 迟到解释
+
+只处理两种常见情况。
+
+### A. 发完就解释
+
+合并窗口内：
 
 ```text
 图 + “这是奶龙”
 ```
 
-直接把文本写进该图片的 evidence。
+文本和图同批：
 
-### 情况 B：同一条表情再次发送
+```text
+evidence += “这是奶龙”
+```
+
+### B. 第一次没解释，后来再次发同一张并解释
 
 第一次：
 
 ```text
-发图，没解释
+图，没解释
 ```
 
-中间可能经过很多对话和别的表情。
+中间可能有很多对话和别的表情。
 
-第二次又发同一张：
+第二次：
 
 ```text
-这张图 + “这是奶龙”
+同一张图 + “这是奶龙”
 ```
 
-图片 hash / 感知签名命中已有条目：
+hash / 感知签名命中已有 rel：
 
 ```text
-find_existing_sticker / find_signature_match
-→ 命中同一个 rel
+evidence += “这是奶龙”
 ```
 
-这时把本轮用户文本追加到该条目的 evidence：
-
-```text
-evidence += "这是奶龙"
-review_version += 1
-meta_status = pending_review
-```
-
-即使它之前是 `reviewed`，也重新打开。
-
-不需要时间窗口，关联依据是“同一张图”，不是时间。
+不需要时间窗口，关联依据是同一张图。
 
 ### 其他情况
 
@@ -222,213 +257,201 @@ meta_status = pending_review
 
 不做自动关联。
 
-原因：
+交给模型明确引用或面板处理。
 
-- 没有可靠指针
-- 最近一张图可能已经是别的
-- 不同图不能自动认定是同一角色
+### 重复
 
-需要时交给：
+同一条消息只追加一次 evidence：
 
 ```text
-用户明确引用
-模型自己判断
-面板人工修改
+message_id 去重
 ```
 
-### 不重复消费同一句话
+## 7. 面板
 
-同一条用户消息只追加一次：
-
-```text
-message_id / seq 去重
-```
-
-### 不覆盖面板结果
+面板修改后：
 
 ```text
+meta_status=reviewed
 meta_source=panel
-  → 追加 evidence 可以
-  → 不自动重新排队
-  → 不覆盖人工字段
 ```
 
-否则人工改完会被离线模型改回去。
+不需要“不可覆盖”。
 
-
-## 6. 实时和离线的边界
+下一轮复盘：
 
 ```text
-实时小模型
-  只负责“先有一版”
-  不负责最终命名
-
-离线大模型
-  只负责“最终语义”
-  不看小模型结果
-
-面板
-  人工覆盖
-  优先级最高
+可以看到面板写的字段
+可以作为参考
+可以修改
 ```
 
-搜索时：
+如果担心手工结果被改，应该在面板里再改一次，不引入新的保护状态。
+
+## 8. 要改的地方
+
+### 8.1 library.py
+
+新增字段：
 
 ```text
-pending_review 也参与搜索
-reviewed 优先
-panel 最高
+meta_status
+meta_source
+evidence
+reviewed_at
 ```
 
-## 7. 要改的地方
-
-### 7.1 索引
-
-`qqbot/domains/media/library.py`：
-
-- 新增 `meta_status`
-- 新增 `meta_source`
-- 新增 `review_version`
-- 新增 `evidence`
-- 新增 `last_review_at`
-- `index_add` 保留已有状态，不被自动收藏重置
-- 提供两个显式操作：
+新增操作：
 
 ```text
-mark_pending(rel, evidence)
-mark_reviewed(rel, fields, source="model")
+attach_evidence(rel, text, message_id)
+mark_reviewed(rel, fields, source)
 ```
 
-### 7.2 实时收藏
+`index_add` 保留已有状态，不因为自动收藏重置。
 
-`qqbot/domains/media/stickers.py`：
+### 8.2 stickers.py
 
-- 小模型结果继续写入普通字段
-- 写入时设置：
+- `collect_sticker` 接收本轮 evidence 文本和 message_id
+- 命中已有 rel 时调用 `attach_evidence`
+- 新图返回 rel
+- 新图初始状态：
 
 ```text
-meta_status = pending_review
-meta_source = vision
+meta_status=pending_review
+meta_source=vision
 ```
 
-- 不要求小模型写 label
+### 8.3 meta.py
 
-### 7.3 复盘写入
-
-`qqbot/domains/media/meta.py`：
-
-- `apply_record` 写字段后设置：
+`apply_record` 写回时：
 
 ```text
-meta_status = reviewed
-meta_source = model
+meta_status=reviewed
+meta_source=model
+reviewed_at=now
 ```
 
-- 如果 `meta_source=panel`，拒绝自动覆盖
+不再有 panel 保护分支。
 
-### 7.4 bridge
+### 8.4 bridge.py
 
-`bridge.py`：
-
-- 图片和文本在同一合并批次时，把文本作为该图片的 evidence
-- 同一条表情再次发送时，通过 `find_existing_sticker` / `find_signature_match` 找到已有 rel，把本轮文本追加为 evidence
-- 有新 evidence 时：
+- 收藏图片 / 再次发送时记录 occurrence
+- occurrence 至少包含：
 
 ```text
-review_version += 1
-meta_status = pending_review
+rel
+evidence_text
+message_id
+ts
 ```
 
-- 不依赖 `last_sticker` 的 30 分钟窗口
-- 很久以后只发文字、没有再发图的情况，不做自动关联
-- 新复盘 loop 取代 `sticker_enrich_loop`
-- 复盘 prompt 必须附图片
-- 复盘 prompt 不能带现有语义字段
+- 新增定时复盘 loop
+- 复盘时必须附图片
+- pending_review 不带现有字段
+- reviewed 带现有字段
 
-### 7.5 废弃旧 loop
+### 8.5 废弃旧 loop
 
-当前 `sticker_enrich_loop`：
+```text
+sticker_enrich_loop 废弃
+enrich_stickers 不再直接写语义
+```
+
+旧 loop 的问题：
 
 - 只处理 caption 为空
-- 只给文本，不给图片
+- 不给图片
 - 会把旧语义拼进 prompt
 
-新工作流启用后废弃。
-
-`enrich_stickers` 也不能再直接写语义；它最多负责收集 evidence，或整个移除。
-
-### 7.6 面板
-
-`panel_readers.py` / `web/app.js`：
+### 8.6 面板
 
 - 显示 `meta_status`
-- 待整理 / 已整理
-- 面板编辑设置：
+- 编辑后写 `meta_status=reviewed`
+- 写 `meta_source=panel`
+- 不阻止后续复盘
+
+### 8.7 工具
+
+`sticker_meta` 可以继续实时补写：
 
 ```text
-meta_source = panel
-meta_status = reviewed
+写回 meta_status=reviewed
+meta_source=model
 ```
 
-### 7.7 工具
+不强制在聊天里调用。
 
-`plugins/dsh-remembers/tools/memes.mjs`：
+## 9. 成本
 
-- `sticker_meta` 可以继续支持实时补写
-- 写回时标记 `meta_source=model`
-- 不强制实时调用
-
-## 8. 验收
+每张独特表情一次调用：
 
 ```text
-发图后立刻能搜到
-待整理数量可统计
-离线复盘不看已填语义
+1 张图
++ 少量 evidence
++ 200 字以内输出
+```
+
+默认 12 小时一次，按 rel 去重。
+
+控制项：
+
+```text
+每轮最多 20 张
+reviewed 且 changed=false 不写
+同一 rel 只复盘一次
+```
+
+如果一天新增 10–20 张独特表情，成本很小。
+
+## 10. 验收
+
+```text
+实时收藏后能搜到
+定时窗口按 rel 去重
+pending_review 看不到现有字段
+reviewed 可以看到现有字段
 复盘后 reviewed
-迟到解释能把 reviewed 重新打开
-重复消息不重复追加 evidence
-面板修改不被离线覆盖
+changed=false 不写字段
+迟到解释能进入 evidence
+同一条消息 evidence 不重复
+面板修改后下一轮仍可被参考
 ```
 
-测试场景：
+测试：
 
 ```text
-1. 第一次发图，没解释
-   第二次发同一张，并说“这是奶龙”
-   → 命中原 rel，evidence 增加
-   → status 回到 pending_review
-   → 再次复盘使用“这是奶龙”
+1. 发图后紧接着说“这是奶龙”
+   → evidence 带上
+   → 复盘使用
 
-2. 发图后紧接着补一句“这是奶龙”
-   → 在合并窗口内，文本和图同批
-   → evidence 直接带上
+2. 第一次发图没解释
+   第二次发同一张并说“这是奶龙”
+   → 命中原 rel
+   → evidence 带上
+   → 复盘使用
 
-3. 发图后很久只发文字，没有再发图
+3. 很久以后只发文字
    → 不自动关联
-   → 留给模型/面板判断
 
-4. 第一次发图 A，第二次发另一张图 B 说“这是奶龙”
-   → 只确定 B
-   → 不自动认定 A 也是奶龙
+4. 不同图但同一角色
+   → 只处理当前图
 
 5. 面板改 label
-   → source=panel
-   → 离线不覆盖
+   → meta_source=panel
+   → 下一轮 reviewed 可参考
 
-6. 同一条“这是奶龙”重复送到
-   → evidence 只追加一次
+6. 同一张图在窗口内出现多次
+   → 按 rel 去重，只复盘一次
 ```
 
-## 9. 结论
+## 11. 结论
 
 ```text
-不需要 provisional
-状态用 pending_review / reviewed
-reviewed 可因新 evidence 重新打开
-只自动关联两种：
-  发完就解释
-  同一条表情再次发送并解释
-复盘不看已填语义，只看图片 + 用户原话
+唯一复盘方式：定时窗口 + rel 去重
+不管复盘过没有，都进入复盘
+状态只控制模型能不能看现有字段
+面板修改只标 reviewed，不做不可覆盖
 ```
 
-这样实时性和离线整理可以共存，也不会因“已经整理过”丢掉后来的解释。
+实时性由小模型和意图明显时的工具调用保证，复盘低频运行即可。
