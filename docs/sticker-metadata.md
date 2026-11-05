@@ -150,42 +150,101 @@ meta_status = reviewed
 
 ## 5. 迟到的解释
 
-问题：
+`reviewed` 不能是终态，但也不应该靠“30 分钟内所有后续文本”去猜。
+
+更常见的真实情况是：
 
 ```text
-先发图
-  → 小模型先填
-  → 离线复盘可能已经跑完，status=reviewed
-
-后来说“这是奶龙”
-  → 如果 reviewed 是终态
-  → 新信息就丢了
+第一次发图，没解释
+第二次又发同一张，并说“这是奶龙”
 ```
 
-所以 `reviewed` 不能是终态。
-
-### 关联最近表情
-
-bridge 保存：
+或者：
 
 ```text
-last_sticker[chat_key] = {
-  ref: "file:unsorted/u_xxx.jpg",
-  ts: ...
-}
+发图后紧接着补一句“这是奶龙”
 ```
 
-图片收藏后写入，过期时间建议 30 分钟。
+这两种才值得自动关联。
 
-后续用户发文字时，如果存在未过期的 `last_sticker`：
+### 情况 A：同一条表情再次发送
+
+第二次发送时，图片 hash / 感知签名匹配到已有条目：
 
 ```text
-把文字追加到该表情的 evidence
+find_existing_sticker / find_signature_match
+→ 命中同一个 rel
+```
+
+这时把本轮用户文本追加到该条目的 evidence：
+
+```text
+evidence += "这是奶龙"
 review_version += 1
 meta_status = pending_review
 ```
 
-即使它之前是 `reviewed`，也要重新打开。
+即使它之前是 `reviewed`，也重新打开。
+
+不需要 30 分钟窗口，因为关联依据是“同一张图”，不是时间。
+
+### 情况 B：发图后紧接着补一句
+
+在当前合并窗口内：
+
+```text
+merge_seconds = 12 秒（私聊）
+group_merge_seconds = 20 秒（群聊）
+```
+
+文本和图本来就会进同一批：
+
+```text
+图 + “这是奶龙”
+```
+
+直接把文本写进该图片的 evidence，不需要额外的 `last_sticker`。
+
+### 不常见：很久以后只发文字
+
+```text
+发图 → 30 分钟后只发“这是奶龙”，没有再次发图
+```
+
+不做自动关联。
+
+原因：
+
+- 没有可靠指针
+- 最近一张图可能已经是别的
+- 容易把无关聊天记到错误表情上
+
+这种情况交给：
+
+```text
+用户明确引用“刚才那张/叫奶龙的那张”
+模型自己判断
+面板人工改
+```
+
+### 不同图但同一角色
+
+```text
+第一次发图 A，没解释
+第二次发图 B，说“这是奶龙”
+```
+
+第二轮只能确定 B 是奶龙，不能自动认定 A 也是。
+
+如果之后要补 A，应该靠：
+
+```text
+离线复盘发现 identity 相同
+→ 生成候选
+→ 人工或模型确认
+```
+
+不在实时阶段自动传播。
 
 ### 不重复消费同一句话
 
@@ -206,15 +265,6 @@ meta_source=panel
 
 否则人工改完会被离线模型改回去。
 
-### 超出窗口
-
-```text
-last_sticker 已过期
-  → 不自动关联
-  → 用户明确说“刚才那张/叫奶龙的那张”时，由模型或面板处理
-```
-
-不做无限期自动猜测。
 
 ## 6. 实时和离线的边界
 
@@ -290,8 +340,8 @@ meta_source = model
 
 `bridge.py`：
 
-- 收藏图片后记录 `last_sticker[chat_key]`
-- 后续文本追加到对应表情的 `evidence`
+- 图片和文本在同一合并批次时，把文本作为该图片的 evidence
+- 同一条表情再次发送时，通过 `find_existing_sticker` / `find_signature_match` 找到已有 rel，把本轮文本追加为 evidence
 - 有新 evidence 时：
 
 ```text
@@ -299,6 +349,8 @@ review_version += 1
 meta_status = pending_review
 ```
 
+- 不依赖 `last_sticker` 的 30 分钟窗口
+- 很久以后只发文字、没有再发图的情况，不做自动关联
 - 新复盘 loop 取代 `sticker_enrich_loop`
 - 复盘 prompt 必须附图片
 - 复盘 prompt 不能带现有语义字段
@@ -351,21 +403,29 @@ meta_status = reviewed
 测试场景：
 
 ```text
-1. 先发图，后说“这是奶龙”
-   → 复盘能拿到“这是奶龙”
+1. 第一次发图，没解释
+   第二次发同一张，并说“这是奶龙”
+   → 命中原 rel，evidence 增加
+   → status 回到 pending_review
+   → 再次复盘使用“这是奶龙”
 
-2. 先发图，不说
-   → 先 pending，复盘后 reviewed
+2. 发图后紧接着补一句“这是奶龙”
+   → 在合并窗口内，文本和图同批
+   → evidence 直接带上
 
-3. 复盘后再说“这是奶龙”
-   → evidence 增加，status 回到 pending
-   → 再次复盘使用新解释
+3. 发图后很久只发文字，没有再发图
+   → 不自动关联
+   → 留给模型/面板判断
 
-4. 面板改 label
+4. 第一次发图 A，第二次发另一张图 B 说“这是奶龙”
+   → 只确定 B
+   → 不自动认定 A 也是奶龙
+
+5. 面板改 label
    → source=panel
    → 离线不覆盖
 
-5. 同一条“这是奶龙”重复送到
+6. 同一条“这是奶龙”重复送到
    → evidence 只追加一次
 ```
 
