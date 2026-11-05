@@ -59,6 +59,38 @@ function soft(ctx, key) {
   }
 }
 
+const titleCache = new WeakMap();
+
+function sessionTitle(context) {
+  const session = context?.agent?.session;
+  if (!session) return "";
+  const cached = titleCache.get(session);
+  if (cached) return cached;
+
+  const events = session?.eventsSnapshot || session?.log;
+  const length = Number(events?.length || 0);
+  if (length > 0) {
+    for (let i = length - 1; i >= 0; i -= 1) {
+      const event = events[i];
+      if (event?.type !== "session/title") continue;
+      const title = event?.data?.title || event?.title;
+      if (typeof title === "string" && title) {
+        titleCache.set(session, title);
+        return title;
+      }
+    }
+  }
+
+  const title = session?.title;
+  if (typeof title === "string") return title;
+  if (title && typeof title === "object" && typeof title.title === "string") return title.title;
+  return "";
+}
+
+function isQqSession(context) {
+  return sessionTitle(context).startsWith("qqbot:");
+}
+
 export function apply(ctx) {
   const logger = ctx.logger;
   const log = (event, data) => logger?.debug?.(`[dsh-conversation] ${event} ${JSON.stringify(data)}`);
@@ -69,7 +101,7 @@ export function apply(ctx) {
       () => systemPrompt.section({
         name: SECTION,
         order: 90,
-        text: PROTOCOL,
+        text: (context) => (isQqSession(context) ? PROTOCOL : ""),
       }),
       "dsh-conversation.preflightSection()",
     );
@@ -87,8 +119,9 @@ export function apply(ctx) {
       tools.register(defineTool({
         name: "preflight_state",
         description:
-          "回答前的对话预检。只提交 unknown 和 action，不回答用户。"
-          + "action=answer|search|ask。每次正式回答前调用一次。",
+          "对话预检。仅当系统提示里有【对话预检】时，才在正式回答前调用一次；"
+          + "没有该提示时不要调用。只提交 unknown 和 action，不回答用户。"
+          + "action=answer|search|ask。",
         parameters: {
           unknown: {
             type: "array",

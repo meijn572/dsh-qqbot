@@ -221,6 +221,7 @@ class Dsh:
         self.http = aiohttp.ClientSession()
         self.cookie = ""
         self.cookie_at = 0.0
+        self._titled: set[tuple[str, str]] = set()
 
     def _authority(self) -> str:
         return CONFIG["dsh_base"].split("://", 1)[-1]
@@ -278,6 +279,21 @@ class Dsh:
         except Exception as exc:  # noqa: BLE001
             log.warning("set permission failed: %s", exc)
         return sid
+
+    async def ensure_title(self, sid: str, title: str) -> None:
+        """给会话设置内部标题；失败不阻塞对话。"""
+        pair = (sid, title)
+        if not sid or not title or pair in self._titled:
+            return
+        try:
+            await self.rpc(
+                "session/rename",
+                {"request": {"sessionId": sid, "title": title}},
+            )
+            self._titled.add(pair)
+            log.info("session %s title -> %s", sid, title)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("set session title failed (%s): %s", title, exc)
 
     async def prompt(self, sid: str, text: str, images: list[str] | None = None) -> None:
         content: list[dict] = [{"type": "text", "text": text}]
@@ -882,6 +898,7 @@ async def _process_locked(dsh: Dsh, onebot: OneBot, mtype: str, target: int, cha
             set_state(chat_key, sid, 0)
             proj = await dsh.projections(sid)
             log.info("new dsh session %s for %s (recovered)", sid, chat_key)
+        await dsh.ensure_title(sid, f"qqbot:{chat_key}")
         baseline = int(proj.get("asOfSeq") or 0)
         extras: list[str] = []
         hint = history_hint() if should_hint(text) else ""

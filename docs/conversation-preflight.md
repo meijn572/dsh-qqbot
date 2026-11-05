@@ -1,6 +1,6 @@
 # 对话预检：静态 System + 工具
 
-状态：静态 system + 工具已实现；会话门控（A）待实现。
+状态：已实现（静态 system + 工具 + 会话门控）。
 
 ---
 
@@ -310,7 +310,26 @@ title 以 qqbot: 开头 → 返回 PROTOCOL
 
 不做 `ctx.tools.restrict`，避免增加实现复杂度。
 
-即使工具在复盘会话里可见，只要没有 system 协议，模型通常不会主动调用。
+但工具描述必须写成条件式：
+
+```text
+仅当系统提示里有【对话预检】时才调用
+没有该提示时不要调用
+```
+
+如果工具描述写成“每次回答前调用”，没有协议的非 QQ 会话也会主动调用预检。
+
+### 读取标题
+
+section 的 `text(context)` 从会话事件里读最后一条：
+
+```text
+session/title
+```
+
+取 `data.title`，判断是否以 `qqbot:` 开头。
+
+不依赖 `session.title` 属性；当前会话对象上没有这个字段。
 
 ### 为什么必须做
 
@@ -331,16 +350,19 @@ title 以 qqbot: 开头 → 返回 PROTOCOL
 QQ 对话：保留预检
 ```
 
-### 前提
-
-实现时要确认：
+### 已验证
 
 ```text
 ctx.systemPrompt.section 的 text(context)
-能读到当前 session title
+可以通过 session.log 里的 session/title 事件读到标题
 ```
 
-如果读不到，退回 bridge 注册的会话白名单。
+实测：
+
+```text
+qqbot:test → 调用 preflight_state
+无标题 → 不调用 preflight_state
+```
 
 ---
 
