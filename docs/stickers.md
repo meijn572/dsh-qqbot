@@ -285,15 +285,16 @@ POST /api/stickers/delete
 
 词库见 [词库系统](lexicon.md)。
 
-## 12. 当前版本：category 保留，示例引导
+## 12. 当前版本：category 保留，改由大模型填写
 
 ### 决策
 
 ```text
 保留 category
-不删语义分类
+category 不再由视觉小模型分类
+由主模型在 sticker_meta 里顺手填写
 不加硬规则
-只补具体标签的使用示例
+示例从大类换成具体标签
 ```
 
 ### 依据
@@ -313,6 +314,65 @@ category 仍有价值：
 - 模型不知道具体词时能发一张
 - 兼容 `[[meme:happy]]` 等旧写法
 
+### category 来源
+
+不再走：
+
+```text
+视觉小模型 classify_sticker / describe_sticker
+  → category
+```
+
+改成：
+
+```text
+主模型看到图
+  → sticker_meta
+  → category + label + facets
+```
+
+`sticker_meta` 增加可选 `category`：
+
+```json
+{
+  "ref": "file:unsorted/u_xxx.jpg",
+  "category": "happy",
+  "label": "大笑奶龙",
+  "caption": "黄色圆滚小人躺着大笑",
+  "identity": ["奶龙"],
+  "action": ["躺倒"],
+  "expression": ["大笑", "开心"]
+}
+```
+
+可选大类保持现有枚举：
+
+```text
+happy / angry / sad / confused / surprised / shy
+sleep / affection / food / money / greeting / work
+entertainment / teasing / reply
+```
+
+不填就留空，不强制。
+
+### 文件放哪
+
+category 后填，所以不能让目录先等它。
+
+```text
+新表情 → stickers/unsorted/u_xxx.jpg
+category 只写索引
+```
+
+旧文件不移动，旧目录只当历史存储。
+
+```text
+目录 = 存储
+category = 语义
+```
+
+不再把目录名当语义来源。
+
 ### 为什么会偏向 category
 
 不是标签不能用，是示例一直在教 category：
@@ -325,7 +385,7 @@ category 仍有价值：
 
 模型会优先模仿示例。
 
-### 改动
+### 示例改动
 
 只改 `AGENTS.md` 的表情示例，把示例从大类换成具体标签：
 
@@ -362,18 +422,105 @@ category 也没命中 → 不发图
 
 不改 `resolve_meme` 的现有优先级。
 
+### 待整理
+
+如果大模型没调用 `sticker_meta`：
+
+```text
+category 空
+label 空
+facets 可能空
+```
+
+需要：
+
+```text
+needs_meta = true
+```
+
+bridge-note 或面板提示：
+
+```text
+这张还没整理，调用 sticker_meta 补语义
+```
+
+不让未整理的表情静默变成“没有分类”。
+
+### 命名时序
+
+当前自动流程和先后顺序：
+
+```text
+先说“这是奶龙”，再发图
+  同一条合并窗口内 → context_text 包含“奶龙”
+  → 但 enrich_stickers 的 JSON 不要求 label
+  → 仍然不会自动写名字
+
+先发图，再说“这是奶龙”
+  图在合并窗口内 → 文本和图合并，context_text 也可能包含“奶龙”
+  图已经先处理 → 后续文本不会重新触发这张图的 enrich
+  → 更不会自动写名字
+```
+
+当前实际：
+
+```text
+merge_seconds = 12 秒（私聊）
+group_merge_seconds = 20 秒（群聊）
+```
+
+在窗口内，先图后字和先字后图都会合并到同一批。
+
+但：
+
+```text
+enrich_stickers 只写 description + facets
+不写 label
+不写 category
+```
+
+所以“先说什么”只影响上下文，不影响是否写名字。
+
+日志里 `表情语义已补` 只有少量记录，绝大多数还是测试或面板操作；自动收藏基本没有写 label。
+
+### 如果要做“先图后名”自动补
+
+需要 bridge 保存最近一张待整理表情：
+
+```text
+pending_sticker[chat_key] = source path / rel
+```
+
+下一轮用户说“这是奶龙”时，bridge-note 带上：
+
+```text
+（上一张待整理表情：source:D:\...）
+```
+
+模型再调用：
+
+```text
+sticker_meta(ref="source:...", label="奶龙", category="...")
+```
+
+否则后续文本没有可靠方式指向刚才那张图。
+
 ### 验收
 
 ```text
 AGENTS 示例改成具体标签
+sticker_meta 支持 category
+新收藏进 unsorted
+category 由大模型填
 不新增硬提示
 观察接下来 50 次表情使用
 ```
 
-看三个数：
+看四个数：
 
 - 具体标签占比
 - category 占比
+- 未整理数量
 - 找不到图的比例
 
-如果标签占比上升，且找不到图没有明显增加，就保持这一版。
+如果标签占比上升、未整理没有持续堆积，就保持这一版。
