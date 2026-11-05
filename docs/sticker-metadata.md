@@ -109,6 +109,57 @@ meta_source = panel
 
 小模型结果只是初始值。
 
+### 3.1 occurrence 是什么
+
+occurrence 是“一次表情出现”的记录，不是表情索引条目。
+
+```json
+{
+  "rel": "unsorted/u_xxx.jpg",
+  "evidence_text": "这是奶龙",
+  "message_id": "msg-123",
+  "chat_key": "private:1215258939",
+  "ts": 1793890000
+}
+```
+
+区别：
+
+```text
+index entry   一张表情只一条
+occurrence    这张表情每出现一次就一条
+```
+
+例如同一张图发了三次：
+
+```text
+index:
+  unsorted/u_xxx.jpg
+
+occurrences:
+  u_xxx 第 1 次，无文本
+  u_xxx 第 2 次，“这是奶龙”
+  u_xxx 第 3 次，无文本
+```
+
+定时复盘时：
+
+```text
+按 rel 合并
+evidence 合并
+只复盘一次
+```
+
+“普通 occurrence”就是：
+
+```text
+不管第一次、第二次还是很久以后
+只要是图片出现，就记一条
+走同一套定时复盘
+```
+
+没有单独的“迟到解释”记录类型。
+
 ## 4. 定时复盘
 
 ### 窗口
