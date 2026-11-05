@@ -81,6 +81,7 @@ powershell -ExecutionPolicy Bypass -File D:\path\to\dshbot\stop-dshbot.ps1
 | `docs/refactor-summary.md` | 重构总结 |
 | `docs/architecture.md` | 架构说明 |
 | `docs/persona-layers.md` | 人格分层、写入权限与结构化校验 |
+| `docs/conversation-preflight.md` | 对话预检、检索阶段提示词与工作流 |
 | `docs/thesis/` | 论文素材：观察、决策、原始数据说明 |
 | `docs/stickers.md` | 表情包、label、分面、选取与语义工具 |
 | `docs/lexicon.md` | 统一词库：kind / scope / status、工具与面板 |
@@ -321,6 +322,7 @@ AstrBot 旧部署仍在，回退时恢复 AstrBot 白名单/平台开关即可�
 
 - [架构说明](docs/architecture.md)
 - [人格分层](docs/persona-layers.md)
+- [对话预检](docs/conversation-preflight.md)
 - [论文素材](docs/thesis/README.md)
 - [表情包系统](docs/stickers.md)
 - [词库系统](docs/lexicon.md)
