@@ -1,6 +1,6 @@
 # 对话预检：静态 System + 工具
 
-状态：已实现（`plugins/dsh-conversation`，静态 system + tool result）。
+状态：静态 system + 工具已实现；会话门控（A）待实现。
 
 ---
 
@@ -225,11 +225,11 @@ plugins/dsh-conversation/
 
 - 注册 `ctx.systemPrompt.section`：静态预检协议
 - 注册 `preflight_state` 工具
-- 保存每个会话的 phase
 - 工具结果返回阶段指令
-- 不写 bridge，不写 Python domain
+- 按会话标题决定是否返回预检协议
+- 不写 Python domain
 
-`bridge.py` 只负责 QQ 收发。
+`bridge.py` 负责 QQ 收发，并给 QQ 会话设置标题标记。
 
 `dsh-remembers` 不改。
 
@@ -256,6 +256,91 @@ action=search 但没调用检索工具
   → 最多 2 次 web_fetch
   → 总超时由宿主控制
 ```
+
+## 10. 会话门控（A）
+
+### 目标
+
+预检协议只对 **QQ 对话会话**生效。
+
+不生效：
+
+```text
+复盘会话
+维护会话
+面板任务
+其他工作会话
+```
+
+### 标记
+
+bridge 创建 QQ 会话后、发第一条 prompt 前设置标题：
+
+```text
+qqbot:private:<chat_key>
+qqbot:group:<group_id>
+```
+
+维护/复盘会话不设置，或使用：
+
+```text
+review:<id>
+maintenance:<id>
+```
+
+### section 返回
+
+```text
+title 以 qqbot: 开头 → 返回 PROTOCOL
+其他 → 返回空串
+```
+
+空串不贡献 system 内容，也不触发预检。
+
+### 工具
+
+`preflight_state` 仍然全局注册。
+
+原因：
+
+```text
+工具 schema 的固定成本很小
+相比一次额外预检模型回合，可以忽略
+```
+
+不做 `ctx.tools.restrict`，避免增加实现复杂度。
+
+即使工具在复盘会话里可见，只要没有 system 协议，模型通常不会主动调用。
+
+### 为什么必须做
+
+预检的主要成本不是工具 schema，而是：
+
+```text
+多一次模型回合
+多一次 tool result
+长上下文重新计入
+```
+
+复盘会话通常上下文很长，这个成本会被放大。
+
+门控后：
+
+```text
+复盘/维护：不出现预检协议
+QQ 对话：保留预检
+```
+
+### 前提
+
+实现时要确认：
+
+```text
+ctx.systemPrompt.section 的 text(context)
+能读到当前 session title
+```
+
+如果读不到，退回 bridge 注册的会话白名单。
 
 ---
 
@@ -398,13 +483,41 @@ ask 时先问
 - `action` 已经能决定流程
 - 具体怎么问、怎么查，交给回答/检索阶段
 
+## 8. 为什么按会话门控
+
+预检几乎会多一倍 token 消耗，主要来自：
+
+```text
+多一次预检模型回合
+多一次 tool result
+长上下文重新计入
+```
+
+复盘、维护会话：
+
+- 上下文长
+- 次数少但单次贵
+- 不需要预检
+- 多一轮模型调用会明显放大成本
+
+所以不能让预检协议扩散到所有 qqbot2 会话。
+
+门控后：
+
+```text
+QQ 对话：保留预检
+复盘/维护：看不到协议，不触发流程
+```
+
+工具 schema 的固定成本很小，可以先忽略；真正贵的是额外模型回合。
+
 ---
 
 # 三、与其他方案对比
 
 | 方案 | 角色 | 动态性 | 缓存 | 复杂度 | 结论 |
 | --- | --- | --- | --- | --- | --- |
-| 静态 system + tool result | system + tool | 够用 | 好 | 低 | 推荐 |
+| 静态 system + tool result + 会话门控 | system + tool | 够用 | 好 | 低 | 推荐 |
 | 动态 system section | system | 强 | 差 | 中 | 不推荐 |
 | developer/message | developer | 强 | 中 | 高 | 当前不可用 |
 | user 内部消息 | user | 强 | 中 | 低 | 语义不干净 |
@@ -455,7 +568,9 @@ ask 时先问
 # 四、验收
 
 - system section 只注册一次，内容稳定
-- 每条用户消息触发一次 preflight_state
+- 每条 QQ 用户消息触发一次 preflight_state
+- 复盘/维护会话看不到预检协议
+- 复盘/维护会话不调用 preflight_state
 - answer 不检索
 - ask 不检索
 - search 至少一次检索工具调用
@@ -493,4 +608,17 @@ ask
 上次那个
 → 上下文能解：answer
 → 不能解：ask
+```
+
+会话门控测试：
+
+```text
+QQ 会话 title = qqbot:private:...
+→ system 有预检协议
+→ preflight_state 被调用
+
+维护会话 title = maintenance:...
+→ system 没有预检协议
+→ 不调用 preflight_state
+→ 不增加预检模型回合
 ```
