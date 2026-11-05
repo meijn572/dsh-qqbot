@@ -4,7 +4,9 @@
 
 ## 1. 目标
 
-实时只负责“能用”，定时复盘负责“整理好”。
+`rel` 是表情的唯一索引。
+
+每次表情出现，记录一段“包含这张表情的对话记忆”，而不是只记同一批的一句文本。
 
 ```text
 实时
@@ -13,16 +15,18 @@
   表情马上可搜、可发
 
 定时
-  取这段时间新出现的表情
+  取新出现的表情
   按 rel 去重
-  每张复盘一次
-  pending_review → 不看现有字段
-  reviewed       → 可以参考现有字段
+  用 rel 周围的记忆文本复盘
 ```
 
 不设 `provisional_*`，不设 `manual`，不按单条 `review_due` 排队。
 
-## 2. 数据结构
+## 2. 两个概念
+
+### index entry
+
+一张表情只有一条：
 
 ```json
 {
@@ -36,131 +40,202 @@
 
   "meta_status": "pending_review",
   "meta_source": "vision",
-  "evidence": [
-    {"text": "这是奶龙", "ts": 1793890000}
-  ],
   "reviewed_at": 0
 }
 ```
 
-### meta_status
+### occurrence
+
+这张表情每出现一次，就有一条。
+
+occurrence 不存语义结论，只存：
 
 ```text
-pending_review   未复盘
-reviewed         已复盘
+rel
+出现位置
+一段原始记忆文本
 ```
 
-只决定复盘时模型能不能看到现有字段。
-
-### meta_source
-
-```text
-vision    小模型实时写的
-model     定时复盘写的
-panel     面板手写的
-```
-
-只用于审计，不阻止后续复盘。
-
-面板手写：
-
-```text
-meta_status = reviewed
-meta_source = panel
-```
-
-下一轮复盘仍然会看到这些字段，并且可以修改。
-
-### evidence
-
-只放用户提供的上下文：
-
-```text
-“这是奶龙”
-“这张叫...”
-“这是刚才那个...”
-```
-
-不放：
-
-```text
-小模型生成的 category/caption/facets
-复盘模型之前生成的字段
-```
-
-最多保留 10 条，按 message_id 去重。
-
-### reviewed_at
-
-最后一次复盘时间。
-
-没有 `review_version`，定时窗口本身负责控制复盘次数。
-
-## 3. 实时收藏
-
-```text
-图片收藏
-  → 小模型给 category/caption/facets
-  → 写入普通字段
-  → meta_status=pending_review
-  → meta_source=vision
-  → 立即可搜、可发
-```
-
-小模型结果只是初始值。
-
-### 3.1 occurrence 是什么
-
-occurrence 是“一次表情出现”的记录，不是表情索引条目。
+## 3. occurrence 的结构
 
 ```json
 {
   "rel": "unsorted/u_xxx.jpg",
-  "evidence_text": "这是奶龙",
-  "message_id": "msg-123",
   "chat_key": "private:1215258939",
-  "ts": 1793890000
+  "anchor": {
+    "message_id": "msg-123",
+    "ts": 1793890000,
+    "image_index": 0
+  },
+  "window": {
+    "start_ts": 1783889820,
+    "end_ts": 1783890120
+  },
+  "messages": [
+    {
+      "message_id": "msg-120",
+      "ts": 1783889990,
+      "role": "user",
+      "speaker": "九歌",
+      "text": "这个是奶龙吗",
+      "relation": "before"
+    },
+    {
+      "message_id": "msg-123",
+      "ts": 1783890000,
+      "role": "user",
+      "speaker": "九歌",
+      "text": "",
+      "relation": "anchor"
+    },
+    {
+      "message_id": "msg-125",
+      "ts": 1783890010,
+      "role": "assistant",
+      "speaker": "洄",
+      "text": "原来这个叫奶龙",
+      "relation": "after"
+    }
+  ]
 }
 ```
 
-区别：
+### anchor
 
 ```text
-index entry   一张表情只一条
-occurrence    这张表情每出现一次就一条
+message_id   图片所在消息
+ts           出现时间
+image_index  一条消息里第几张图
 ```
 
-例如同一张图发了三次：
+这样能表示：
 
 ```text
-index:
-  unsorted/u_xxx.jpg
-
-occurrences:
-  u_xxx 第 1 次，无文本
-  u_xxx 第 2 次，“这是奶龙”
-  u_xxx 第 3 次，无文本
+表情出现在这段对话的什么位置
 ```
 
-定时复盘时：
+### window
+
+按时间取，不按消息条数。
+
+默认：
 
 ```text
-按 rel 合并
-evidence 合并
-只复盘一次
+before_seconds = 180
+after_seconds = 120
 ```
 
-“普通 occurrence”就是：
+原因：
 
 ```text
-不管第一次、第二次还是很久以后
-只要是图片出现，就记一条
-走同一套定时复盘
+同样 6 条消息
+可能只隔 10 秒
+也可能横跨 2 小时
 ```
 
-没有单独的“迟到解释”记录类型。
+时间窗口更接近“当时聊了什么”。
 
-## 4. 定时复盘
+### messages
+
+只存原始对话：
+
+```text
+user / assistant
+speaker
+text
+message_id
+ts
+relation: before | anchor | after
+```
+
+不存：
+
+```text
+小模型生成的 caption/facets
+大模型生成的语义
+模型总结
+bridge-note
+```
+
+### 为什么这比“上下文”纯
+
+这里存的是**原始记忆文本**：
+
+```text
+谁在什么时候说了什么
+```
+
+不是模型加工后的“上下文摘要”。
+
+模型复盘时自己判断哪些消息相关，代码不预先解释。
+
+## 4. 时间窗口
+
+### 取法
+
+```text
+anchor.ts - before_seconds
+anchor.ts + after_seconds
+```
+
+从同一 `chat_key` 的 L0 对话里取。
+
+### 上限
+
+时间窗口可能太长，需要安全上限：
+
+```text
+最多 20 条消息
+最多 2000 字
+```
+
+超限时优先保留：
+
+```text
+1. anchor
+2. 离 anchor 最近的消息
+3. batch 文本
+```
+
+时间仍然是选择依据，消息数/字数只是保险。
+
+### 去重
+
+同一条消息可能进入多个 occurrence。
+
+合并时按：
+
+```text
+chat_key + message_id
+```
+
+去重。
+
+同一条消息只保留一份。
+
+anchor 独立保存：
+
+```text
+occurrence.anchor
+```
+
+即使消息文本被合并，也知道表情在哪条消息里出现。
+
+## 5. 实时收藏
+
+```text
+图片收藏
+  → 小模型给 category/caption/facets
+  → meta_status=pending_review
+  → meta_source=vision
+  → 记录 occurrence
+```
+
+occurrence 在图片解析出 rel 后写入。
+
+不依赖模型调用工具。
+
+## 6. 定时复盘
 
 ### 窗口
 
@@ -169,29 +244,26 @@ evidence 合并
 可配置
 ```
 
-每次取上次窗口之后的新表情出现记录：
+取上次复盘后新出现的 occurrence：
 
 ```text
-occurrences since last_review_at
-→ 按 rel 去重
-→ 每个 rel 只复盘一次
+按 rel 分组
+每张只复盘一次
 ```
-
-不扫全部历史，不重复复盘没有再次出现的表情。
 
 ### 选择
 
 ```text
 pending_review
-  未复盘过
-  复盘时隐藏现有字段
+  未复盘
+  模型看不到现有字段
 
 reviewed
-  已复盘过
-  复盘时可以参考现有字段
+  已复盘
+  模型可以参考现有字段
 ```
 
-两种情况都会进入复盘。
+两种情况都进入复盘。
 
 ### prompt
 
@@ -199,7 +271,8 @@ reviewed
 
 ```text
 图片
-+ evidence 里的用户原话
++ 原始记忆文本
++ anchor 位置
 
 不给：
 category / caption / facets / label
@@ -210,7 +283,8 @@ category / caption / facets / label
 ```text
 图片
 + 现有 category/caption/facets/label
-+ 新的 evidence
++ 新的原始记忆文本
++ anchor 位置
 
 让模型决定是否修正
 ```
@@ -229,59 +303,23 @@ changed=false
   → 只更新 reviewed_at
 ```
 
-### 失败
-
-```text
-没有有效 JSON
-  → 不清空旧字段
-  → 保持原状态
-  → 下次再试
-```
-
-## 5. 状态和可见性
-
-```text
-pending_review
-  → 模型看不到现有语义
-  → 独立看图片判断
-
-reviewed
-  → 模型可以看到现有语义
-  → 做增量修正
-```
-
-搜索不受状态限制：
-
-```text
-pending_review 也能搜到
-reviewed 优先
-```
-
-## 6. 解释和再次发送
+## 7. 解释和再次发送
 
 不需要独立的“迟到解释机制”。
 
-所有出现都走同一套 occurrence：
-
-```text
-图片出现
-→ 记录 rel
-→ 记录本轮文本
-→ 定时窗口统一复盘
-```
+所有出现都走 occurrence。
 
 ### A. 发完就解释
-
-合并窗口内：
 
 ```text
 图 + “这是奶龙”
 ```
 
-文本和图同批：
+同一时间窗口内，messages 自然包含：
 
 ```text
-occurrence.evidence += “这是奶龙”
+relation=anchor 的图片消息
+relation=after 的“这是奶龙”
 ```
 
 ### B. 第一次没解释，后来再次发同一张并解释
@@ -289,7 +327,7 @@ occurrence.evidence += “这是奶龙”
 第一次：
 
 ```text
-图，没解释
+图片，没解释
 ```
 
 第二次：
@@ -298,23 +336,33 @@ occurrence.evidence += “这是奶龙”
 同一张图 + “这是奶龙”
 ```
 
-hash / 感知签名命中已有 rel：
+hash / 签名命中同一个 rel：
 
 ```text
-occurrence 指向同一个 rel
-evidence += “这是奶龙”
+第二条 occurrence 也指向同一个 rel
 ```
 
-下一轮复盘会看到这条新 occurrence。
-
-如果之前已经是 `reviewed`：
+下一次复盘把两条 occurrence 的 messages 合并：
 
 ```text
-可以看到旧字段
-参考旧字段做增量修正
+第一条：before / anchor
+第二条：before / anchor / after
 ```
 
-不需要 `last_sticker`，不需要把状态改回 `pending_review`。
+如果已经是 reviewed：
+
+```text
+模型参考旧字段
+再做增量修正
+```
+
+不需要：
+
+```text
+last_sticker
+30 分钟窗口
+状态改回 pending_review
+```
 
 ### 其他情况
 
@@ -325,203 +373,166 @@ evidence += “这是奶龙”
 
 不做自动关联。
 
-交给模型明确引用或面板处理。
+## 8. 面板
 
-### 重复
-
-同一条消息只追加一次 evidence：
-
-```text
-message_id 去重
-```
-
-## 7. 面板
-
-面板修改后：
+面板修改：
 
 ```text
 meta_status=reviewed
 meta_source=panel
 ```
 
-不需要“不可覆盖”。
+不做不可覆盖。
 
-下一轮复盘：
+下一轮复盘可以看到并参考面板字段，也可以修改。
 
-```text
-可以看到面板写的字段
-可以作为参考
-可以修改
-```
+## 9. 要改的地方
 
-如果担心手工结果被改，应该在面板里再改一次，不引入新的保护状态。
+### 9.1 library.py
 
-## 8. 要改的地方
-
-### 8.1 library.py
-
-新增字段：
+index 增加：
 
 ```text
 meta_status
 meta_source
-evidence
 reviewed_at
 ```
 
-新增操作：
+不再在 index 里存 evidence。
+
+新增 occurrence 存储：
 
 ```text
-attach_evidence(rel, text, message_id)
-mark_reviewed(rel, fields, source)
+append_occurrence(rel, chat_key, anchor, window, messages)
+load_occurrences(rel, since)
 ```
 
-`index_add` 保留已有状态，不因为自动收藏重置。
+### 9.2 stickers.py
 
-### 8.2 stickers.py
+- `collect_sticker` 返回 rel
+- 命中已有 rel 也返回
+- 收藏成功后触发 occurrence 记录
+- occurrence 的 rel 来自 hash / 签名，不由模型提供
 
-- `collect_sticker` 接收本轮 evidence 文本和 message_id
-- 命中已有 rel 时调用 `attach_evidence`
-- 新图返回 rel
-- 新图初始状态：
+### 9.3 bridge.py
 
-```text
-meta_status=pending_review
-meta_source=vision
-```
-
-### 8.3 meta.py
-
-`apply_record` 写回时：
+- 图片解析出 rel 后记录 occurrence
+- 记录 anchor：
 
 ```text
-meta_status=reviewed
-meta_source=model
-reviewed_at=now
-```
-
-不再有 panel 保护分支。
-
-### 8.4 bridge.py
-
-- 收藏图片 / 再次发送时记录 occurrence
-- occurrence 至少包含：
-
-```text
-rel
-evidence_text
 message_id
 ts
+image_index
 ```
 
-- 新增定时复盘 loop
-- 复盘时必须附图片
-- pending_review 不带现有字段
-- reviewed 带现有字段
+- 按时间窗口取 L0 原始消息
+- 记录 before / anchor / after
+- 在 L0 中保留消息 ID，才能按 ID 去重
 
-### 8.5 废弃旧 loop
+### 9.4 复盘 loop
+
+- 新 loop 取代 `sticker_enrich_loop`
+- 必须附图片
+- pending 不带现有字段
+- reviewed 带现有字段
+- 按 rel 合并 occurrence
+- 合并时按 `chat_key + message_id` 去重
+
+### 9.5 旧 loop
 
 ```text
 sticker_enrich_loop 废弃
 enrich_stickers 不再直接写语义
 ```
 
-旧 loop 的问题：
-
-- 只处理 caption 为空
-- 不给图片
-- 会把旧语义拼进 prompt
-
-### 8.6 面板
+### 9.6 面板
 
 - 显示 `meta_status`
 - 编辑后写 `meta_status=reviewed`
-- 写 `meta_source=panel`
+- `meta_source=panel`
 - 不阻止后续复盘
 
-### 8.7 工具
+### 9.7 工具
 
 `sticker_meta` 可以继续实时补写：
 
 ```text
-写回 meta_status=reviewed
+meta_status=reviewed
 meta_source=model
 ```
 
-不强制在聊天里调用。
+不强制调用。
 
-## 9. 成本
+## 10. 成本
 
 每张独特表情一次调用：
 
 ```text
 1 张图
-+ 少量 evidence
++ 原始记忆文本（最多 2000 字）
 + 200 字以内输出
 ```
 
 默认 12 小时一次，按 rel 去重。
 
-控制项：
+控制：
 
 ```text
 每轮最多 20 张
-reviewed 且 changed=false 不写
 同一 rel 只复盘一次
+changed=false 不写
 ```
 
-如果一天新增 10–20 张独特表情，成本很小。
-
-## 10. 验收
+## 11. 验收
 
 ```text
-实时收藏后能搜到
-定时窗口按 rel 去重
+rel 是唯一索引
+occurrence 记录 anchor 位置
+window 按时间取
+messages 只存原始对话
+合并 occurrence 时按 message_id 去重
 pending_review 看不到现有字段
 reviewed 可以看到现有字段
-复盘后 reviewed
-changed=false 不写字段
-再次发送的解释能进入 evidence
-同一条消息 evidence 不重复
-面板修改后下一轮仍可被参考
+changed=false 不写
+面板修改下一轮可参考
 ```
 
 测试：
 
 ```text
-1. 发图后紧接着说“这是奶龙”
-   → evidence 带上
+1. 发图后 5 秒内说“这是奶龙”
+   → before/after 能取到
    → 复盘使用
 
 2. 第一次发图没解释
+   中间很多对话
    第二次发同一张并说“这是奶龙”
-   → 命中原 rel
-   → evidence 带上
+   → 两条 occurrence 合并
+   → 第二条带解释
    → 复盘使用
 
-3. 很久以后只发文字
+3. 发图前正在聊 KPL
+   → before 里有 KPL 上下文
+   → 复盘能看到
+
+4. 同一句话出现在两个 occurrence
+   → 合并时只保留一份
+
+5. 很长时间后只发文字
    → 不自动关联
 
-4. 不同图但同一角色
-   → 只处理当前图
-
-5. 面板改 label
-   → meta_source=panel
+6. 面板改 label
    → 下一轮 reviewed 可参考
-
-6. 同一张图在窗口内出现多次
-   → 按 rel 去重，只复盘一次
 ```
 
-## 11. 结论
+## 12. 结论
 
 ```text
-唯一复盘方式：定时窗口 + rel 去重
-不管复盘过没有，都进入复盘
-状态只控制模型能不能看现有字段
-再次发送的解释走普通 occurrence
+rel 唯一索引
+occurrence 记录出现位置
+evidence 改成时间窗口内的原始记忆文本
+不存模型总结
+按 message_id 去重
+定时复盘统一处理
 不需要独立迟到机制
-面板修改只标 reviewed，不做不可覆盖
 ```
-
-实时性由小模型和意图明显时的工具调用保证，复盘低频运行即可。
