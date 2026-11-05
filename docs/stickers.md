@@ -285,7 +285,10 @@ POST /api/stickers/delete
 
 词库见 [词库系统](lexicon.md)。
 
-## 12. 当前版本：category 保留，改由大模型填写
+## 12. 历史方案：category 保留（已被新方案替代）
+
+> 本节记录早期方案，最终实现以 [表情元数据与离线复盘](sticker-metadata.md) 为准。
+> 新方案：小模型实时写待整理值，大模型离线独立复盘，reviewed 可被迟到解释重新打开。
 
 ### 决策
 
