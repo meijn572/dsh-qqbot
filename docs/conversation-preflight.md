@@ -1,6 +1,6 @@
 # 对话预检：静态 System + 工具
 
-状态：目标方案。当前 `plugins/dsh-conversation` 是过渡实现，代码按本文重构。
+状态：已实现（`plugins/dsh-conversation`，静态 system + tool result）。
 
 ---
 
