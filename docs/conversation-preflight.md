@@ -1,6 +1,6 @@
 # 同会话预检与检索
 
-状态：方案确认，未实现。
+状态：第一版已实现（软门禁）。
 
 ## 1. 目标
 
@@ -30,14 +30,36 @@ dsh-remembers                 不改：记忆/人格
 
 同会话阶段控制需要：
 
-- 注入 `developer/message`
+- 注入内部阶段提示
 - 注册自定义工具
-- 监听 `tool/call` / `tool/result`
-- 按阶段限制最终回答
+- 记录 `tool/call` / `tool/result`
+- 按阶段引导最终回答
 
 这些是 DSH 宿主能力，不是 bridge 或 Python domain 能直接做的。
 
 所以不再使用 `qqbot/domains/conversation` 作为运行时编排层。
+
+### 当前实现说明
+
+第一版用的是：
+
+```text
+user/message
+source.kind = plugin:dsh-conversation
+```
+
+不是真正的 `developer/message`。
+
+原因是当前插件 API 没有稳定暴露 developer message 构造；因此用带来源标记的内部 user message 代替，`dsh-remembers` 按来源过滤，不写 L0。
+
+语义上等价于内部阶段提示。以后宿主支持直接注入 developer message，可以替换构造，不影响工具和状态机。
+
+当前是**软门禁**：
+
+- 预检提示要求先调用 `preflight_state`
+- 工具结果要求 search 后先检索
+- 但还不能在 assistant 最终输出前硬拦截
+- 如果模型跳过检索，只能记录并引导，不能真正撤回
 
 ## 3. 状态机
 
@@ -71,10 +93,13 @@ preflight_state
 
 ```json
 {
+  "turn_id": "session-...:...",
   "unknown": ["小胖现在在哪支队伍"],
   "action": "search"
 }
 ```
+
+`turn_id` 是内部参数，复制预检提示里给出的值，不是用户内容。
 
 ### 字段
 

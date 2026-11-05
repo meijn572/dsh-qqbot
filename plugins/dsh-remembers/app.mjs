@@ -976,6 +976,8 @@ function isSynthetic(message) {
   if (kind === "tool") return true;
   if (kind === "user") return false;
   if (kind === undefined) return false;
+  // dsh-conversation 的阶段提示是内部上下文，不是用户原话。
+  if (kind === "plugin:dsh-conversation") return true;
   // plugin:dsh-onebot 这类通道插件送进来的就是真实对话（用户和她的消息），
   // 不是别的插件注入的上下文，必须捕获。
   if (typeof kind === "string" && (kind.startsWith("plugin:") || kind === "model")) return false;
