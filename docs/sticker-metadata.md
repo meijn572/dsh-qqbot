@@ -206,9 +206,18 @@ pending_review 也能搜到
 reviewed 优先
 ```
 
-## 6. 迟到解释
+## 6. 解释和再次发送
 
-只处理两种常见情况。
+不需要独立的“迟到解释机制”。
+
+所有出现都走同一套 occurrence：
+
+```text
+图片出现
+→ 记录 rel
+→ 记录本轮文本
+→ 定时窗口统一复盘
+```
 
 ### A. 发完就解释
 
@@ -221,7 +230,7 @@ reviewed 优先
 文本和图同批：
 
 ```text
-evidence += “这是奶龙”
+occurrence.evidence += “这是奶龙”
 ```
 
 ### B. 第一次没解释，后来再次发同一张并解释
@@ -232,8 +241,6 @@ evidence += “这是奶龙”
 图，没解释
 ```
 
-中间可能有很多对话和别的表情。
-
 第二次：
 
 ```text
@@ -243,10 +250,20 @@ evidence += “这是奶龙”
 hash / 感知签名命中已有 rel：
 
 ```text
+occurrence 指向同一个 rel
 evidence += “这是奶龙”
 ```
 
-不需要时间窗口，关联依据是同一张图。
+下一轮复盘会看到这条新 occurrence。
+
+如果之前已经是 `reviewed`：
+
+```text
+可以看到旧字段
+参考旧字段做增量修正
+```
+
+不需要 `last_sticker`，不需要把状态改回 `pending_review`。
 
 ### 其他情况
 
@@ -413,7 +430,7 @@ pending_review 看不到现有字段
 reviewed 可以看到现有字段
 复盘后 reviewed
 changed=false 不写字段
-迟到解释能进入 evidence
+再次发送的解释能进入 evidence
 同一条消息 evidence 不重复
 面板修改后下一轮仍可被参考
 ```
@@ -451,6 +468,8 @@ changed=false 不写字段
 唯一复盘方式：定时窗口 + rel 去重
 不管复盘过没有，都进入复盘
 状态只控制模型能不能看现有字段
+再次发送的解释走普通 occurrence
+不需要独立迟到机制
 面板修改只标 reviewed，不做不可覆盖
 ```
 
