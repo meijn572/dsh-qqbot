@@ -1133,10 +1133,13 @@ service/test_core 等旧测试同步
 
 `source_ids` 不是自动推导的，是写入时由生产者带上的。
 
+2026-11-07 修订：`source_ids` 统一表示**精确 L0 证据 id**；直接输入层用 `derived_from`，详见第 20 节。
+
 ```text
-L1 事实   → source_ids = L0 id 列表（evidence）
-L3 经历   → source_ids = L0 id 列表（evidence）
-L4 核心   → source_ids = L3 id（可再带 L3 自己的 source_ids）
+L1 事实   → source_ids = L0 id
+L2 判断   → source_ids = L0 证据；derived_from = L1 id
+L3 经历   → source_ids = L0 证据；derived_from = L1/L2 id
+L4 核心   → source_ids = L0 证据；derived_from = L3 id
 ```
 
 ### L4 提升时怎么填
@@ -1144,16 +1147,16 @@ L4 核心   → source_ids = L3 id（可再带 L3 自己的 source_ids）
 从 L3 提升一条核心记忆时：
 
 ```text
-source_ids = [l3.id]
+source_ids = 那条 L3 指向的 L0 证据
+derived_from = [l3.id]
 ```
 
-如果要保留完整链：
+如果要保留完整证据链：
 
 ```text
-source_ids = [l3.id] + l3.source_ids
+source_ids = l3.source_ids
+derived_from = [l3.id]
 ```
-
-前者是“直接来源”，后者是“完整证据链”。
 
 ### 现有 4 条 L4
 
@@ -1337,20 +1340,31 @@ source_status = verified / unverified / legacy
 
 不退回批次 id。
 
-### 18.7 L4 不需要 evidence
+### 18.7 L4 的来源
 
-L4 从 L3 提升时，来源就是 L3 本身：
+L4 从 L3 提升时：
 
 ```text
-source_ids = [l3.id]
+derived_from = [l3.id]
+source_ids   = l3.source_ids（L0 证据）
 source_status = verified
 ```
 
 合并多条 L3：
 
 ```text
-source_ids = [l3_a, l3_b, ...]
+derived_from = [l3_a, l3_b, ...]
+source_ids   = 这些 L3 指向的 L0 证据
 ```
+
+如果 L3 自己没有 source_ids：
+
+```text
+source_ids = []
+source_status = unverified
+```
+
+不要伪造 L0 来源。
 
 ### 18.8 失败处理
 
@@ -1566,14 +1580,163 @@ confidence 可能虚高
 不直接当事实注入
 ```
 
-### 19.8 和 L3 的区别
+## 20. 分层来源
+
+状态：方案，未实现。
+
+### 20.1 数据流
 
 ```text
-L2：解释“为什么/可能是什么”
-L3：记录“发生了什么”
+L0 原话
+ ├─ L1 事实
+ ├─ L2 判断
+ └─ L3 事件
+      └─ L4 核心记忆
 ```
 
-同一条 L3 可以有多个 L2 解释；L2 不替代 L3。
+但不是简单的一条线。
+
+### 20.2 各层输入
+
+```text
+L1 ← L0
+L2 ← L0 + L1
+L3 ← L0 事件窗口 + L1 + L2
+L4 ← L3 + L0 证据
+```
+
+### 20.3 为什么 L2 不只从 L0
+
+如果 L2 只看 L0：
+
+```text
+模型直接从原话猜“他焦虑”
+```
+
+没有事实层约束，容易过度推断。
+
+更稳的顺序：
+
+```text
+L0 → L1 事实
+L1 + L0 → L2 判断
+```
+
+L2 的解释必须能指回具体事实。
+
+### 20.4 L3 要不要带 L0
+
+要。
+
+但只带**这段事件窗口的 L0**，不是整天 L0。
+
+原因：
+
+```text
+L1/L2 已经是抽象
+没有 L0 就失去时间顺序和原话
+容易把“总结的总结”写成空话
+```
+
+L3 输入：
+
+```text
+最近一段 L0（按时间）
++ 这段 L0 抽出的 L1
++ 这段 L0 产生的 L2
+```
+
+### 20.5 L4 从哪来
+
+L4 主要从 L3 来。
+
+```text
+L3 事件
+→ 复盘判断“这件事忘不掉”
+→ L4 核心记忆
+```
+
+L0 作为证据保留。
+
+L1 可以提供人物/事实背景，但不是 L4 的主要来源。
+
+L2 可以作为“这件事为什么重要”的信号，但不是来源。
+
+```text
+L4 ← L3（主）
+   ← L0（证据）
+   ← L1（背景）
+   ← L2（重要性信号，可选）
+```
+
+不要：
+
+```text
+L1 直接升 L4
+L2 直接升 L4
+```
+
+那会变成“事实/猜测变核心记忆”。
+
+### 20.6 来源字段
+
+建议拆成两个：
+
+```text
+source_ids    = 精确 L0 证据 id
+derived_from  = 直接输入层 id（L1/L2/L3）
+```
+
+对应：
+
+| 层 | source_ids | derived_from |
+| --- | --- | --- |
+| L1 | L0 | 空 |
+| L2 | L0 证据 | L1 |
+| L3 | L0 证据 | L1 / L2 |
+| L4 | L0 证据 | L3 |
+
+这样：
+
+```text
+source_ids 回答“哪句原话”
+derived_from 回答“从哪些记忆推出来”
+```
+
+### 20.7 例子
+
+```text
+L0：主人说导师还没回消息
+L1：主人说导师还没回消息
+L2：他可能有点焦虑（basis = L1）
+L3：等导师回复的这段时间，他反复看手机，后来干脆不看了
+L4：那晚他第一次说“我是不是不适合读研”
+```
+
+对应：
+
+```text
+L2.source_ids = 那条 L0
+L2.derived_from = [L1 id]
+
+L3.source_ids = 这段 L0 的多条 id
+L3.derived_from = [L1, L2]
+
+L4.source_ids = 那晚的 L0
+L4.derived_from = [L3]
+```
+
+### 20.8 一句话
+
+```text
+L1 记事实
+L2 记解释
+L3 记故事
+L4 记故事里忘不掉的那一段
+```
+
+越往上，越依赖下层，但不能脱离 L0 证据。
+
 
 
 
