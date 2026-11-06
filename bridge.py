@@ -1312,7 +1312,7 @@ async def persona_reflect_loop(dsh: Dsh) -> None:
 
 
 def add_l1_event(content: str) -> None:
-    """桥接直接写一条结果记忆（只写结果，不写过程）。"""
+    """自主活动结果：只进 activity，不再写 memory。"""
     text = re.sub(r"\s+", " ", str(content or "")).strip()
     if not text:
         return
@@ -1321,22 +1321,7 @@ def add_l1_event(content: str) -> None:
         if text.startswith(prefix):
             text = text[len(prefix):].strip()
             break
-    # 同步进新记忆服务（L3 事件），否则自主刷/主动搭话的结果只留在旧库里
-    try:
-        payload = json.dumps({
-            "text": text,
-            "tier": "L3",
-            "subject": "self",
-            "tags": ["event", "bridge"],
-            "embed": False,
-            "ts": int(time.time()),
-        }, ensure_ascii=False).encode("utf-8")
-        req = urllib.request.Request(
-            CMEM_BASE + "/ingest", data=payload,
-            headers={"Content-Type": "application/json"}, method="POST")
-        urllib.request.urlopen(req, timeout=5).read()
-    except Exception as exc:  # noqa: BLE001
-        log.warning("写新记忆失败：%s", exc)
+    log_activity("autonomy", text)
 
 
 def add_l0_message(chat_key: str, text: str) -> None:
@@ -2410,13 +2395,13 @@ async def important_file_loop(dsh: Dsh) -> None:
 
 
 async def memory_batch_loop() -> None:
-    """批量蒸馏：L0→L1，多条 L1→L3，L1+L3→L4。"""
+    """批量蒸馏：L0→L1，多条 L1→L3。"""
     await asyncio.sleep(60)
     while True:
         try:
             result = await cmem_call("POST", "/batch/run", {})
-            if result.get("l1") or result.get("l3") or result.get("l4"):
-                log.info("批量记忆：L1+%s L3+%s L4+%s", result.get("l1"), result.get("l3"), result.get("l4"))
+            if result.get("l1") or result.get("l3"):
+                log.info("批量记忆：L1+%s L3+%s", result.get("l1"), result.get("l3"))
         except Exception as exc:  # noqa: BLE001
             log.warning("memory_batch_loop err: %s", exc)
         await asyncio.sleep(300)

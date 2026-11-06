@@ -2738,7 +2738,7 @@ class Handler(BaseHTTPRequestHandler):
         memory_lines = []
         try:
             rows = store.conn.execute(
-                "SELECT tier, text FROM memory WHERE tier IN ('L1','L2','L3','L4') ORDER BY ts DESC LIMIT 100"
+                "SELECT tier, text FROM memory WHERE tier IN ('L1','L3','L4') ORDER BY ts DESC LIMIT 100"
             ).fetchall()
             for row in rows:
                 memory_lines.append(f"[{row['tier']}] {str(row['text'])[:240]}")
@@ -2925,19 +2925,18 @@ class Handler(BaseHTTPRequestHandler):
             "【核心设定】\n" + str(persona.get("constitution") or "")[:1200],
             "【自我认知】\n" + str(persona.get("self_model") or "")[:800],
             "【我眼中的主人】\n" + str(persona.get("user_profile") or "")[:500],
-            "【现有 L4】\n" + ("\n".join(f"- {x}" for x in rules) or "（空）"),
+            "【核心记忆】\n" + ("\n".join(f"- {x}" for x in rules) or "（空）"),
         ]
         return "\n\n".join(part for part in parts if part.strip())
 
     def _batch_run(self) -> None:
-        """批量蒸馏：L0 → L1；多条 L1 → L3；L1+L3 → L4。"""
+        """批量蒸馏：L0 → L1；多条 L1 → L3。"""
         cfg = _load_config().get("batch") or {}
         l1_every = int(cfg.get("l1_every", 6))
         l1_max = int(cfg.get("l1_max", 12))
         idle_minutes = float(cfg.get("idle_minutes", 15))
         l3_every = int(cfg.get("l3_every", 6))
-        l4_hours = float(cfg.get("l4_hours", 24))
-        stats = {"ok": True, "l1": 0, "l3": 0, "l4": 0}
+        stats = {"ok": True, "l1": 0, "l3": 0}
 
         # ---- L1：从 L0 水位线之后取一批 ----
         last_l0 = int(self._meta_get("batch_l0_last", "0") or 0)
@@ -3014,36 +3013,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._meta_set("batch_l1_pending", "[]")
                 stats["l3"] = 1
 
-        # ---- L4：每天从最近 24h 的 L1/L3 里提炼规则 ----
-        last_l4 = float(self._meta_get("batch_l4_at", "0") or 0)
-        if last_l4 <= 0:
-            self._meta_set("batch_l4_at", str(int(time.time())))
-            last_l4 = time.time()
-        if time.time() - last_l4 >= l4_hours * 3600:
-            since = time.time() - 24 * 3600
-            material = []
-            for row in store.conn.execute(
-                "SELECT tier,text FROM memory WHERE tier IN ('L1','L3') AND ts>=? ORDER BY ts DESC LIMIT 60",
-                (since,),
-            ):
-                material.append(f"[{row['tier']}] {str(row['text'])[:240]}")
-            if material:
-                current = []
-                for row in store.conn.execute("SELECT text FROM memory WHERE tier='L4' ORDER BY id DESC LIMIT 20"):
-                    current.append(str(row["text"]))
-                rules = extractor.extract_rules(
-                    "\n".join(material), "\n".join(f"- {x}" for x in current), self._batch_identity()
-                )
-                for rule in rules:
-                    rule = strip_memory_prefix("L4", rule)
-                    if rule in current:
-                        continue
-                    store.add(MemoryInput(
-                        text=rule, tier="L4", subject="self", tags=["rule", "batch"],
-                    ))
-                    current.append(rule)
-                    stats["l4"] += 1
-                self._meta_set("batch_l4_at", str(int(time.time())))
+        # ---- L4 不再由批量任务写：核心记忆由复盘提升 ----
         self._json(200, stats)
 
     def _recent_log(self, limit: int) -> list[dict]:

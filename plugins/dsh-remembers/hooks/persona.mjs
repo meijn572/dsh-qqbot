@@ -12,7 +12,6 @@ export function renderPersona(data, maxChars, proactive, opts = {}) {
   const userProfile = opts.profileText !== undefined
     ? String(opts.profileText ?? "").trim()
     : (opts.skipOwner ? "" : String(data?.user_profile ?? "").trim());
-  const l4 = Array.isArray(opts.l4) ? opts.l4 : [];
   const selfImage = String(data?.self_image ?? "").trim();
   let identityObj = {};
   try {
@@ -114,7 +113,7 @@ export function renderPersona(data, maxChars, proactive, opts = {}) {
   }
 
   const identityText = identityLines.join("\n");
-  if (!constitution && !selfModel && !userProfile && !selfImage && !identityText && l4.length === 0) return "";
+  if (!constitution && !selfModel && !userProfile && !selfImage && !identityText) return "";
 
   const lines = ['<dsh-remembers source="persona">'];
   if (userProfile) {
@@ -127,14 +126,6 @@ export function renderPersona(data, maxChars, proactive, opts = {}) {
     lines.push("以下是你固定的身份（逐项，照做）：");
     lines.push("");
     lines.push(identityText);
-    if (constitution || l4.length) lines.push("");
-  }
-  if (l4.length) {
-    lines.push("【关系约定】以下是你们之间已经成立的约定和规矩，按它来：");
-    for (const item of l4.slice(0, 20)) {
-      const text = oneLine(item?.text || item?.summary || "");
-      if (text) lines.push("- " + text);
-    }
     if (constitution) lines.push("");
   }
   if (constitution) {
@@ -161,9 +152,9 @@ export function renderPersona(data, maxChars, proactive, opts = {}) {
 }
 
 const TIER_LABEL = {
-  L4: "关系约定",
+  L4: "核心记忆",
   L3: "经历",
-  L2: "关于她",
+  L2: "退役",
   L1: "事实",
   L0: "原话",
 };

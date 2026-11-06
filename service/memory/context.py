@@ -16,8 +16,8 @@ def build_context(store, body: dict, embedder) -> dict:
         each = max(1, int(body.get("limit") or 40))
         limits = {t: each for t in tiers}
     else:
-        tiers = ["L1", "L2", "L3", "L4"]
-        limits = {"L1": 80, "L2": 10, "L3": 40, "L4": 10}
+        tiers = ["L1", "L3"]
+        limits = {"L1": 80, "L3": 40}
     if isinstance(body.get("limits"), dict):
         limits.update({str(k).upper(): int(v) for k, v in body["limits"].items()})
     tiers = [t for t in tiers if t in {"L0", "L1", "L2", "L3", "L4"}]
@@ -91,7 +91,7 @@ def build_context(store, body: dict, embedder) -> dict:
         if not text:
             continue
         counts[tier] = counts.get(tier, 0) + 1
-        label = {"L0": "原话", "L1": "事实", "L2": "画像", "L3": "事件", "L4": "规矩"}.get(tier, tier)
+        label = {"L0": "原话", "L1": "事实", "L2": "退役", "L3": "经历", "L4": "核心记忆"}.get(tier, tier)
         if tier in ("L0", "L3"):
             stamp = time.strftime("%m-%d %H:%M", time.localtime(float(item["ts"] or 0)))
             lines.append(f"[{tier} · {label} · {stamp}] {text}")

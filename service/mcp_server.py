@@ -36,7 +36,7 @@ TOOLS: list[dict[str, Any]] = [
                 "focus": {"type": "string", "description": "需要强调的当前话题（通常是用户这句里最有信息量的部分）"},
                 "top_k": {"type": "integer", "minimum": 1, "maximum": 20, "default": 6},
                 "subject": {"type": "string", "description": "只查某个主体，如 self / 人物名"},
-                "tiers": {"type": "array", "items": {"type": "string"}, "description": "限定层级 L0-L3"},
+                "tiers": {"type": "array", "items": {"type": "string"}, "description": "限定层级 L0-L4"},
             },
             "required": ["query"],
         },
@@ -44,15 +44,15 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "memory_ingest",
         "description": (
-            "把一条值得长期记住的内容写进记忆。层级：L4 人格与关系约定（她是谁、你叫什么、许过的约定）、"
-            "L3 事件（某天发生了什么）、L2 人物画像（稳定的偏好与雷区）、L1 原子事实（一句话能说清）。"
+            "把一条值得长期记住的内容写进记忆。层级：L3 普通经历（某天发生了什么）、"
+            "L1 原子事实（一句话能说清）。规矩/画像请走人格接口，不要写这里。"
             "日常寒暄不要写。"
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "text": {"type": "string"},
-                "tier": {"type": "string", "enum": ["L0", "L1", "L2", "L3", "L4"], "default": "L1"},
+                "tier": {"type": "string", "enum": ["L0", "L1", "L3"], "default": "L1"},
                 "subject": {"type": "string", "default": "self"},
                 "summary": {"type": "string"},
                 "tags": {"type": "array", "items": {"type": "string"}},
@@ -62,7 +62,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "memory_profile",
-        "description": "取 L4 人格与关系设定（每轮对话都该带上）。",
+        "description": "已废弃：L4 核心记忆不再每轮返回。",
         "inputSchema": {
             "type": "object",
             "properties": {"subject": {"type": "string"}},

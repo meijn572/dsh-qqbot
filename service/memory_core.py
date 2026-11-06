@@ -4,7 +4,7 @@
 1. 中文 BM25 用 bigram 自建分词，不用 SQLite FTS 默认分词（中文会整段当一个词）。
 2. 向量只做补充召回。无相关内容时向量也会给出 0.6+ 的假分数，所以
    「只有向量命中」必须有更高的放行门槛，且没有关键词命中时宁可返回空。
-3. 分层衰减：L4/L0 永不衰减，L3 90 天、L2 180 天、L1 30 天半衰期。
+3. 分层衰减：L4/L0 永不衰减，L3 90 天、L2 退役、L1 30 天半衰期。
 4. 最新输入加权（focus boost）：短句（"嗯"、"想你"）没有语义可检索，
    靠给最新用户输入提高权重把当前话题顶上来，不依赖 embedding。
 """
@@ -48,9 +48,9 @@ BM25_SATURATION = 3.0     # BM25 绝对分 → [0,1) 的饱和常数，不依赖
 
 # 层默认半衰期（天）。None = 永不衰减。
 TIER_HALF_LIFE: dict[str, float | None] = {
-    "L4": None,    # 人格 / 关系设定
-    "L3": 90.0,    # 事件线
-    "L2": 180.0,   # 人物画像
+    "L4": None,    # 核心记忆：忘不掉的事件
+    "L3": 90.0,    # 普通经历
+    "L2": None,    # 退役：不再写新数据
     "L1": 30.0,    # 原子事实
     "L0": None,    # 原话（不参与衰减，主表只做检索源）
 }
@@ -437,8 +437,7 @@ class MemoryStore:
     def _touch_profile(self, item) -> None:
         """从一条记忆里提取「这个人是谁」，更新 profiles 表。
 
-        - 只有 user_id 非空、且 scope 是 private:/group: 时才写
-        - L2 文本追加到 profile 字段（去重）
+        - L2 已退役，不再追加到 profile 字段
         - 其他层只涨 msg_count
         """
         uid = self._normalize_user(getattr(item, "user_id", ""))
@@ -453,7 +452,7 @@ class MemoryStore:
         if not text:
             return
 
-        add_text = text if tier == "L2" else ""
+        add_text = ""
 
         # 顺手把昵称落库：不然 profiles.name 永远是空，群聊里只能显示「QQ 123456」，
         # 跟消息里的 nickname 对不上，她会把人认错。
@@ -746,8 +745,8 @@ class MemoryStore:
             if tier_set is not None:
                 if tier not in tier_set:
                     continue
-            elif tier == "L4":
-                # L4 是每轮必带的人格块，由 profile() 单独取，不进检索
+            elif tier in ("L2", "L4"):
+                # L2 已退役；L4 是核心记忆，只能显式指定 tiers 时召回
                 continue
             if subject and subj != subject:
                 continue
@@ -827,23 +826,8 @@ class MemoryStore:
         return kept
 
     def profile(self, subject: str | None = None) -> list[Hit]:
-        """L4 人格/关系 + L2 人物画像：每轮必带，不参与检索排序。
-        画像按 importance/时间取前 20 条，避免每轮注入过长。"""
-        rows = self.conn.execute(
-            "SELECT * FROM memory WHERE tier IN ('L4','L2')" + (" AND subject=?" if subject else "") +
-            " ORDER BY CASE tier WHEN 'L4' THEN 0 ELSE 1 END, ts ASC LIMIT 20",
-            (subject,) if subject else (),
-        ).fetchall()
-        out = []
-        for r in rows:
-            out.append(
-                Hit(
-                    id=r["id"], tier=r["tier"], subject=r["subject"], text=r["text"],
-                    summary=r["summary"], ts=r["ts"], score=1.0, bm25=0.0, vec=0.0,
-                    recency=1.0, tags=json.loads(r["tags"] or "[]"),
-                )
-            )
-        return out
+        """已废弃：L4 现在是按需召回的核心记忆，不再每轮注入。"""
+        return []
 
     # -- 人格设定：宪法区 / 自我认知区 -----------------------------------------
     #
@@ -1932,7 +1916,7 @@ class MemoryStore:
             if meta is None:
                 continue
             ts, half, tier, subj = meta[0], meta[1], meta[2], meta[3]
-            if tier in ("L0", "L4"):
+            if tier in ("L0", "L2", "L4"):
                 continue
             if subject and subj != subject:
                 continue
@@ -1968,8 +1952,8 @@ class MemoryStore:
             sql += f" AND tier IN ({','.join('?' * len(tiers))})"
             params.extend(tiers)
         else:
-            # L4 是每轮必带的人格块，由 profile() 单独取；放进检索会重复注入。
-            sql += " AND tier != 'L4'"
+            # 默认检索不召回退役的 L2 和按需召回的 L4。
+            sql += " AND tier NOT IN ('L2','L4')"
         if subject:
             sql += " AND subject=?"
             params.append(subject)

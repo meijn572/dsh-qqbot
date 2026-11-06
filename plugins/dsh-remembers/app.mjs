@@ -3,7 +3,7 @@
  *
  * 做四件事（都很薄，重活在 companion-memory 服务里）：
  *   1. 人格设定走 systemPrompt 独立段（宪法区 + 自我认知区，每轮必带）
- *   2. 启动时注入 L4 关系约定（agent.inject）
+ *   2. 启动时刷新人格缓存（L4 不再作为规矩注入）
  *   3. 每步检索并注入相关记忆（agent/pre-step 追加消息）
  *   4. 每轮把原话写进 L0（不抽摘要，保证「说过的话不丢」）
  *
@@ -11,7 +11,7 @@
  *   - 人格是「一直成立的前提」，每轮都该在，且权重最高的位置才稳得住。
  *   - 记忆是「想起什么算什么」，按需追加，空的时候就不该出现任何块。
  *   代价是 complete:true 的预设会把 system prompt 整段换成自己的，那时人格段
- *   会静默消失——所以 L4 走 agent.inject 的那条路仍然保留，人格段是加厚的，
+ *   会静默消失——所以人格缓存仍然保留启动刷新，人格段是加厚的，
  *   不是替换掉兜底的。
  *
  * 刻意不做的事：
@@ -251,8 +251,6 @@ const soft = (key) => {
     manualByUser: {},
     /** 自我认知原文。走 state 块注入，不在这里进系统提示词。 */
     selfModel: "",
-    /** L4 关系/规矩：进 system prompt，不再走 recall。 */
-    l4: [],
     at: 0,         // 最近一次成功刷新（ms）
     triedAt: 0,    // 最近一次尝试（含失败），用于节流
     error: null,
@@ -266,15 +264,14 @@ const soft = (key) => {
     try {
       // 一次拉齐：人格 + 主动配置 + 所有人的手编画像。
       // profiles 是给系统提示词按会话挑人用的，所以整份缓存在内存里（同步可读）。
-      const [data, proactive, allProfiles, l4Items] = await Promise.all([
-        client.persona(), fetchProactive(), client.profiles(), client.profile(config.profileSubject || null),
+      const [data, proactive, allProfiles] = await Promise.all([
+        client.persona(), fetchProactive(), client.profiles(),
       ]);
-      if (!data) return persona.data ? renderPersona(persona.data, config.personaMaxChars, persona.proactive, { l4: persona.l4 }) : "";
+      if (!data) return persona.data ? renderPersona(persona.data, config.personaMaxChars, persona.proactive) : "";
       // 只渲染人格。state 走 pre-step 注入，不进 system prompt
       //（system prompt 是最顶层前缀，一变整段历史缓存全失效）
       persona.data = data;
       persona.proactive = proactive;
-      persona.l4 = Array.isArray(l4Items) ? l4Items : [];
       persona.ownerManual = String(data?.user_profile ?? "").trim();
       persona.selfModel = String(data?.self_model ?? "").trim();
 
@@ -343,11 +340,11 @@ const soft = (key) => {
   );
 
   // -------------------------------------------------------------------------
-  // 1. 启动注入 L4
+  // 1. 启动刷新人格缓存
   // -------------------------------------------------------------------------
   async function injectProfile(agent) {
     if (!agent || skipped(agent.session)) return false;
-    // L4 关系记忆不再由 profile 块注入；这里只负责新会话强制刷新人格缓存。
+    // 只负责新会话强制刷新人格缓存。
     await refreshPersona(true);
     return false;
   }
@@ -846,7 +843,6 @@ const soft = (key) => {
             ? `以下是正在跟你说话的人（${who}）的画像：`
             : "以下是老大是谁（他的画像，你该知道的基本信息）：",
           footer: notOwnerNote,
-          l4: persona.l4,
         });
       }
     }
@@ -854,7 +850,6 @@ const soft = (key) => {
     return renderPersona(data, maxChars, proactive, {
       profileText: persona.ownerManual,
       profileHeader: "以下是老大是谁（他的画像，你该知道的基本信息）：",
-      l4: persona.l4,
     });
   }
 

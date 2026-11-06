@@ -80,7 +80,7 @@ export class MemoryClient {
     });
   }
 
-  /** L4 人格与关系设定，每轮必带。 */
+  /** 已废弃：L4 核心记忆不再每轮返回。 */
   async profile(subject) {
     const suffix = subject ? `?subject=${encodeURIComponent(subject)}` : "";
     const res = await this.#request("GET", `/profile${suffix}`);
