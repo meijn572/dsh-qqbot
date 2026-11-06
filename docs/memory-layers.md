@@ -555,6 +555,46 @@ L3 → L1 / L2
 L4 → L3
 ```
 
+### 当前实现
+
+现在只实现了 `source_ids`，而且重点是直达 L0：
+
+```text
+L1.source_ids = L0
+L3.source_ids = L0（evidence 改造后）
+L4.source_ids = 空 / legacy
+```
+
+`derived_from` 还没加列。
+
+所以当前不是树形逐层找：
+
+```text
+L1 / L3 直接指向原话
+```
+
+代价是：
+
+```text
+丢了“这条 L3 由哪些 L1/L2 推出来”的中间依赖
+```
+
+### 目标
+
+```text
+source_ids   = 叶子（L0）
+derived_from = 父节点（直接输入层）
+```
+
+这样既能直接回到原话，也能沿依赖关系往上/往下查。
+
+是 DAG，不是严格树：
+
+```text
+一个 L3 可以依赖多个 L1/L2
+一个 L4 可以依赖多个 L3
+```
+
 ### evidence
 
 模型不填数据库 id。
