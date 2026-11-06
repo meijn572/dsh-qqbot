@@ -249,3 +249,17 @@ reasoning high / low / off 对比
 
 不能声称复现 reasoning prefix 注入。
 
+### 当前操作
+
+2026-11-06：
+
+```text
+当前鱼会话：session/selectModel → reasoningEffort=low
+qqbot2 默认 model：deepseek-flash, reasoningEffort=low
+```
+
+当前会话的 `lastUsed` 仍是 high，`next` 已变 low；下一条消息开始用 low。
+
+system prompt 风格实验暂时不做。
+
+
