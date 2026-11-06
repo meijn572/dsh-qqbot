@@ -404,3 +404,188 @@ bridge touch_guest
 面板 = intimacy / 10
 stage 按 0/100/300/600 分段
 ```
+
+## 9. 情绪自检的输入怎么拼
+
+`qqbot/domains/growth/emotion.py` 的调用链：
+
+```text
+l0_recent(OWNER_CHAT_KEY, 40)
+persona_context()
+collect(l1=20, l3=10, l0=20)
+format_block(evidence)
+→ prompt
+```
+
+### 9.1 persona_context
+
+服务端 `/persona/context` 返回：
+
+```text
+【核心设定】constitution
+【自我认知】self_model
+【身份】identity
+【自我形象】self_image
+【我眼中的主人】user_profile
+```
+
+空段会跳过。
+
+### 9.2 最近 L0
+
+```text
+l0_recent(私聊主人, 40)
+```
+
+取当前私聊会话最近的 L0 文本，最多 16000 字。
+
+### 9.3 L1/L3 + 对应 L0
+
+```text
+L1 × 20
+L3 × 10
+→ 展开 L3 引用的 L1
+→ 展开这些 L1 引用的 L0
+→ L0 最多 20 条
+```
+
+`format_block` 输出：
+
+```text
+【长期记忆】
+[L1] ...
+[L3] ...
+【对应原话】
+- ...
+```
+
+L1 每条最多 240 字，L3 最多 400 字，L0 最多 400 字，总块最多 16000 字。
+
+### 9.4 完整 prompt
+
+```text
+（内部维护，不要回复用户）现在是 YYYY-MM-DD HH:MM。
+回想一下最近这段相处。
+
+{persona_context}
+
+【最近】
+{l0_recent 40}
+
+{memory_text}
+
+你有没有真的产生情绪？标准：只有被戳到、心里确实起了波动才记；
+没有就跳过，不要为了打卡硬写。
+有情绪就写 label（一两个词）、intensity（0–1）、reason（一句由头）。
+只输出 JSON：{"label":"...","intensity":0.5,"reason":"..."} 或 {"skip":true}。
+```
+
+### 9.5 当前 prompt 的问题
+
+```text
+只让模型给 label + intensity
+没有让模型给 valence
+没有让模型给 arousal
+没有 confidence
+```
+
+所以代码只能拿 label 去猜正负，导致：
+
+```text
+踏实 / 放心 / 受宠若惊 → 被猜成负面
+```
+
+## 10. 每轮 +1 的亲密度有什么问题
+
+### 10.1 它统计的是“轮数”，不是“亲密度”
+
+```text
+每轮完整对话 +1
+```
+
+会导致：
+
+- 短句闲聊和深聊同权
+- 重复刷“在吗”也能涨
+- 没有质量、深度、主动性权重
+- 冲突和修复没有区别
+- 只增不减
+
+它更像：
+
+```text
+interaction_count
+```
+
+而不是关系亲密度。
+
+### 10.2 群聊可能污染全局亲密度
+
+`dsh-remembers` 的 turn end 没有按会话类型区分。
+
+如果群聊也触发 `bumpIntimacy(1.0)`，那么：
+
+```text
+群友聊天
+→ 全局 intimacy 上涨
+→ 影响和主人的 stage
+```
+
+这需要确认实际 scope；如果是全局状态，就是设计缺陷。
+
+### 10.3 建议的改法
+
+如果保留简单模型：
+
+```text
+只对主人私聊 / 主人明确对话计数
+改名 interaction_count
+```
+
+如果要更像亲密度：
+
+```text
+1. 只在主人私聊或主人主动对话时涨
+2. 用户主动 > assistant 被动回复
+3. 深聊/情绪暴露/冲突修复加权
+4. 每天有上限
+5. 高阶段递减
+6. 长期不互动轻微回落
+7. 群聊只涨 per-user affinity，不涨全局 intimacy
+```
+
+示例权重：
+
+```text
+用户主动开启话题      +1.0
+普通来回              +0.2
+情绪暴露              +1.5
+冲突后修复            +2.0
+assistant 主动搭话    +0.3
+群聊                  +0（只涨 affinity）
+```
+
+### 10.4 现阶段建议
+
+```text
+先不要继续加阈值
+先把“每轮 +1”改成“只有主人对话才 +1”
+并把字段改名 interaction_count
+```
+
+否则 428、600 这些数字没有关系语义，只是聊天轮数。
+
+## 11. 结论补充
+
+```text
+情绪：模型应该给 valence / arousal，不再用标签猜
+亲密度：当前是轮数计数，不是真正的关系质量
+```
+
+情绪和亲密度不要混在一起：
+
+```text
+情绪是短时状态
+亲密度是长期关系
+```
+
