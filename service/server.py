@@ -32,6 +32,7 @@ from urllib.parse import parse_qs, urlparse
 
 from embedding import Embedder
 from extractor import ExtractConfig, Extractor, strip_memory_prefix
+from evidence_match import match_evidence
 from llm import LLM
 from memory_core import MemoryInput, MemoryStore
 from memory.context import build_context
@@ -160,7 +161,7 @@ def _rebuild(cfg: dict) -> dict:
     embedder = _build_embedder(cfg)
     extractor = Extractor(llm, store, ExtractConfig(
         enabled=_pick_flag(cfg, "extract", "CMEM_EXTRACT"),
-        max_facts=int(_pick(cfg, "extract_max_facts", "CMEM_EXTRACT_MAX_FACTS", "6")),
+        max_facts=int(_pick(cfg, "extract_max_facts", "CMEM_EXTRACT_MAX_FACTS", "20")),
         neighbor_k=int(_pick(cfg, "extract_neighbors", "CMEM_EXTRACT_NEIGHBORS", "5")),
         emotion_threshold=float(_pick(cfg, "emotion_threshold", "CMEM_EMOTION_THRESHOLD", "0.2")),
     ), embedder=embedder)
@@ -2930,94 +2931,173 @@ class Handler(BaseHTTPRequestHandler):
         return "\n\n".join(part for part in parts if part.strip())
 
     def _batch_run(self) -> None:
-        """批量蒸馏：L0 → L1；多条 L1 → L3。"""
+        """按会话段提取：L0 → L1；L3 事件线程续写/新建。"""
         cfg = _load_config().get("batch") or {}
-        l1_every = int(cfg.get("l1_every", 6))
-        l1_max = int(cfg.get("l1_max", 12))
-        idle_minutes = float(cfg.get("idle_minutes", 15))
-        l3_every = int(cfg.get("l3_every", 6))
-        stats = {"ok": True, "l1": 0, "l3": 0}
+        idle_seconds = float(cfg.get("segment_idle_seconds", 300))
+        max_minutes = float(cfg.get("segment_max_minutes", 30))
+        max_messages = int(cfg.get("segment_max_messages", 80))
+        stats = {"ok": True, "l1": 0, "l3": 0, "waiting": ""}
 
-        # ---- L1：从 L0 水位线之后取一批 ----
         last_l0 = int(self._meta_get("batch_l0_last", "0") or 0)
         if last_l0 <= 0:
             row = store.conn.execute("SELECT MAX(id) AS m FROM memory WHERE tier='L0'").fetchone()
             self._meta_set("batch_l0_last", str(int(row["m"] or 0)))
             last_l0 = int(row["m"] or 0)
         rows = store.conn.execute(
-            "SELECT id,text,ts FROM memory WHERE tier='L0' AND id>? ORDER BY id ASC LIMIT 30",
-            (last_l0,),
+            "SELECT id,text,ts FROM memory WHERE tier='L0' AND id>? ORDER BY id ASC LIMIT ?",
+            (last_l0, max_messages),
         ).fetchall()
-        if rows:
-            newest = max(float(r["ts"] or 0) for r in rows)
-            if len(rows) >= l1_every or (time.time() - newest) >= idle_minutes * 60:
-                batch = rows[:l1_max]
-                text = "\n\n".join(str(r["text"]) for r in batch)
-                source_ids = [int(r["id"]) for r in batch]
-                res = extractor.extract_batch(text, context=self._batch_identity(), source_ids=source_ids)
-                if res.get("ok"):
-                    self._meta_set("batch_l0_last", str(max(source_ids)))
-                    if res.get("ids"):
-                        pending = []
-                        try:
-                            pending = json.loads(self._meta_get("batch_l1_pending", "[]") or "[]")
-                        except Exception:  # noqa: BLE001
-                            pending = []
-                        pending = [int(x) for x in pending] + [int(x) for x in res["ids"]]
-                        self._meta_set("batch_l1_pending", json.dumps(pending[-30:]))
-                    stats["l1"] = int(res.get("applied", {}).get("add", 0))
+        if not rows:
+            self._json(200, stats)
+            return
 
-        # ---- L3：攒够若干条 L1，用对应 L0 压成事件 ----
-        try:
-            pending = [int(x) for x in json.loads(self._meta_get("batch_l1_pending", "[]") or "[]")]
-        except Exception:  # noqa: BLE001
-            pending = []
-        if len(pending) >= l3_every:
-            marks = ",".join("?" for _ in pending)
-            l1_rows = store.conn.execute(
-                f"SELECT id,text,source_ids FROM memory WHERE tier='L1' AND id IN ({marks})",
-                pending,
-            ).fetchall()
-            l0_ids = []
-            for row in l1_rows:
-                try:
-                    l0_ids.extend(int(x) for x in json.loads(row["source_ids"] or "[]"))
-                except Exception:  # noqa: BLE001
-                    pass
-            turns = []
-            source_rows = []
-            if l0_ids:
-                marks2 = ",".join("?" for _ in l0_ids)
-                for row in store.conn.execute(
-                    f"SELECT id,text FROM memory WHERE tier='L0' AND id IN ({marks2}) ORDER BY id ASC",
-                    l0_ids,
-                ):
-                    raw = str(row["text"])
-                    source_rows.append({"id": int(row["id"]), "text": raw})
-                    user_lines, assistant_lines = [], []
-                    for line in raw.splitlines():
-                        if line.startswith("我："):
-                            assistant_lines.append(line[2:])
-                        elif line.startswith("主人："):
-                            user_lines.append(line[3:])
-                    turns.append({
-                        "user": "\n".join(user_lines) or raw[:600],
-                        "assistant": "\n".join(assistant_lines),
-                    })
-            if not turns:
-                turns = [{"user": str(r["text"]), "assistant": ""} for r in l1_rows]
-            window = time.strftime("%m-%d %H:%M")
-            res3 = extractor.summarize_episode(
-                turns, subject="self", window_hint=window,
-                context=self._batch_identity(), source_ids=pending,
-                source_rows=source_rows,
-            )
-            if res3.get("ok"):
-                self._meta_set("batch_l1_pending", "[]")
-                stats["l3"] = 1
+        newest = max(float(r["ts"] or 0) for r in rows)
+        oldest = min(float(r["ts"] or 0) for r in rows)
+        idle = time.time() - newest
+        span = newest - oldest
+        ended = idle >= idle_seconds or len(rows) >= max_messages or span >= max_minutes * 60
+        if not ended:
+            stats["waiting"] = "segment-not-ended"
+            self._json(200, stats)
+            return
 
-        # ---- L4 不再由批量任务写：核心记忆由复盘提升 ----
+        batch = rows[:max_messages]
+        source_rows = [{"id": int(r["id"]), "text": str(r["text"])} for r in batch]
+        source_ids = [int(r["id"]) for r in batch]
+        text = "\n\n".join(str(r["text"]) for r in batch)
+        res = extractor.extract_batch(text, context=self._batch_identity(), source_ids=source_ids)
+        if not res.get("ok"):
+            self._json(200, {**stats, "waiting": "l1-failed"})
+            return
+        self._meta_set("batch_l0_last", str(max(source_ids)))
+        self._meta_set("batch_l1_pending", "[]")
+        stats["l1"] = int(res.get("applied", {}).get("add", 0))
+        l1_ids = [int(x) for x in (res.get("ids") or [])]
+        facts = []
+        if l1_ids:
+            marks = ",".join("?" for _ in l1_ids)
+            for row in store.conn.execute(
+                f"SELECT text FROM memory WHERE tier='L1' AND id IN ({marks}) ORDER BY id ASC",
+                l1_ids,
+            ):
+                facts.append(str(row["text"]))
+
+        open_threads = store.open_threads(8)
+        plan = extractor.plan_threads(text, facts, open_threads)
+        if not isinstance(plan, dict):
+            self._json(200, stats)
+            return
+
+        now = time.time()
+        updates = plan.get("updates") if isinstance(plan.get("updates"), list) else []
+        for item in updates[:8]:
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title") or "").strip()
+            target = None
+            for thread in open_threads:
+                names = [str(thread.get("title") or "")] + [str(a) for a in (thread.get("aliases") or [])]
+                if title and title in names:
+                    target = thread
+                    break
+            if target is None:
+                continue
+            summary = str(item.get("summary") or "").strip()[:2000]
+            status = str(item.get("status") or "open").lower()
+            if status not in ("open", "closed"):
+                status = "open"
+            ev_ids, _ = match_evidence(item.get("evidence") or [], source_rows)
+            if not summary:
+                continue
+            store.update_thread(int(target["id"]), summary, status, source_ids=ev_ids, last_seen_at=now)
+            for lid in l1_ids:
+                store.link(int(target["id"]), lid, "derived_from", "fact")
+            for sid in ev_ids:
+                store.link(int(target["id"]), sid, "derived_from", "evidence")
+            stats["l3"] += 1
+
+        new_items = plan.get("new") if isinstance(plan.get("new"), list) else []
+        for item in new_items[:3]:
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title") or "").strip()[:120]
+            summary = str(item.get("summary") or "").strip()[:2000]
+            if not title or not summary:
+                continue
+            status = str(item.get("status") or "open").lower()
+            if status not in ("open", "closed"):
+                status = "open"
+            ev_ids, ev_status = match_evidence(item.get("evidence") or [], source_rows)
+            mid = store.add(MemoryInput(
+                text=summary,
+                tier="L3",
+                subject="self",
+                summary=summary,
+                tags=["thread", "episode"],
+                source_ids=ev_ids or None,
+                source_status=ev_status,
+                thread_status=status,
+                thread_title=title,
+                thread_aliases=[],
+                thread_opened_at=now,
+                thread_last_seen_at=now,
+                thread_closed_at=now if status == "closed" else None,
+            ))
+            for lid in l1_ids:
+                store.link(mid, lid, "derived_from", "fact")
+            for sid in ev_ids:
+                store.link(mid, sid, "derived_from", "evidence")
+            stats["l3"] += 1
+
         self._json(200, stats)
+
+    def _core_review(self) -> None:
+        """每 3 天从 closed L3 里挑 0–2 条核心记忆。"""
+        cfg = _load_config().get("core_review") or {}
+        interval = float(cfg.get("interval_days", 3)) * 86400
+        last = float(self._meta_get("core_review_at", "0") or 0)
+        if last and time.time() - last < interval:
+            self._json(200, {"ok": True, "skipped": "not-due"})
+            return
+        rows = store.conn.execute(
+            "SELECT m.* FROM memory m WHERE m.tier='L3' AND m.thread_status='closed' "
+            "AND NOT EXISTS (SELECT 1 FROM memory_links l WHERE l.parent_id=m.id AND l.relation='core') "
+            "ORDER BY m.thread_closed_at DESC, m.id DESC LIMIT 20"
+        ).fetchall()
+        threads = []
+        for r in rows:
+            threads.append({
+                "id": int(r["id"]),
+                "title": r["thread_title"] or (str(r["text"]).splitlines()[0][:60] if r["text"] else ""),
+                "summary": r["summary"] or r["text"],
+                "closed_at": float(r["thread_closed_at"] or 0),
+                "source_ids": json.loads(r["source_ids"] or "[]"),
+                "source_status": r["source_status"],
+            })
+        items = extractor.plan_core(threads)
+        created = 0
+        for item in items:
+            title = str(item.get("title") or "").strip()
+            target = next((x for x in threads if x["title"] == title), None)
+            if target is None:
+                continue
+            mid = store.add(MemoryInput(
+                text=str(target["summary"])[:4000],
+                tier="L4",
+                subject="self",
+                summary=str(target["summary"])[:2000],
+                tags=["core", "review"],
+                source_ids=target["source_ids"] or None,
+                source_status=target["source_status"] if target["source_ids"] else "unverified",
+                thread_title=target["title"],
+                thread_status="core",
+                thread_opened_at=time.time(),
+                thread_last_seen_at=time.time(),
+            ))
+            store.link(mid, target["id"], "core", "derived")
+            created += 1
+        self._meta_set("core_review_at", str(int(time.time())))
+        self._json(200, {"ok": True, "created": created, "candidates": len(threads)})
 
     def _recent_log(self, limit: int) -> list[dict]:
         rows = store.conn.execute(

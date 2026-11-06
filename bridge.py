@@ -2394,6 +2394,19 @@ async def important_file_loop(dsh: Dsh) -> None:
     await growth_important.file_loop()
 
 
+async def core_review_loop() -> None:
+    """每 6 小时检查一次，服务端自己按 3 天节流。"""
+    await asyncio.sleep(120)
+    while True:
+        try:
+            result = await cmem_call("POST", "/core/review", {})
+            if result.get("created"):
+                log.info("核心记忆复盘：新增 %s 条", result.get("created"))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("core_review_loop err: %s", exc)
+        await asyncio.sleep(6 * 3600)
+
+
 async def memory_batch_loop() -> None:
     """批量蒸馏：L0→L1，多条 L1→L3。"""
     await asyncio.sleep(60)
@@ -2443,6 +2456,7 @@ async def run() -> None:
     asyncio.create_task(important_check_loop(dsh))
     asyncio.create_task(important_file_loop(dsh))
     asyncio.create_task(memory_batch_loop())
+    asyncio.create_task(core_review_loop())
     asyncio.create_task(observation_archive_loop())
     asyncio.create_task(growth_diary.loop(CONFIG.get("diary") or {}))
     asyncio.create_task(group_slang_loop(dsh))

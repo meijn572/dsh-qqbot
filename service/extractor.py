@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from dataclasses import dataclass
 
 from evidence_match import match_evidence
@@ -58,6 +59,60 @@ EVOLVE_SYSTEM = """你根据一段对话，用第一人称写一句「我发现�
 要求：第一人称、简短（不超过 30 字）、具体、像自我觉察；不要写用户、不要总结、不要给建议。
 只输出这一句，不要引号，不要解释。"""
 
+
+THREAD_SYSTEM = """你维护一组“还没完的事”和“已经结束的事”。
+
+输入：
+- 当前这一段对话
+- 这段对话抽出的事实
+- 现有 open 事件（标题、状态、摘要、最后提及）
+
+任务：
+1. 判断这一段是在续写某个 open 事件，还是开启新事件，或者只是闲聊。
+2. 续写：用现有标题，更新摘要；有明确结果就把 status 改成 closed。
+3. 新事件：只有确实值得以后想起来的事才建；闲聊不要建。
+4. 最多新建 3 条。
+
+输出 JSON：
+{
+  "updates": [
+    {"title": "现有标题", "summary": "更新后的摘要", "status": "open|closed", "evidence": ["原文"]}
+  ],
+  "new": [
+    {"title": "新标题", "summary": "摘要", "status": "open|closed", "evidence": ["原文"]}
+  ]
+}
+
+规则：
+- title 必须短，2–12 个字。
+- evidence 从当前对话原文逐字抄，不要改写。
+- 没有要更新的就 "updates": []
+- 没有新事件就 "new": []
+- 只输出 JSON，不要解释。"""
+
+CORE_SYSTEM = """你从已经结束的事件里挑“真正忘不掉”的核心记忆。
+
+最多挑 2 条，宁少勿多。
+
+标准：
+- 第一次
+- 承诺
+- 关系转折
+- 强烈情绪
+- 后来反复被提起
+- 对之后的行为有持续影响
+
+不是：
+- 普通事件
+- 单纯情绪波动
+- 日常小事
+
+输出 JSON：
+{"items":[{"title":"现有标题","reason":"为什么忘不掉"}]}
+
+没有就 {"items":[]}。
+title 必须从输入里原样选，不要编。"""
+
 EXTRACT_SYSTEM = """你从一段对话里抽取值得长期记住的内容。
 
 原则：**宁可多抽一条，也不要漏掉他告诉过你的事。** 漏掉的东西他得再说一遍，多抽的顶多占一行。
@@ -74,7 +129,7 @@ EXTRACT_SYSTEM = """你从一段对话里抽取值得长期记住的内容。
 
 ## 两类要抽
 
-- **L1 原子事实**：一句话能说清、相对稳定（他教初中数学；他养了只猫叫豆豆；他准备转正）
+- **L1 原子事实**：一句话能说清、不依赖具体时间的事实/偏好/习惯（他教初中数学；他养了只猫叫豆豆；他喜欢许嵩）
 - **L3 事件 / 近况 / 打算**：他遇到的、做过的、**打算做的**事
   （今天被领导骂了；加班到现在；**准备转正了**；下月去北京出差；在减肥）
   ⚠️「打算」也算。别因为"还没发生"就丢掉 —— 他要干什么，正是以后该问的。
@@ -142,7 +197,6 @@ arousal    0 很平静，0.5 普通，1 很激动
 reason     一句由头
 ```
 
-keywords 里再加一个「情绪:<情绪>」标签。
 
 ## 输出前的穷举检查（必须过一遍）
 
@@ -153,7 +207,7 @@ keywords 里再加一个「情绪:<情绪>」标签。
 
 ## 分层
 
-- L1 = **相对稳定的事实/细节**：身份、习惯、偏好、近况、小观察。默认先放这里，一条一句，宁可多写。
+- L1 = **事实**：身份、习惯、偏好、稳定信息。不写近况、计划、事件；那些进 L3。
 - L3 = **一段经历/事件线**：多轮对话形成的经历、有前因后果的转折、真正值得以后回忆的事。单句发言、日常小事不要放 L3。
 
 一句话里既有属性又有事件 → 拆成两条：事实进 L1，事件进 L3，别都塞进 L3。
@@ -226,7 +280,7 @@ evidence 要求：
 @dataclass
 class ExtractConfig:
     enabled: bool = False
-    max_facts: int = 6
+    max_facts: int = 20
     neighbor_k: int = 5
     max_context_chars: int = 3000
     # episode 摘要的输入上限：超了留后面那段，近况比开头重要
@@ -405,6 +459,12 @@ class Extractor:
             facts, subject=subject, source_ids=None, allowed_tiers=None
         )
 
+    def _add_fact(self, fact: dict, text: str, subject: str) -> int:
+        mid = self.store.add(self._to_input(fact, text, subject))
+        for sid in fact.get("source_ids") or []:
+            self.store.link(mid, int(sid), "derived_from", "evidence")
+        return mid
+
     def _apply_facts(self, facts: list, subject: str = "self",
                      source_ids: list[int] | None = None,
                      allowed_tiers: set[str] | None = None,
@@ -432,17 +492,24 @@ class Extractor:
 
             op = str(decision.get("op") or "ADD").upper()
             if op == "ADD":
-                ids.append(self.store.add(self._to_input(fact, text, subject)))
+                ids.append(self._add_fact(fact, text, subject))
                 applied["add"] += 1
             elif op == "UPDATE":
                 target = self._target(decision, neighbors)
                 if target is None:
-                    ids.append(self.store.add(self._to_input(fact, text, subject)))
+                    ids.append(self._add_fact(fact, text, subject))
                     applied["add"] += 1
                     op = "ADD(no-target)"
                 else:
                     new_text = str(decision.get("text") or text).strip() or text
-                    self.store.update_text(target.id, new_text)
+                    self.store.update_text(
+                        target.id, new_text,
+                        source_ids=fact.get("source_ids") or None,
+                        source_status=fact.get("source_status"),
+                    )
+                    for sid in fact.get("source_ids") or []:
+                        self.store.link(target.id, int(sid), "derived_from", "evidence")
+                    ids.append(target.id)
                     applied["update"] += 1
             elif op == "DELETE":
                 target = self._target(decision, neighbors)
@@ -453,7 +520,7 @@ class Extractor:
                     self.store.forget(target.id)
                     applied["delete"] += 1
                     # 删掉之后把新事实作为"更正"存一条，不丢信息
-                    ids.append(self.store.add(self._to_input(fact, text, subject)))
+                    ids.append(self._add_fact(fact, text, subject))
                     applied["add"] += 1
             else:
                 applied["none"] += 1
@@ -595,7 +662,54 @@ class Extractor:
             vec=vec,
             vec_model=vec_model,
         ))
+        for pid in source_ids or []:
+            self.store.link(mid, int(pid), "derived_from", "fact")
+        for sid in matched or []:
+            self.store.link(mid, int(sid), "derived_from", "evidence")
         return {"ok": True, "id": mid, "text": text, "chars": len(text), "turns": len(turns)}
+
+    def plan_threads(self, transcript: str, facts: list[str],
+                     open_threads: list[dict]) -> dict | None:
+        """决定当前段续写哪些 open L3、新建哪些 L3。"""
+        if self.llm is None or not getattr(self.llm, "enabled", False):
+            return None
+        blocks = []
+        if open_threads:
+            blocks.append("【现有 open 事件】")
+            for item in open_threads:
+                blocks.append(
+                    f"- {item.get('title')}（{item.get('status')}，最后 {time.strftime('%m-%d %H:%M', time.localtime(float(item.get('last_seen_at') or 0)))}）\n"
+                    f"  {str(item.get('summary') or '')[:300]}"
+                )
+        else:
+            blocks.append("【现有 open 事件】\n（空）")
+        if facts:
+            blocks.append("【这段抽出的事实】\n" + "\n".join(f"- {x}" for x in facts[:20]))
+        blocks.append("【当前对话】\n" + str(transcript or "")[:8000])
+        data = self.llm.chat_json(THREAD_SYSTEM, "\n\n".join(blocks), max_tokens=900)
+        if not isinstance(data, dict):
+            return None
+        return data
+
+    def plan_core(self, closed_threads: list[dict]) -> list[dict]:
+        if self.llm is None or not getattr(self.llm, "enabled", False):
+            return []
+        if not closed_threads:
+            return []
+        lines = []
+        for item in closed_threads:
+            lines.append(
+                f"- {item.get('title')}\n"
+                f"  摘要：{str(item.get('summary') or '')[:600]}\n"
+                f"  结束：{time.strftime('%m-%d %H:%M', time.localtime(float(item.get('closed_at') or 0)))}"
+            )
+        data = self.llm.chat_json(CORE_SYSTEM, "\n\n".join(lines), max_tokens=500)
+        if not isinstance(data, dict):
+            return []
+        items = data.get("items")
+        if not isinstance(items, list):
+            return []
+        return [x for x in items if isinstance(x, dict)][:2]
 
     def _transcript(self, turns: list[dict]) -> str:
         lines = []

@@ -52,6 +52,7 @@ POST_ROUTES = {
     "/evolve": "_evolve",
     "/episode": "_episode",
     "/batch/run": "_batch_run",
+    "/core/review": "_core_review",
 }
 
 

@@ -71,6 +71,17 @@ def handle_get(handler, path: str, query: dict, store) -> bool:
         elif path == "/affinity":
             uid = (query.get("user") or [""])[0]
             handler._json(200, {"user": uid, "score": store.affinity_get(uid) if uid else 0})
+        elif path == "/threads/open":
+            items = store.open_threads(8)
+            handler._json(200, {"ok": True, "items": [
+                {"title": x["title"], "status": x["status"],
+                 "summary": x["summary"], "last_seen_at": x["last_seen_at"]}
+                for x in items
+            ]})
+        elif path == "/threads/get":
+            q = (query.get("q") or [""])[0].strip()
+            items = store.find_threads(q, limit=8)
+            handler._json(200, {"ok": True, "items": items})
         elif path == "/profile":
             subject = (query.get("subject") or [None])[0]
             handler._guard(lambda: handler._json(200, {
@@ -102,6 +113,14 @@ def handle_get(handler, path: str, query: dict, store) -> bool:
                 st["affinity"] = float(store.affinity_get("owner") or 0)
             except Exception:
                 st["affinity"] = 0.0
+            try:
+                st["open_threads"] = [
+                    {"title": x["title"], "status": x["status"],
+                     "last_seen_at": x["last_seen_at"]}
+                    for x in store.open_threads(8)
+                ]
+            except Exception:
+                st["open_threads"] = []
             try:
                 # 只给「说了 6 次以上」或「她主动学的」——一两次的碎句不算口头禅
                 st["slang_learned"] = store.slang_list(

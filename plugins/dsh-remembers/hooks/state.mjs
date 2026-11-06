@@ -88,6 +88,19 @@ export function renderState(state, prev, selfModel, proactive, thinkCn) {
     }
   }
 
+  // ---------- 3.5 还没完的事（全部 open，只给标题和状态） ----------
+  const openThreads = Array.isArray(state.open_threads) ? state.open_threads : [];
+  const threadLines = openThreads.slice(0, 8).map((t) => {
+    const title = String(t.title || "").trim();
+    if (!title) return "";
+    return `- ${title} · ${String(t.status || "open")}`;
+  }).filter(Boolean);
+  const threadHash = hash(threadLines.join("\n"));
+  if (threadLines.length && hashes.threads !== threadHash) {
+    hashes.threads = threadHash;
+    blocks.push("【还没完的事】\n" + threadLines.join("\n"));
+  }
+
   // ---------- 4. 在干嘛（变了才加） ----------
   const act = String(state.activity || "").trim();
   if (act) {

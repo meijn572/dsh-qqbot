@@ -19,6 +19,12 @@ CREATE TABLE IF NOT EXISTS memory (
   summary        TEXT,
   source_ids     TEXT,                       -- JSON 数组，回溯到原话
   source_status  TEXT NOT NULL DEFAULT 'legacy', -- verified / unverified / batch / legacy
+  thread_status  TEXT NOT NULL DEFAULT 'legacy', -- open / closed / dormant / legacy
+  thread_title   TEXT DEFAULT '',
+  thread_aliases TEXT DEFAULT '[]',
+  thread_opened_at REAL DEFAULT NULL,
+  thread_last_seen_at REAL DEFAULT NULL,
+  thread_closed_at REAL DEFAULT NULL,
   tags           TEXT,                       -- JSON 数组，精确筛选用
   ts             REAL    NOT NULL,           -- 事件发生时间（unix 秒）
   half_life_days REAL,                       -- NULL = 不衰减
@@ -32,6 +38,18 @@ CREATE INDEX IF NOT EXISTS idx_memory_tier    ON memory(tier);
 CREATE INDEX IF NOT EXISTS idx_memory_subject ON memory(subject);
 CREATE INDEX IF NOT EXISTS idx_memory_ts      ON memory(ts);
 CREATE INDEX IF NOT EXISTS idx_memory_tier_ts ON memory(tier, ts);
+
+-- 记忆依赖边：source_ids 是拍平的 L0 证据，这里记录直接输入层
+CREATE TABLE IF NOT EXISTS memory_links (
+  child_id   INTEGER NOT NULL,
+  parent_id  INTEGER NOT NULL,
+  relation   TEXT NOT NULL DEFAULT 'derived_from',
+  role       TEXT NOT NULL DEFAULT '',
+  created_at REAL NOT NULL,
+  PRIMARY KEY (child_id, parent_id, relation, role)
+);
+CREATE INDEX IF NOT EXISTS idx_links_child  ON memory_links(child_id);
+CREATE INDEX IF NOT EXISTS idx_links_parent ON memory_links(parent_id);
 
 -- ---------------------------------------------------------------------------
 -- 人格设定（二合一里的「人」那一半）

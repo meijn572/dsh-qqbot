@@ -15,6 +15,15 @@ B 站新数据：走 activity，不再写 memory
 抽取器：只抽 L1 / L3
 L1 / L3：evidence 匹配 L0，写 source_ids
 source_status：verified / unverified / batch / legacy
+L1：只装事实；max_facts 20；半衰期 180 天
+UPDATE：合并 source_ids
+去掉 keywords 里的「情绪:xxx」
+memory_links：建表，L1/L3 写依赖边
+L3 事件线程：thread_* 字段、open/closed/dormant
+按会话段提取：空闲 5 分钟 + 30 分钟 / 80 条安全边界
+open L3：全部进索引，最多 8 条
+open 查询工具：get_open_thread / list_open_threads
+L4 复盘：每 3 天，closed L3 → 0–2 条核心记忆
 日记：情绪事件 + L0 窗口 + L3 旧记忆
 情绪：5 分钟空闲复盘
 面板：L4 核心记忆可见，L2 按钮移除
@@ -28,14 +37,10 @@ L2 判断层：
   代码未接
   L2 只装判断/假设，不装事实
 
-L3 事件线程：
-  文档已定
-  代码未接
-  L3 可跨段/跨天，有 open / closed / dormant
-
-提取时机：
-  文档已改为按会话段
-  代码仍是按条数/15 分钟
+真会话验证：
+  事件线程跨段续写
+  5 分钟分段是否切得自然
+  open 索引是否足够
 ```
 
 ## 3. 下一步
@@ -51,60 +56,20 @@ L2 从 L0 + L1 生成
 不直接当事实注入
 ```
 
-### P2 L3 事件线程
+### P2 真会话验证
 
 ```text
-每段结束：
-  续写 open L3
-  或新建 L3
-  closed 后不再续写
-
-字段：
-  title / aliases
-  status
-  opened_at / last_seen_at / closed_at
-  summary
-  source_ids / memory_links
+牙疼/看牙这种跨天事件
+是否续写同一条 open L3
+是否在“没事了”时 closed
 ```
 
-### P3 提取时机
+### P3 来源跨窗口
 
 ```text
-按最后一条消息后空闲 5 分钟切段
-一段可产出多条 L1
-L2 跟在 L1 后
-L3 根据事件线程续写/新建
-不再按 6 条 L1 切
-```
-
-### P4 L4 自动提升
-
-```text
-每 3 天 04:00
-输入：closed L3 + L0
-输出：0–2 条核心记忆
-带 memory_links
-```
-
-### P5 来源字段
-
-```text
-source_ids = 精确 L0 证据
-memory_links = 直接输入层（L1/L2/L3）
-```
-
-当前只实现了 `source_ids`，`memory_links` 未建表。
-
-### P6 提取规则细节
-
-```text
-L1 只装事实，不装“近况”
-max_facts 6 → 动态/12
-L1 半衰期 30 天 → 180 天
-UPDATE 时合并 source_ids
-删掉 keywords 里的「情绪:xxx」
-EXTRACT_SYSTEM 还写着 L1 含“近况/小观察”，与目标不一致
-evidence 跨多条 L0 时，逐行匹配可能失败，需要拼接窗口
+evidence 跨多条 L0 时
+当前逐行匹配可能失败
+需要拼接窗口匹配
 ```
 
 ## 4. 待验证
@@ -112,9 +77,9 @@ evidence 跨多条 L0 时，逐行匹配可能失败，需要拼接窗口
 ```text
 23:00 日记是否按新输入生成
 L1/L3 新数据的 source_status 是否为 verified
-L2 判断层尚未实现
-L3 事件线程尚未实现
-L4 自动提升尚未实现
+旧 L3 的 thread_status 是否为 legacy
+memory_links 是否按预期写入
+L4 复盘是否只在 3 天后触发
 ```
 
 ## 5. 不在当前范围

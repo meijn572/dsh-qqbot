@@ -51,7 +51,7 @@ TIER_HALF_LIFE: dict[str, float | None] = {
     "L4": None,    # 核心记忆：忘不掉的事件
     "L3": 90.0,    # 普通经历
     "L2": None,    # 退役：不再写新数据
-    "L1": 30.0,    # 原子事实
+    "L1": 180.0,   # 原子事实
     "L0": None,    # 原话（不参与衰减，主表只做检索源）
 }
 
@@ -127,6 +127,12 @@ class MemoryInput:
     summary: str | None = None
     source_ids: Sequence[int] | None = None
     source_status: str = "legacy"
+    thread_status: str = "legacy"
+    thread_title: str = ""
+    thread_aliases: Sequence[str] | None = None
+    thread_opened_at: float | None = None
+    thread_last_seen_at: float | None = None
+    thread_closed_at: float | None = None
     tags: Sequence[str] | None = None
     ts: float | None = None
     half_life_days: float | None = field(default=None)
@@ -225,6 +231,19 @@ class MemoryStore:
                 self.conn.execute("ALTER TABLE memory ADD COLUMN source_status TEXT NOT NULL DEFAULT 'legacy'")
             except Exception:
                 pass
+        for col, decl in (
+            ("thread_status", "TEXT NOT NULL DEFAULT 'legacy'"),
+            ("thread_title", "TEXT DEFAULT ''"),
+            ("thread_aliases", "TEXT DEFAULT '[]'"),
+            ("thread_opened_at", "REAL DEFAULT NULL"),
+            ("thread_last_seen_at", "REAL DEFAULT NULL"),
+            ("thread_closed_at", "REAL DEFAULT NULL"),
+        ):
+            if col not in mem_cols:
+                try:
+                    self.conn.execute(f"ALTER TABLE memory ADD COLUMN {col} {decl}")
+                except Exception:
+                    pass
 
         emo_cols = cols("emotion_log")
         if "target_user" not in emo_cols:
@@ -334,7 +353,9 @@ class MemoryStore:
     def list_memories(self, tier: str | None = None, q: str = "", limit: int = 100,
                       offset: int = 0) -> dict:
         """管理用：列出记忆（按时间倒序），带 tier 过滤和关键词搜索。"""
-        sql = "SELECT id, tier, subject, text, summary, tags, source_ids, source_status, ts, half_life_days FROM memory"
+        sql = ("SELECT id, tier, subject, text, summary, tags, source_ids, source_status, "
+               "thread_status, thread_title, thread_aliases, thread_opened_at, thread_last_seen_at, thread_closed_at, "
+               "ts, half_life_days FROM memory")
         conds = []
         args: list = []
         if tier and tier != "all":
@@ -366,6 +387,12 @@ class MemoryStore:
                 "tags": tags,
                 "source_ids": json.loads(r["source_ids"] or "[]"),
                 "source_status": r["source_status"],
+                "thread_status": r["thread_status"],
+                "thread_title": r["thread_title"],
+                "thread_aliases": json.loads(r["thread_aliases"] or "[]"),
+                "thread_opened_at": float(r["thread_opened_at"]) if r["thread_opened_at"] else None,
+                "thread_last_seen_at": float(r["thread_last_seen_at"]) if r["thread_last_seen_at"] else None,
+                "thread_closed_at": float(r["thread_closed_at"]) if r["thread_closed_at"] else None,
                 "ts": float(r["ts"] or 0),
                 "half_life_days": r["half_life_days"],
             })
@@ -390,9 +417,12 @@ class MemoryStore:
         cur = self.conn.execute(
             """
             INSERT INTO memory
-              (tier, subject, text, summary, source_ids, source_status, tags, ts, half_life_days,
+              (tier, subject, text, summary, source_ids, source_status,
+               thread_status, thread_title, thread_aliases,
+               thread_opened_at, thread_last_seen_at, thread_closed_at,
+               tags, ts, half_life_days,
                vec, vec_dim, vec_model, created_at, updated_at, user_id, scope)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 item.tier,
@@ -401,6 +431,12 @@ class MemoryStore:
                 item.summary,
                 json.dumps(list(item.source_ids or []), ensure_ascii=False),
                 str(item.source_status or "legacy")[:20],
+                str(item.thread_status or "legacy")[:20],
+                str(item.thread_title or "")[:120],
+                json.dumps(list(item.thread_aliases or []), ensure_ascii=False),
+                item.thread_opened_at,
+                item.thread_last_seen_at,
+                item.thread_closed_at,
                 json.dumps(list(item.tags or []), ensure_ascii=False),
                 ts,
                 half,
@@ -498,17 +534,143 @@ class MemoryStore:
         )
         self.conn.commit()
 
-    def update_text(self, mem_id: int, text: str, summary: str | None = None) -> bool:
+    def open_threads(self, limit: int = 8) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT id,tier,text,summary,thread_title,thread_aliases,thread_status,"
+            "thread_opened_at,thread_last_seen_at,thread_closed_at,source_ids "
+            "FROM memory WHERE tier='L3' AND thread_status='open' "
+            "ORDER BY thread_last_seen_at DESC, id DESC LIMIT ?",
+            (max(1, min(int(limit), 8)),),
+        ).fetchall()
+        out = []
+        for r in rows:
+            out.append({
+                "id": int(r["id"]),
+                "text": r["text"],
+                "summary": r["summary"] or r["text"],
+                "title": r["thread_title"] or (str(r["text"]).splitlines()[0][:60] if r["text"] else ""),
+                "aliases": json.loads(r["thread_aliases"] or "[]"),
+                "status": r["thread_status"],
+                "opened_at": float(r["thread_opened_at"] or 0),
+                "last_seen_at": float(r["thread_last_seen_at"] or 0),
+                "closed_at": float(r["thread_closed_at"] or 0),
+                "source_ids": json.loads(r["source_ids"] or "[]"),
+            })
+        return out
+
+    def find_threads(self, query: str, limit: int = 8) -> list[dict]:
+        q = str(query or "").strip()
+        if not q:
+            return []
+        like = f"%{q}%"
+        rows = self.conn.execute(
+            "SELECT id,text,summary,thread_title,thread_aliases,thread_status,"
+            "thread_last_seen_at,source_ids FROM memory "
+            "WHERE tier='L3' AND thread_status IN ('open','closed') "
+            "AND (thread_title LIKE ? OR thread_aliases LIKE ? OR summary LIKE ?) "
+            "ORDER BY CASE thread_status WHEN 'open' THEN 0 ELSE 1 END, "
+            "thread_last_seen_at DESC LIMIT ?",
+            (like, like, like, max(1, min(int(limit), 8))),
+        ).fetchall()
+        out = []
+        for r in rows:
+            out.append({
+                "title": r["thread_title"] or "",
+                "status": r["thread_status"],
+                "summary": r["summary"] or r["text"],
+                "last_seen_at": float(r["thread_last_seen_at"] or 0),
+                "source_count": len(json.loads(r["source_ids"] or "[]")),
+            })
+        return out
+
+    def update_thread(self, mem_id: int, summary: str, status: str,
+                      source_ids: Sequence[int] | None = None,
+                      last_seen_at: float | None = None) -> bool:
+        now = time.time()
+        row = self.conn.execute(
+            "SELECT source_ids,source_status,thread_status,thread_opened_at FROM memory WHERE id=? AND tier='L3'",
+            (int(mem_id),),
+        ).fetchone()
+        if row is None:
+            return False
+        old = []
+        try:
+            old = [int(x) for x in json.loads(row["source_ids"] or "[]")]
+        except Exception:  # noqa: BLE001
+            old = []
+        for sid in source_ids or []:
+            if int(sid) not in old:
+                old.append(int(sid))
+        closed = now if status == "closed" else None
+        source_status = "verified" if source_ids else str(row["source_status"] or "legacy")
+        self.conn.execute(
+            "UPDATE memory SET summary=?, text=?, source_ids=?, source_status=?, "
+            "thread_status=?, thread_last_seen_at=?, thread_closed_at=?, updated_at=? WHERE id=?",
+            (
+                str(summary)[:2000], str(summary)[:4000],
+                json.dumps(old, ensure_ascii=False), source_status, str(status),
+                float(last_seen_at or now), closed, now, int(mem_id),
+            ),
+        )
+        self.conn.commit()
+        return True
+
+    def link(self, child_id: int, parent_id: int, relation: str = "derived_from",
+             role: str = "") -> None:
+        """记录一条直接依赖边。"""
+        try:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO memory_links(child_id, parent_id, relation, role, created_at) "
+                "VALUES (?,?,?,?,?)",
+                (int(child_id), int(parent_id), str(relation)[:30], str(role)[:30], time.time()),
+            )
+            self.conn.commit()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def links_from(self, child_id: int) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT parent_id, relation, role FROM memory_links WHERE child_id=? ORDER BY parent_id",
+            (int(child_id),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def links_to(self, parent_id: int) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT child_id, relation, role FROM memory_links WHERE parent_id=? ORDER BY child_id",
+            (int(parent_id),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_text(self, mem_id: int, text: str, summary: str | None = None,
+                    source_ids: Sequence[int] | None = None,
+                    source_status: str | None = None) -> bool:
         """改一条记忆的正文，并重建它的倒排索引。
 
         UPDATE 操作走这里：保留 id 和 created_at，只换内容和索引。
         """
         self._invalidate_caches()
         row = self.conn.execute(
-            "SELECT text, summary, tags FROM memory WHERE id=?", (mem_id,)
+            "SELECT text, summary, tags, source_ids, source_status FROM memory WHERE id=?", (mem_id,)
         ).fetchone()
         if row is None:
             return False
+        old_sources = []
+        try:
+            old_sources = [int(x) for x in json.loads(row["source_ids"] or "[]")]
+        except Exception:  # noqa: BLE001
+            old_sources = []
+        new_sources = list(old_sources)
+        for sid in source_ids or []:
+            if int(sid) not in new_sources:
+                new_sources.append(int(sid))
+        old_status = str(row["source_status"] or "legacy")
+        if source_status == "verified":
+            new_status = "verified"
+        elif source_status == "unverified":
+            new_status = old_status if old_status in ("verified", "batch") else "unverified"
+        else:
+            new_status = old_status
 
         # 撤掉旧词的 df 计数（_index_terms 会加新的）
         old_terms = [r["term"] for r in self.conn.execute(
@@ -520,8 +682,13 @@ class MemoryStore:
 
         effective_summary = summary if summary is not None else row["summary"]
         self.conn.execute(
-            "UPDATE memory SET text=?, summary=?, updated_at=? WHERE id=?",
-            (text, effective_summary, time.time(), mem_id),
+            "UPDATE memory SET text=?, summary=?, source_ids=?, source_status=?, updated_at=? WHERE id=?",
+            (
+                text, effective_summary,
+                json.dumps(new_sources, ensure_ascii=False),
+                new_status,
+                time.time(), mem_id,
+            ),
         )
         self._index_terms(mem_id, text, effective_summary, json.loads(row["tags"] or "[]"))
         self.conn.commit()
