@@ -1148,6 +1148,214 @@ L4 详情页显示来源 L3/L0
 历史 4 条保持空，不补假数据
 ```
 
+## 18. evidence 与精确 source_ids
+
+状态：方案，未实现。
+
+### 18.1 决定
+
+模型不填数据库 id。
+
+模型只给**短原话**，代码负责匹配和写 `source_ids`。
+
+```text
+模型：这段记忆来自哪句话
+代码：这句话对应哪条 L0/L1
+```
+
+### 18.2 输入格式
+
+给模型一批带局部序号的原文，不暴露数据库 id：
+
+```text
+[1] 主人：你给自己取个名字吧
+[2] 我：叫洄，洄游的洄
+[3] 主人：为什么
+```
+
+批次控制：
+
+```text
+L0 → L1：6–12 条
+L1 → L3：6–10 条
+```
+
+太大模型抄不准。
+
+### 18.3 输出格式
+
+```json
+{
+  "text": "主人让她给自己取名字，她取名为「洄」",
+  "tier": "L1",
+  "evidence": [
+    "主人：你给自己取个名字吧",
+    "我：叫洄，洄游的洄"
+  ]
+}
+```
+
+不输出：
+
+```text
+source_ids
+数据库 id
+批次序号
+```
+
+### 18.4 代码匹配
+
+流程：
+
+```text
+evidence 逐条
+→ 在当前批次原文里找
+→ 命中哪条，就取哪条的 id
+→ source_ids = 命中的 id 列表
+```
+
+匹配顺序：
+
+```text
+1. 精确子串
+2. 去空白/标点/大小写后精确
+3. 模糊相似度
+```
+
+模糊匹配可以容错：
+
+```text
+标点差异
+空白差异
+全角/半角
+模型少抄一两个字
+```
+
+但不能接受：
+
+```text
+整句改写
+把两句话拼成一句
+从上下文补一句没出现的
+```
+
+建议阈值：
+
+```text
+相似度 >= 0.85
+短于 4 个字的 evidence 不做模糊匹配
+```
+
+同一句话命中多条原文时：
+
+```text
+优先时间最近
+或同一轮
+无法区分就标记 ambiguous
+```
+
+### 18.5 source_ids
+
+匹配成功后：
+
+```text
+source_ids = 命中的 L0/L1 id
+source_status = verified
+```
+
+匹配失败：
+
+```text
+source_ids = []
+source_status = unverified
+```
+
+历史迁移：
+
+```text
+source_ids = []
+source_status = legacy
+```
+
+### 18.6 删除粗粒度来源
+
+有 evidence 后，不再保留：
+
+```text
+source_batch_ids
+批次级 source_ids
+```
+
+只保留一个字段：
+
+```text
+source_ids = 精确来源
+source_status = verified / unverified / legacy
+```
+
+不退回批次 id。
+
+### 18.7 L4 不需要 evidence
+
+L4 从 L3 提升时，来源就是 L3 本身：
+
+```text
+source_ids = [l3.id]
+source_status = verified
+```
+
+合并多条 L3：
+
+```text
+source_ids = [l3_a, l3_b, ...]
+```
+
+### 18.8 失败处理
+
+```text
+evidence 匹配失败
+→ 记忆仍然保留
+→ source_ids 空
+→ source_status 标记 unverified
+```
+
+不要因为来源没匹配上就丢记忆。
+
+也不要伪造 id。
+
+### 18.9 现有数据
+
+4 条历史 L4：
+
+```text
+source_ids = []
+source_status = legacy
+tags = ["core", "migration"]
+```
+
+不补假来源。
+
+L1/L3 现有批次级 source_ids 可以保留为历史，不重写。
+
+### 18.10 还需要定
+
+```text
+模糊匹配具体用 difflib 还是编辑距离
+相似度阈值 0.85 是否合适
+同一句命中多条时怎么选
+evidence 是否要单独存原文
+source_status 是否加列
+```
+
+### 18.11 一句话
+
+```text
+模型负责指认原话
+代码负责把它变成 id
+匹配不上就 unverified，不猜
+```
+
+
 
 
 
