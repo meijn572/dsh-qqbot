@@ -1061,6 +1061,19 @@ MCP 的 tier 说明已更新
 L2 7 条：备份后清空，画像已在 persona.user_profile
 L4 5 条：备份后清空
 L4 中 3 条未覆盖的规矩补进 persona important.self
+L3 57 条 B 站/自主活动：迁到 activity_log
+L3 4 条 curated 真实事件：提升为 L4 核心记忆
+L3 剩余 15 条 episode：普通经历
+```
+
+当前：
+
+```text
+L0 308
+L1 125
+L3 15
+L4 4
+activity_log 625
 ```
 
 还没做：
