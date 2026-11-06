@@ -48,6 +48,7 @@ function badge(ok,on='在线',off='离线'){return `<span class="badge ${ok?'ok'
 let logName='bridge';
 let memTab='long';
 let memTier='';
+const MEM_TIER_LABEL={L0:'L0 原话',L1:'L1 事实',L2:'L2 已退役',L3:'L3 经历',L4:'L4 核心记忆'};
 function renderMem(){
   const q=(document.getElementById('memq')?.value||'').trim().toLowerCase();
   const items=(window.__memItems||[]).filter(it=>{
@@ -58,7 +59,7 @@ function renderMem(){
   let h='';
   for(const it of items){
     const t=it.time?new Date(it.time*1000).toLocaleString('zh-CN',{hour12:false}):'';
-    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(it.type)}</span> <span class="mut">${esc(t)}</span><div style="margin-top:3px">${esc(it.content)}</div></div>`;
+    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> <span class="mut">${esc(t)}</span><div style="margin-top:3px">${esc(it.content)}</div></div>`;
   }
   const box=document.getElementById('memlist'); if(box) box.innerHTML=h||'<div class="mut">没有匹配的记忆</div>';
 }
@@ -195,7 +196,7 @@ async function load(){
     const m=await j('/api/memory');
     let h=`<div class="card"><div class="k">记忆 · ${m.count} 条</div>
       <div style="margin:10px 0"><input id="memq" placeholder="搜内容…" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px;width:260px" oninput="renderMem()">
-      <button onclick="memTier='' ;renderMem()">全部</button> <button onclick="memTier='L1' ;renderMem()">L1 事实</button> <button onclick="memTier='L2' ;renderMem()">L2 画像</button> <button onclick="memTier='L3' ;renderMem()">L3 事件</button> <button onclick="memTier='L4' ;renderMem()">L4 规矩</button></div>
+      <button onclick="memTier='' ;renderMem()">全部</button> <button onclick="memTier='L1' ;renderMem()">L1 事实</button> <button onclick="memTier='L3' ;renderMem()">L3 经历</button> <button onclick="memTier='L4' ;renderMem()">L4 核心记忆</button></div>
       <div id="memlist"></div></div>`;
     $('#memory').innerHTML=h;
     window.__memItems=m.items||[];

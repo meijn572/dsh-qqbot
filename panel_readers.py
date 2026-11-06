@@ -487,7 +487,24 @@ def memory_payload() -> dict:
     data = cmem_get("/memories?limit=100")
     if data:
         out["count"] = int(data.get("total") or 0)
+        seen = set()
         for item in data.get("items") or []:
+            key = (str(item.get("tier") or ""), str(item.get("text") or ""), item.get("ts"))
+            if key in seen:
+                continue
+            seen.add(key)
+            out["items"].append({
+                "type": str(item.get("tier") or ""),
+                "content": str(item.get("text") or ""),
+                "time": item.get("ts") or "",
+            })
+        # 核心记忆时间很老，可能不在最近 100 条里；单独补一次
+        core = cmem_get("/memories?tier=L4&limit=100")
+        for item in (core or {}).get("items") or []:
+            key = (str(item.get("tier") or ""), str(item.get("text") or ""), item.get("ts"))
+            if key in seen:
+                continue
+            seen.add(key)
             out["items"].append({
                 "type": str(item.get("tier") or ""),
                 "content": str(item.get("text") or ""),
