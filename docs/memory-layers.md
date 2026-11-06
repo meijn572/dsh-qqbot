@@ -91,6 +91,48 @@ L1/L2 已经是抽象。
 
 所以 L3 用**这段事件窗口的 L0**，不是整天所有 L0。
 
+### L0 事件窗口是什么
+
+不是按时间范围硬切。
+
+```text
+错误：L3.opened_at 到 L3.closed_at 之间的所有 L0
+```
+
+这样会把中间无关的聊天也卷进来。
+
+正确：
+
+```text
+L3 归属的会话段 L0 集合
+```
+
+也就是：
+
+```text
+这一段对话被判断为属于这个事件
+→ 这一段的 L0 才是事件窗口
+```
+
+### 新建 L3
+
+```text
+当前会话段的 L0
+```
+
+### 续写 L3
+
+```text
+当前会话段的 L0
++ 已有 L3 的 summary
++ 最近 2–3 条旧 evidence（保持连续性）
+```
+
+不要把整个旧窗口重新塞一遍。
+
+旧细节需要时按 `source_ids` 回查。
+
+
 ### 为什么 L4 从 L3
 
 L4 是“忘不掉的事件”，不是“重要的事实”。
@@ -319,6 +361,45 @@ L4 是“忘不掉的事件”。
 ```text
 L3 + L0 证据
 ```
+
+### L4 的 L0 证据怎么取
+
+不重新匹配，也不重新检索。
+
+直接继承被提升 L3 的 `source_ids`：
+
+```text
+L4.source_ids = union(l3.source_ids)
+L4.derived_from = [l3.id]
+```
+
+合并多条 L3：
+
+```text
+L4.source_ids = union(l3_a.source_ids, l3_b.source_ids, ...)
+L4.derived_from = [l3_a.id, l3_b.id, ...]
+```
+
+L3 没有 source_ids：
+
+```text
+L4.source_ids = []
+L4.source_status = unverified
+```
+
+不要用时间窗口硬猜。
+
+不要重新让模型编 evidence。
+
+### L4 的 L0 证据怎么用
+
+```text
+存储：保留全部 source_ids
+展示：可以选 1–3 条代表性原话
+溯源：按 source_ids 回查 L0
+```
+
+`source_ids` 是完整证据，展示可以摘要。
 
 不要：
 
