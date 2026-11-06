@@ -204,3 +204,48 @@ reasoningEffort: high
   - 事实正确性
   - 是否出现语气泄漏或过度扮演
 - 当前 DSH / DeepSeek provider 是否支持 reasoning 前缀注入，需要单独确认；不能把“system prompt 写喵”当成同一件事。
+
+### 外部检索
+
+找到几类相关工作，但没有完全等同于“reasoning 开头只注入一个喵”的受控研究。
+
+1. [System Prompts as Runtime Priors](https://zenodo.org/records/20835691)
+   - 预印本，认为 system prompt 像运行时先验，会影响模型后续的解释状态和行为稳定性。
+   - 不是专门研究 reasoning 语言或角色语气，且是预印本，不能当强结论。
+
+2. [Persona is a Double-Edged Sword](https://aclanthology.org/2025.findings-ijcnlp.51/)
+   - 研究 role-play persona 对 zero-shot reasoning 的影响。
+   - 结论不是“加人格一定更好”：persona 可能提升，也可能损害推理；数据集对齐的 persona 不一定稳定。
+   - 支持“system prompt / persona 会影响推理”，但不支持“加了角色就一定更有味道”。
+
+3. [What Effort Level Should I Choose?](https://arxiv.org/abs/2610.34491)
+   - 研究 reasoning effort 的经济学。
+   - 更高 effort 不保证 instance-level 更好，可能在某些低 effort 能做的题上失败，成本可高很多。
+   - 高 effort 还会改变 agent 的行为轨迹，比如更多自检和搜索。
+
+4. [GLM 5.3 roleplay thinking mode 讨论](https://bestairoleplay.com/glm-5-3-for-ai-roleplay-should-you-enable-thinking-mode-or-not/)
+   - 社区经验，不是论文。
+   - 支持方认为 thinking 能提升角色准确性和连续性；反对方认为会变慢、更保守、减少即兴。
+   - 可作为“高推理可能让闲聊变正式”的旁证，但不能当实验证据。
+
+5. [reasoning intro 实践](https://zenn.dev/cardy0828/articles/reasoning-intro-persona-control)
+   - 最接近“在 reasoning 开头注入人格/风格”的实践。
+   - 依赖 llama.cpp 的 draft PR，不是标准 API，也没有统计基准。
+
+目前没有找到：
+
+```text
+在 DeepSeek 官方 API 上
+只对 reasoning 开头注入一个“喵”
+并做严格控制实验
+```
+
+所以当前可做的是：
+
+```text
+system prompt 风格对比
+reasoning high / low / off 对比
+```
+
+不能声称复现 reasoning prefix 注入。
+
