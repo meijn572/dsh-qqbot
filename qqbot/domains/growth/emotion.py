@@ -78,8 +78,13 @@ async def loop(turn: Turn, cfg: dict) -> None:
                 + (memory_text + "\n\n" if memory_text else "")
                 + "你有没有真的产生情绪？标准：只有被戳到、心里确实起了波动才记；"
                 "没有就跳过，不要为了打卡硬写。\n"
-                "有情绪就写 label（一两个词）、intensity（0–1）、reason（一句由头）。\n"
-                '只输出 JSON：{"label":"...","intensity":0.5,"reason":"..."} 或 {"skip":true}。'
+                "有情绪就写：\n"
+                "- label：一两个词\n"
+                "- valence：-1 很负面，0 中性，1 很正面\n"
+                "- arousal：0 很平静，0.5 普通，1 很激动\n"
+                "- reason：一句由头\n"
+                '只输出 JSON：{"label":"...","valence":0.0,"arousal":0.5,"reason":"..."} '
+                '或 {"skip":true}。'
             )
             reply = await turn(prompt)
             match = re.search(r"\{.*\}", reply or "", re.S)
@@ -92,18 +97,20 @@ async def loop(turn: Turn, cfg: dict) -> None:
             label = str(data.get("label") or "").strip()[:20]
             reason = str(data.get("reason") or "").strip()[:200]
             try:
-                intensity = max(0.0, min(1.0, float(data.get("intensity") or 0.5)))
+                valence = max(-1.0, min(1.0, float(data.get("valence", 0.0))))
             except (TypeError, ValueError):
-                intensity = 0.5
+                valence = 0.0
+            try:
+                arousal = max(0.0, min(1.0, float(data.get("arousal", 0.5))))
+            except (TypeError, ValueError):
+                arousal = 0.5
             if not label or data.get("skip"):
                 log.info("情绪自检：这轮没有要记的")
             else:
-                positive = bool(re.search(r"(开心|高兴|喜欢|温柔|感动|兴奋|甜|满意|期待|放松|骄傲|暖|被夸|幸福|好笑|笑|乐|有趣)", label))
-                valence = intensity if positive else -intensity
-                await set_emotion(label, valence, 0.5, reason or "自己回想的")
+                await set_emotion(label, valence, arousal, reason or "自己回想的")
                 state["count"] = int(state.get("count") or 0) + 1
                 state["last_label"] = label
-                log.info("情绪自检：记下 %s（%s）", label, reason[:40])
+                log.info("情绪自检：记下 %s（valence=%s arousal=%s）", label, valence, arousal)
             state["next_at"] = now + random.uniform(float(cfg.get("min_hours", 3)), float(cfg.get("max_hours", 5))) * 3600
             _save(state)
         except Exception as exc:  # noqa: BLE001

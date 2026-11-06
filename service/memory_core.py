@@ -955,7 +955,7 @@ class MemoryStore:
                                game_score=?, game_plays=?, activity=?, valence=?, arousal=? WHERE id=1""",
             (
                 next_mood,
-                now if mood is not None else cur["mood_updated"],
+                now if (mood is not None or valence is not None or arousal is not None) else cur["mood_updated"],
                 next_intimacy,
                 now,
                 cur["dnd_start"] if dnd_start is None else int(dnd_start),
@@ -1196,14 +1196,15 @@ class MemoryStore:
     #
     # mood 是粗档（开心/累/烦...），valence+arousal 是连续值，更接近人。
     # 情绪会自然衰减：没事干的时候慢慢回中性，不会一直high。
-    #   衰减规则：valence 每小时向 0 收 20%，arousal 向 0.5 收 20%。
+    #   衰减规则：valence 和 arousal 按 8 小时半衰期向中性收。
+    #   旧规则是线性 20%/小时，5 小时就归零，情绪还没被下一次自检看到就没了。
 
     def get_emotion(self) -> dict:
         cur = self.get_state()
         now = time.time()
         updated = float(cur.get("mood_updated") or 0) or now
         hours = max(0.0, (now - updated) / 3600.0)
-        decay = max(0.0, 1.0 - 0.2 * hours)
+        decay = 0.5 ** (hours / 8.0)
         # clamp 在这里也做一遍：库里可能还留着 clamp 上线之前的超界值
         valence = max(-1.0, min(1.0, float(cur.get("valence") or 0) * decay))
         arousal = max(0.0, min(1.0, 0.5 + (float(cur.get("arousal") or 0.5) - 0.5) * decay))

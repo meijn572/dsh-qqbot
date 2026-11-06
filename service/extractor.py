@@ -107,12 +107,12 @@ EXTRACT_SYSTEM = """你从一段对话里抽取值得长期记住的内容。
 主人：好麻烦啊，我现在准备转正了，但是好多事情要做啊
 我：转正要办一堆手续吧，慢慢来
 → [{"text": "我记得主人正在准备转正，事情很多觉得麻烦", "tier": "L3", "importance": 0.7,
-    "emotion": {"label": "烦", "intensity": 0.5, "reason": "转正手续多"}}]
+    "emotion": {"label": "烦", "valence": -0.5, "arousal": 0.5, "reason": "转正手续多"}}]
 
 主人：我今天加班到现在，累死了
 我：那你早点睡
 → [{"text": "我记得主人今天加班到很晚，非常累", "tier": "L3", "importance": 0.6,
-    "emotion": {"label": "累", "intensity": 0.7, "reason": "加班到现在"}}]
+    "emotion": {"label": "累", "valence": -0.7, "arousal": 0.2, "reason": "加班到现在"}}]
 
 主人：以后叫我老王就行，别叫全名
 我：好，老王
@@ -129,12 +129,19 @@ EXTRACT_SYSTEM = """你从一段对话里抽取值得长期记住的内容。
 主人：今天好烦，报表又被退回来了
 我：第几遍了
 → [{"text": "我记得主人今天报表被退回，很烦", "tier": "L3", "importance": 0.6,
-    "emotion": {"label": "烦", "intensity": 0.6, "reason": "报表又被退回"}}]
+    "emotion": {"label": "烦", "valence": -0.6, "arousal": 0.5, "reason": "报表又被退回"}}]
 
 ## 情绪字段
 
 有情绪就填，平淡内容给 null。不要等"强烈"才填：
-轻微 0.3 ｜ 明显 0.6 ｜ 强烈 0.9
+
+```text
+label      一两个词
+valence    -1 很负面，0 中性，1 很正面
+arousal    0 很平静，0.5 普通，1 很激动
+reason     一句由头
+```
+
 keywords 里再加一个「情绪:<情绪>」标签。
 
 ## 输出前的穷举检查（必须过一遍）
@@ -162,7 +169,7 @@ text 直接写内容本身，不要加「我记得 / 我记住」前缀；主人
 严格 JSON 数组，不要任何其他文字：
 [{"text": "一句话", "tier": "L1|L2|L3|L4", "subject": "self", "importance": 0.0,
   "keywords": ["词1", "词2"],
-  "emotion": {"label": "难过", "intensity": 0.7, "reason": "..."} | null}]
+  "emotion": {"label": "难过", "valence": -0.7, "arousal": 0.4, "reason": "..."} | null}]
 """
 
 
@@ -636,40 +643,53 @@ class Extractor:
                 return h
         return None
 
+    def _emotion_values(self, emo, fact) -> tuple[str, float, float, str]:
+        """返回 label/valence/arousal/reason；不根据 label 猜正负。"""
+        label = ""
+        reason = ""
+        valence = 0.0
+        arousal = 0.5
+        if isinstance(emo, dict):
+            label = str(emo.get("label") or "").strip()
+            reason = str(emo.get("reason") or "").strip()
+            try:
+                valence = max(-1.0, min(1.0, float(emo.get("valence", 0.0))))
+            except (TypeError, ValueError):
+                valence = 0.0
+            try:
+                arousal = max(0.0, min(1.0, float(emo.get("arousal", 0.5))))
+            except (TypeError, ValueError):
+                arousal = 0.5
+        if not label:
+            for kw in (fact.get("keywords") or []):
+                s = str(kw)
+                if s.startswith("情绪:") and len(s) > 3:
+                    label = s[3:].strip()
+                    reason = str(fact.get("text") or "")[:150]
+                    break
+        return label, valence, arousal, reason
+
     def _log_best_emotion(self, facts: list) -> None:
-        """一次抽取只记一条情感：挑强度最高的那个 fact 写 emotion_log。"""
+        """一次抽取只记一条情感：挑情绪幅度最大的 fact 写 emotion_log。"""
         if os.environ.get("CMEM_EXTRACT_EMOTION", "0").lower() not in ("1", "true", "yes", "on"):
             return
         try:
             best = None
             best_score = -1.0
+            threshold = float(getattr(self.config, "emotion_threshold", 0.2))
             for fact in facts:
                 if not isinstance(fact, dict):
                     continue
-                emo = fact.get("emotion")
-                label = ""
-                intensity = 0.5
-                reason = ""
-                if isinstance(emo, dict):
-                    label = str(emo.get("label") or "").strip()
-                    intensity = float(emo.get("intensity") or 0.5)
-                    reason = str(emo.get("reason") or "").strip()
-                if not label:
-                    for kw in (fact.get("keywords") or []):
-                        s = str(kw)
-                        if s.startswith("情绪:") and len(s) > 3:
-                            label = s[3:].strip()
-                            reason = str(fact.get("text") or "")[:150]
-                            intensity = 0.6
-                            break
+                label, valence, arousal, reason = self._emotion_values(fact.get("emotion"), fact)
                 if not label:
                     continue
-                if intensity > best_score and intensity >= float(getattr(self.config, "emotion_threshold", 0.2)):
-                    best_score = intensity
-                    best = (label, max(0.0, min(1.0, intensity)), reason)
+                score = max(abs(valence), abs(arousal - 0.5) * 2)
+                if score > best_score and score >= threshold:
+                    best_score = score
+                    best = (label, valence, arousal, reason)
             if best is None:
                 return
-            label, intensity, reason = best
+            label, valence, arousal, reason = best
             # 去掉开头自称污染（本澜我下班了 → 我下班了）
             import re as _re
             reason = _re.sub(r"^(本澜|她|澜澜|咱澜|启)[，、\s]*", "", str(reason or ""))
@@ -681,18 +701,15 @@ class Extractor:
                 for r in recent:
                     if (now_ts - float(r.get("ts") or 0)) >= 1800:
                         continue
-                    # 只在「同标签且同触发」时才算重复；同标签不同事 → 允许记
                     if r.get("label") == label and trig_key and str(r.get("trigger") or "")[:12] == trig_key:
                         return
                     if trig_key and str(r.get("trigger") or "")[:12] == trig_key:
                         return
             except Exception:
                 pass
-            positive = any(w in label for w in ("开心", "高兴", "喜欢", "兴奋", "甜", "被夸", "笑", "暖", "幸福", "感动"))
-            valence = intensity if positive else -intensity
             self.store.emotion_log_add(
                 valence=valence,
-                arousal=0.5,
+                arousal=arousal,
                 label=label,
                 trigger=reason[:200],
                 source="extract",
@@ -706,26 +723,9 @@ class Extractor:
         if os.environ.get("CMEM_EXTRACT_EMOTION", "0").lower() not in ("1", "true", "yes", "on"):
             return
         try:
-            emo = fact.get("emotion")
-            label = ""
-            reason = ""
-            intensity = 0.5
-            if isinstance(emo, dict):
-                label = str(emo.get("label") or "").strip()
-                reason = str(emo.get("reason") or "").strip()
-                intensity = float(emo.get("intensity") or 0.5)
-            if not label:
-                # 兜底：从 keywords 里找「情绪:xxx」
-                for kw in (fact.get("keywords") or []):
-                    s = str(kw)
-                    if s.startswith("情绪:") and len(s) > 3:
-                        label = s[3:].strip()
-                        reason = str(fact.get("text") or "")[:150]
-                        intensity = 0.6
-                        break
+            label, valence, arousal, reason = self._emotion_values(fact.get("emotion"), fact)
             if not label:
                 return
-            intensity = max(0.0, min(1.0, intensity))
             # 情感去重：同一个情绪词，30 分钟内只记一次（防重复抽取刷屏）
             try:
                 recent = self.store.emotion_log_list(5)
@@ -735,13 +735,11 @@ class Extractor:
                         return
             except Exception:
                 pass
-            positive = any(w in label for w in ("开心", "高兴", "喜欢", "兴奋", "甜", "被夸", "笑", "暖", "幸福"))
-            valence = intensity if positive else -intensity
             self.store.emotion_log_add(
                 valence=valence,
-                arousal=0.5,
+                arousal=arousal,
                 label=label,
-                trigger=str(emo.get("reason") or "")[:200],
+                trigger=reason[:200],
                 source="extract",
             )
         except Exception:
