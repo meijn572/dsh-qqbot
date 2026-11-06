@@ -43,7 +43,7 @@ async def review_turn(turn: Turn, transcript: str) -> dict | None:
     prompt = (
         "（内部维护，不要回复用户）\n"
         "下面是一段刚刚结束的对话：\n\n"
-        + str(transcript or "").strip()[:4000]
+        + str(transcript or "").strip()
         + "\n\n"
         "回想一下这段对话。你有没有真的产生情绪？\n"
         "标准：只有被戳到、心里确实起了波动才记；没有就跳过，不要为了打卡硬写。\n"

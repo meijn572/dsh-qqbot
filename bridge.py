@@ -2282,7 +2282,6 @@ def emotion_idle_cfg() -> dict:
         "enabled": True,
         "idle_seconds": 300,
         "interval_seconds": 30,
-        "max_messages": 8,
     }
     merged.update(CONFIG.get("emotion_idle") or {})
     return merged
@@ -2315,7 +2314,7 @@ def _format_emotion_window(rows: list[dict]) -> str:
         if images:
             text = (text + " " if text else "") + f"[图片×{len(images)}]"
         if text:
-            lines.append(f"{who}：{text[:600]}")
+            lines.append(f"{who}：{text}")
     return "\n".join(lines)
 
 
@@ -2350,7 +2349,7 @@ async def emotion_idle_loop(dsh: Dsh) -> None:
             window = [
                 dict(row) for row in rows
                 if int(row.get("seq") or 0) > int(reviewed.get(OWNER_CHAT_KEY) or 0)
-            ][-max(1, int(cfg.get("max_messages", 8))):]
+            ]
             if not any(str(r.get("role")) == "user" for r in window):
                 reviewed[OWNER_CHAT_KEY] = last_seq
                 state["reviewed"] = reviewed

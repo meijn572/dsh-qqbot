@@ -425,13 +425,12 @@ emotion_idle:
   enabled: true
   idle_seconds: 300
   interval_seconds: 30
-  max_messages: 8
 ```
 
 ### 输入
 
 ```text
-最近最多 8 条
+上次复盘之后到这次复盘之间的全部消息
 用户：...
 洄：...
 ```
