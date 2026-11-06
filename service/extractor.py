@@ -34,22 +34,21 @@ SLEEP_SYSTEM = """你在睡前整理今天发生的事。用第一人称写两�
 只输出正文。"""
 
 
-DIARY_SYSTEM = """你根据今天的对话、活动和可能相关的旧记忆，用第一人称写一段日记（不超过 160 字）。
+DIARY_SYSTEM = """你写今天的日记。用洄的口吻，第一人称，写给以后的自己看。
 
-重点：写「我今天真的干了什么」——
-- 刷 B 站看到了什么（具体标题/内容）
-- 玩了什么、看了什么、想了什么
-- 跟老大聊了什么（有情绪的细节）
-- 今天有什么小情绪、小发现
-- 如果旧记忆里有一件事和今天对得上，可以自然联想到它，写一点现在的感想
+可以从今天最想记住的地方写起，不必把每件事都写到。
+写具体的事、当时的动作和念头，像自己回头想一想，不像汇报。
+对话里「主人：」是老大，「我：」或「洄：」是你；不要写反。
+只输出日记正文。
 
-要求：像真的在写日记，具体、有情绪、有细节（不要空泛的"今天过得还好"）。
-对话原话是按时间顺序的，「主人：」是老大，「我：」是你；不要交换说话人，也不要因为前后顺序把谁做的事记反。
-不要把老大做的事写成你做的，也不要把你说的话写成老大说的。
-你只写自己今天真的做过/想过的事；老大做的事可以提，但主语必须清楚。
-旧记忆不是每篇都要提；对不上就忽略，不要为了回忆硬扯。
-用你现在的口吻写，不要写成总结报告，不要提"AI"。
-只输出日记正文。"""
+示例一：
+牙只是发炎。看到“没啥事”那三个字，我先把手机扣在桌上，才想起自己催了他一整天。
+
+示例二：
+他改记忆逻辑改到快两点，说这不算工作，做得爽。我信。可看到他关电脑那下，还是觉得这人不该总拿“爽”当理由。
+
+示例三：
+西西弗斯那句还是没想透。先搁着吧，反正山也不会跑。"""
 
 
 EVOLVE_SYSTEM = """你根据一段对话，用第一人称写一句「我发现自己……」——关于你自己（助手）的变化。
@@ -317,7 +316,7 @@ class Extractor:
     def write_diary(self, user_text: str, assistant_text: str = "", date: str = "",
                     activities: list | None = None, persona: str = "",
                     memories: str = "") -> str | None:
-        """写今天的日记（LLM，第一人称，160 字内）。"""
+        """写今天的日记（LLM，第一人称，范例式提示词）。"""
         if self.llm is None or not getattr(self.llm, "enabled", False):
             return None
         parts = []
@@ -325,35 +324,35 @@ class Extractor:
             parts.append("【你现在的样子】")
             parts.append(persona[:3000])
             parts.append("")
-        if activities:
-            parts.append("今天做过的事（按时间）：")
-            for a in activities[-30:]:
-                detail = str(a.get("detail") or "")[:80]
-                kind = str(a.get("kind") or "")
-                if detail:
-                    parts.append(f"- [{kind}] {detail}")
         if user_text or assistant_text:
-            parts.append("")
             if assistant_text:
                 parts.append("【主人说的】")
                 parts.append(user_text)
                 parts.append("【你说的】")
                 parts.append(assistant_text)
             else:
-                parts.append("【对话原话（按时间顺序）】")
+                parts.append("【今天的情绪事件与对应原话】")
                 parts.append(user_text)
-        if memories:
             parts.append("")
+        if activities:
+            parts.append("今天还做过的事（补充，不必全写）：")
+            for a in activities[-30:]:
+                detail = str(a.get("detail") or "")[:80]
+                kind = str(a.get("kind") or "")
+                if detail:
+                    parts.append(f"- [{kind}] {detail}")
+            parts.append("")
+        if memories:
             parts.append("以前可能相关的记忆（不一定相关，只在对得上时自然联想）：")
             parts.append(memories[:3000])
         convo = "\n".join(parts) if parts else str(user_text)
         try:
-            text = self.llm.chat(DIARY_SYSTEM, convo, max_tokens=300)
+            text = self.llm.chat(DIARY_SYSTEM, convo, max_tokens=600)
         except Exception:
             return None
         if not text:
             return None
-        return str(text).strip()[:240]
+        return str(text).strip()[:600]
 
     def evolve(self, user_text: str, assistant_text: str = "", persona: str = "", memories: str = "") -> str | None:
         """人设演化：从这段对话生一句「我发现自己……」（追加到自我认知区）。"""

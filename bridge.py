@@ -2359,6 +2359,7 @@ async def emotion_idle_loop(dsh: Dsh) -> None:
                 # 还没回复，等回复后再复盘
                 continue
             window_start = min(float(r.get("ts") or 0) for r in window)
+            window_end = max(float(r.get("ts") or 0) for r in window)
             # 强情绪工具已经记过这一段，避免重复
             try:
                 st = await cmem_call("GET", "/state")
@@ -2384,6 +2385,8 @@ async def emotion_idle_loop(dsh: Dsh) -> None:
             await growth_emotion.review_turn(
                 lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt),
                 transcript,
+                ts_start=window_start,
+                ts_end=window_end,
             )
             reviewed[OWNER_CHAT_KEY] = last_seq
             state["reviewed"] = reviewed

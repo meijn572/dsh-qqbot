@@ -260,6 +260,8 @@ CREATE TABLE IF NOT EXISTS emotion_log (
   label        TEXT NOT NULL DEFAULT '',
   trigger      TEXT NOT NULL DEFAULT '',
   source       TEXT NOT NULL DEFAULT 'chat',
+  ts_start     REAL DEFAULT NULL,          -- 这次情绪对应的 L0 窗口起点
+  ts_end       REAL DEFAULT NULL,          -- 这次情绪对应的 L0 窗口终点
   memory_id    INTEGER DEFAULT NULL       -- 关联到 memory.id（哪条记忆引发的）
 );
 CREATE INDEX IF NOT EXISTS idx_emotion_log_ts ON emotion_log(ts);

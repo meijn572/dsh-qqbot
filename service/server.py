@@ -1305,6 +1305,8 @@ class Handler(BaseHTTPRequestHandler):
             label=str(body.get("label") or ""),
             trigger=str(body.get("trigger") or ""),
             source=str(body.get("source") or "chat"),
+            ts_start=body.get("ts_start"),
+            ts_end=body.get("ts_end"),
         )
         self._json(200, {"ok": True, "id": mid})
 
@@ -2545,33 +2547,16 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True})
 
     def _write_diary(self) -> None:
-        """写今天的日记：人格 + 当天记忆/活动 + 相关旧记忆。"""
+        """写今天的日记：情绪事件 + 对应 L0 + L3 旧记忆 + 少量活动。"""
         body = self._body()
         import datetime as _dt
         today_start = _dt.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        user_text = str(body.get("user_text") or "")
-        assistant_text = str(body.get("assistant_text") or "")
-        if not user_text:
-            try:
-                rows = store.conn.execute(
-                    "SELECT text FROM memory WHERE ts >= ? ORDER BY id DESC LIMIT 12",
-                    (today_start,),
-                ).fetchall()
-                # 保留 L0 原顺序和「主人：/我：」标签，不要再拆开
-                user_text = "\n".join(str(r["text"]) for r in rows)[:5000]
-            except Exception:
-                user_text = ""
-        # 今天的活动日志
-        acts = []
-        try:
-            acts = [a for a in store.list_activities(200) if float(a.get("ts") or 0) >= today_start]
-        except Exception:
-            acts = []
         cfg = _load_config()
         if not bool(cfg.get("diary_enabled", True)):
             self._json(200, {"ok": True, "skipped": "disabled"})
             return
-        # 日记默认取当天最活跃的私聊 scope；没有私聊才退回最近 L0
+
+        # 当天最活跃的私聊 scope；没有私聊才退回最近 L0
         scope = ""
         try:
             row = store.conn.execute(
@@ -2588,27 +2573,120 @@ class Handler(BaseHTTPRequestHandler):
             scope = str(row["scope"] or "") if row else ""
         except Exception:
             scope = ""
-        persona_text = build_persona_context(store.get_persona()).get("text", "")
-        diary_query = " ".join([
-            user_text[:1200],
-            " ".join(str(a.get("detail") or "") for a in acts[-10:]),
-        ]).strip()
-        related = ""
-        if diary_query:
+
+        events = []
+        try:
+            events = [
+                e for e in store.emotion_log_list(limit=200, since=today_start)
+                if float(e.get("ts") or 0) >= today_start
+            ]
+            events.sort(key=lambda e: float(e.get("ts") or 0))
+        except Exception:
+            events = []
+
+        def l0_window(start: float, end: float) -> list[str]:
             try:
-                related = build_context(store, {
-                    "query": diary_query,
-                    "tiers": ["L1", "L3"],
-                    "limits": {"L1": 8, "L3": 6},
+                rows = store.conn.execute(
+                    "SELECT text,ts FROM memory WHERE tier='L0' AND ts>=? AND ts<=? "
+                    "AND (scope=? OR scope='global') ORDER BY ts ASC",
+                    (float(start), float(end), scope),
+                ).fetchall()
+            except Exception:
+                return []
+            return [str(r["text"]).strip() for r in rows if str(r["text"] or "").strip()]
+
+        event_l0: dict[int, list[str]] = {}
+        blocks: list[str] = []
+        seen_l0: set[str] = set()
+        for event in events:
+            ts = float(event.get("ts") or 0)
+            start = float(event.get("ts_start") or (ts - 120))
+            end = float(event.get("ts_end") or (ts + 120))
+            lines = l0_window(start, end)
+            event_l0[int(event.get("id") or 0)] = lines
+            label = str(event.get("label") or "情绪").strip()
+            reason = str(event.get("trigger") or "").strip()
+            block = [f"- {label}：{reason}" if reason else f"- {label}"]
+            for line in lines:
+                key = line[:120]
+                if key in seen_l0:
+                    continue
+                seen_l0.add(key)
+                block.append("  " + line.replace("\n", "\n  "))
+            if len(block) > 1:
+                blocks.append("\n".join(block))
+
+        user_text = str(body.get("user_text") or "").strip()
+        if not user_text:
+            if blocks:
+                user_text = "【今天有情绪的事】\n" + "\n\n".join(blocks)
+            else:
+                # 没有情绪事件时，只写很轻的近况，不硬凑
+                try:
+                    rows = store.conn.execute(
+                        "SELECT text FROM memory WHERE tier='L0' AND ts>=? "
+                        "AND (scope=? OR scope='global') ORDER BY ts ASC LIMIT 20",
+                        (today_start, scope),
+                    ).fetchall()
+                    user_text = "\n".join(str(r["text"]) for r in rows)[:5000]
+                except Exception:
+                    user_text = ""
+
+        # L3-only 旧记忆：用情绪事件做锚点，最多 5 个
+        anchors = sorted(
+            events,
+            key=lambda e: abs(float(e.get("valence") or 0)) + abs(float(e.get("arousal") or 0.5) - 0.5),
+            reverse=True,
+        )[:5]
+        memory_lines: list[str] = []
+        seen_memory: set[str] = set()
+        for event in anchors:
+            lines = event_l0.get(int(event.get("id") or 0)) or []
+            query = " ".join([
+                str(event.get("label") or ""),
+                str(event.get("trigger") or ""),
+                lines[0] if lines else "",
+            ]).strip()
+            if not query:
+                continue
+            try:
+                ctx = build_context(store, {
+                    "query": query,
+                    "tiers": ["L3"],
+                    "limits": {"L3": 3},
+                    "top_k": 3,
                     "scope": scope,
                     "purpose": "diary",
-                    "max_chars": 3000,
-                }, embedder).get("text", "")
+                    "max_chars": 800,
+                    "before_ts": today_start,
+                }, embedder)
             except Exception:
-                related = ""
+                continue
+            for line in str(ctx.get("text") or "").splitlines():
+                line = line.strip()
+                if not line.startswith("[L3"):
+                    continue
+                key = line[:120]
+                if key in seen_memory:
+                    continue
+                seen_memory.add(key)
+                memory_lines.append(line)
+                if len(memory_lines) >= 5:
+                    break
+            if len(memory_lines) >= 5:
+                break
+        related = "\n".join(memory_lines)[:1500]
+
+        acts = []
+        try:
+            acts = [a for a in store.list_activities(200) if float(a.get("ts") or 0) >= today_start]
+        except Exception:
+            acts = []
+        persona_text = build_persona_context(store.get_persona()).get("text", "")
+
         text = extractor.write_diary(
             user_text,
-            assistant_text=assistant_text,
+            assistant_text=str(body.get("assistant_text") or ""),
             date=str(body.get("date") or time.strftime("%Y-%m-%d")),
             activities=acts,
             persona=persona_text,

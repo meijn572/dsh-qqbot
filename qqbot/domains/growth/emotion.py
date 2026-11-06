@@ -38,7 +38,8 @@ def parse_emotion(reply: str) -> dict | None:
     return {"label": label, "valence": valence, "arousal": arousal, "reason": reason}
 
 
-async def review_turn(turn: Turn, transcript: str) -> dict | None:
+async def review_turn(turn: Turn, transcript: str, ts_start: float | None = None,
+                      ts_end: float | None = None) -> dict | None:
     """回看一轮完整对话，有真实情绪就写事件和当前状态。"""
     prompt = (
         "（内部维护，不要回复用户）\n"
@@ -66,6 +67,8 @@ async def review_turn(turn: Turn, transcript: str) -> dict | None:
         emotion["arousal"],
         emotion["reason"] or "刚刚的对话",
         source="idle-review",
+        ts_start=ts_start,
+        ts_end=ts_end,
     )
     log.info(
         "情绪复盘：记下 %s（valence=%s arousal=%s）",

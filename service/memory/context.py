@@ -40,6 +40,7 @@ def build_context(store, body: dict, embedder) -> dict:
             subject=body.get("subject"),
             focus=focus or None,
             scopes=body.get("scopes") or ([scope, "global"] if scope else None),
+            before_ts=body.get("before_ts"),
         )
         # 严格按层配额截断，避免 L1 命中过多把 L3 挤掉
         taken: dict[str, int] = {}

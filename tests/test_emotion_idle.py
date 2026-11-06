@@ -39,11 +39,13 @@ class ReviewTurnTests(unittest.TestCase):
 
         emotion.set_emotion = fake_set
         try:
-            got = asyncio.run(emotion.review_turn(fake_turn, "主人：在吗\n洄：在"))
+            got = asyncio.run(emotion.review_turn(fake_turn, "主人：在吗\n洄：在", ts_start=100.0, ts_end=200.0))
         finally:
             emotion.set_emotion = original
         self.assertEqual(got["label"], "暖")
         self.assertEqual(calls[0][1]["source"], "idle-review")
+        self.assertEqual(calls[0][1]["ts_start"], 100.0)
+        self.assertEqual(calls[0][1]["ts_end"], 200.0)
 
     def test_skip_writes_nothing(self):
         calls = []

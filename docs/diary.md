@@ -1,6 +1,6 @@
 # 日记
 
-状态：方案，未实现。
+状态：输入、范例式提示词、L3 旧记忆召回第一版已实现。
 
 ## 1. 现在的问题
 
@@ -460,3 +460,80 @@ text[:600]
 ```
 
 范例比规则更能教会模型这件事。
+
+## 9. 第一版实现
+
+### 数据库
+
+`emotion_log` 增加：
+
+```sql
+ts_start REAL
+ts_end   REAL
+```
+
+老库在 `MemoryStore._migrate_multi_user` 里幂等补列。
+
+### 情绪复盘
+
+空闲复盘写入时带：
+
+```text
+ts_start = 窗口第一条 ts
+ts_end   = 窗口最后一条 ts
+```
+
+强情绪工具没有窗口，仍然只记当前时间。
+
+### 日记输入
+
+`service/server.py::_write_diary`：
+
+```text
+当天全部 emotion_log
+→ 按 ts_start/ts_end 取 L0
+→ 合并去重
+→ 形成“今天有情绪的事 + 对应原话”
+```
+
+没有情绪事件时：
+
+```text
+退回当天 L0，写一条很轻的近况
+```
+
+### 旧记忆
+
+只用 L3：
+
+```text
+最多 5 个情绪事件锚点
+每个锚点 query = label + reason + 第一条 L0
+before_ts = 今天 0 点
+每个锚点 top 3
+合并后最多 5 条
+最多 1500 字
+```
+
+`build_context` / `store.search` 新增 `before_ts` 时间上界。
+
+### 提示词
+
+`DIARY_SYSTEM` 改成三段范例，不再列“今天干了什么”的清单。
+
+`write_diary`：
+
+```text
+max_tokens 300 → 600
+输出截断 240 → 600
+```
+
+### 输入顺序
+
+```text
+人格
+今天有情绪的事 + 对应原话
+少量活动
+L3 旧记忆
+```
+
