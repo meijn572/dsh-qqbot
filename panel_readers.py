@@ -645,6 +645,9 @@ def sticker_payload() -> dict:
         item["action"] = entry.get("action") if isinstance(entry.get("action"), list) else []
         item["expression"] = entry.get("expression") if isinstance(entry.get("expression"), list) else []
         item["generic"] = entry.get("generic") if isinstance(entry.get("generic"), list) else []
+        item["meta_status"] = str(entry.get("meta_status") or "pending_review")
+        item["meta_source"] = str(entry.get("meta_source") or "")
+        item["reviewed_at"] = int(entry.get("reviewed_at") or 0)
         item["usage_count"] = int(entry.get("usage_count") or 0)
     item_map = {item["file"]: item for item in items}
     user_items = [item_map[x["file"]] for x in user_items if x["file"] in item_map]
@@ -706,6 +709,9 @@ def sticker_update_semantics(rel: str, label: str = "", identity: list | None = 
     entry["label"] = clean_label(label)
     for field, values in (("identity", identity), ("action", action), ("expression", expression), ("generic", generic)):
         entry[field] = clean_facets(values)
+    entry["meta_status"] = "reviewed"
+    entry["meta_source"] = "panel"
+    entry["reviewed_at"] = int(time.time())
     (STICKERS / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"ok": True, "file": key, "label": entry["label"], **{k: entry[k] for k in ("identity", "action", "expression", "generic")}}
 

@@ -178,7 +178,7 @@ anchor.ts - before_seconds
 anchor.ts + after_seconds
 ```
 
-从同一 `chat_key` 的 L0 对话里取。
+从 bridge 维护的原始对话窗口取（与 L0 同源，额外保留 message_id）。
 
 ### 上限
 
@@ -425,8 +425,8 @@ ts
 image_index
 ```
 
-- 按时间窗口取 L0 原始消息
-- 记录 before / anchor / after
+- 按时间窗口取 bridge 原始对话窗口
+- 记录 user / assistant 的 message_id
 - 在 L0 中保留消息 ID，才能按 ID 去重
 
 ### 9.4 复盘 loop

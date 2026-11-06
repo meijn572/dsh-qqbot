@@ -9,6 +9,7 @@ import logging
 import random
 import re
 import time
+import uuid
 from pathlib import Path
 
 from settings import BOT_DIR
@@ -18,6 +19,8 @@ log = logging.getLogger("qqbot.media.library")
 MEME_DIR = BOT_DIR / "stickers"
 INDEX_FILE = MEME_DIR / "index.json"
 STICKER_META_FILE = MEME_DIR / "meta.json"
+OCCURRENCE_FILE = MEME_DIR / "occurrences.json"
+REVIEW_STATE_FILE = MEME_DIR / "review-state.json"
 IMAGE_META: dict[str, dict] = {}
 STICKER_META: dict[str, dict] = {}
 LAST_STICKER_INFO: dict[str, dict] = {}
@@ -249,6 +252,9 @@ def index_add(rel_path: str, category: str, caption: str, *,
         save_index(entries)
         return
     entry = {"file": rel_path, "category": category, "caption": caption, "ts": int(time.time())}
+    entry["meta_status"] = "pending_review"
+    entry["meta_source"] = "vision"
+    entry["reviewed_at"] = 0
     if new_label:
         entry["label"] = new_label
     for key in FACET_KEYS:
@@ -499,3 +505,160 @@ def history_hint() -> str:
     if not words:
         return ""
     return "（表情库检索提示：可用的关键词有 " + "、".join(words) + "；想发某张表情就在回复末尾写 [[meme:关键词]]，系统会按描述去找。）"
+
+
+# ---------------------------------------------------------------------------
+# occurrence：一次表情出现的原始记忆切片
+# ---------------------------------------------------------------------------
+
+def _load_occurrences() -> dict:
+    try:
+        data = json.loads(OCCURRENCE_FILE.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("items"), list):
+            return data
+    except Exception:  # noqa: BLE001
+        pass
+    return {"version": 1, "items": []}
+
+
+def _save_occurrences(data: dict) -> None:
+    MEME_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = OCCURRENCE_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(OCCURRENCE_FILE)
+
+
+def _clean_messages(messages: list[dict]) -> list[dict]:
+    kept: list[dict] = []
+    seen: set[str] = set()
+    for item in messages or []:
+        if not isinstance(item, dict):
+            continue
+        message_id = str(item.get("message_id") or "").strip()
+        if not message_id or message_id in seen:
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        seen.add(message_id)
+        kept.append({
+            "message_id": message_id,
+            "ts": float(item.get("ts") or 0),
+            "role": str(item.get("role") or "user"),
+            "speaker": str(item.get("speaker") or ""),
+            "text": text[:800],
+            "relation": str(item.get("relation") or "before"),
+        })
+    kept.sort(key=lambda item: item["ts"])
+    return kept
+
+
+def append_occurrence(
+    rel: str,
+    chat_key: str,
+    anchor: dict,
+    messages: list[dict],
+    before_seconds: float = 180,
+    after_seconds: float = 120,
+) -> str:
+    """记录一次表情出现；rel 只能来自 hash/签名解析。"""
+    rel = str(rel or "").replace("\\", "/")
+    if not rel:
+        return ""
+    data = _load_occurrences()
+    occ_id = str(uuid.uuid4())
+    items = data.setdefault("items", [])
+    anchor_ts = float((anchor or {}).get("ts") or time.time())
+    items.append({
+        "id": occ_id,
+        "rel": rel,
+        "chat_key": str(chat_key or ""),
+        "anchor": {
+            "message_id": str((anchor or {}).get("message_id") or ""),
+            "ts": anchor_ts,
+            "image_index": int((anchor or {}).get("image_index") or 0),
+        },
+        "window": {
+            "start_ts": anchor_ts - float(before_seconds),
+            "end_ts": anchor_ts + float(after_seconds),
+        },
+        "messages": _clean_messages(messages),
+        "reviewed": False,
+        "created_at": time.time(),
+    })
+    # 防止无限增长；周期性复盘会消费旧记录。
+    data["items"] = items[-2000:]
+    _save_occurrences(data)
+    return occ_id
+
+
+def update_occurrence_messages(
+    occ_id: str,
+    messages: list[dict],
+    before_seconds: float | None = None,
+    after_seconds: float | None = None,
+) -> None:
+    data = _load_occurrences()
+    for item in data.get("items", []):
+        if item.get("id") != occ_id:
+            continue
+        item["messages"] = _clean_messages(messages)
+        if before_seconds is not None and after_seconds is not None:
+            anchor_ts = float((item.get("anchor") or {}).get("ts") or time.time())
+            item["window"] = {
+                "start_ts": anchor_ts - float(before_seconds),
+                "end_ts": anchor_ts + float(after_seconds),
+            }
+        _save_occurrences(data)
+        return
+
+
+def pending_occurrences(limit: int = 100) -> list[dict]:
+    data = _load_occurrences()
+    items = [item for item in data.get("items", []) if not item.get("reviewed")]
+    items.sort(key=lambda item: float(item.get("created_at") or 0))
+    return items[:max(1, int(limit))]
+
+
+def mark_occurrences_reviewed(ids: list[str]) -> None:
+    wanted = {str(i) for i in ids if i}
+    if not wanted:
+        return
+    data = _load_occurrences()
+    changed = False
+    for item in data.get("items", []):
+        if item.get("id") in wanted:
+            item["reviewed"] = True
+            changed = True
+    if changed:
+        _save_occurrences(data)
+
+
+def review_entry(rel: str, data: dict, source: str = "model") -> dict:
+    """写入一次复盘结果；changed=false 时只更新 reviewed_at。"""
+    rel = str(rel or "").replace("\\", "/")
+    entries = load_index()
+    entry = next(
+        (e for e in entries if str(e.get("file") or "").replace("\\", "/") == rel),
+        None,
+    )
+    if entry is None:
+        return {"ok": False, "error": "entry not found"}
+    changed = bool((data or {}).get("changed", True))
+    if changed:
+        label = clean_label(data.get("label", entry.get("label", "")))
+        if label:
+            entry["label"] = label
+        if str(data.get("caption") or "").strip():
+            entry["caption"] = str(data.get("caption") or "").strip()[:80]
+        for key in FACET_KEYS:
+            if key in (data or {}):
+                entry[key] = clean_facets(data.get(key) or [])
+        category = str(data.get("category") or "").strip().lower()
+        if category:
+            entry["category"] = category
+    entry["meta_status"] = "reviewed"
+    entry["meta_source"] = str(source or "model")
+    entry["reviewed_at"] = int(time.time())
+    save_index(entries)
+    return {"ok": True, "rel": rel, "changed": changed}

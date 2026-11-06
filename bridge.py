@@ -62,15 +62,20 @@ from qqbot.domains.media.library import (
     is_sticker_rel,
     load_index,
     load_sticker_meta,
+    mark_occurrences_reviewed,
     mark_sticker_used,
+    pending_occurrences,
     pick_meme,
     remember_sticker_meta,
     resolve_meme,
+    review_entry,
     save_index,
     save_sticker_meta,
     sticker_signature,
     category_from_text,
     should_hint,
+    append_occurrence,
+    update_occurrence_messages,
 )
 from qqbot.domains.media.meta import apply_record as apply_sticker_meta
 from qqbot.domains.media.meta import lookup_ref as sticker_lookup_ref
@@ -866,6 +871,53 @@ def merge_seconds() -> float:
         return 6.5
 
 
+def sticker_review_cfg() -> dict:
+    merged = {
+        "enabled": True,
+        "interval_hours": 12,
+        "max_per_run": 20,
+        "before_seconds": 180,
+        "after_seconds": 120,
+        "max_messages": 20,
+        "max_chars": 2000,
+    }
+    merged.update(CONFIG.get("sticker_review") or {})
+    return merged
+
+
+def remember_chat_message(chat_key: str, role: str, speaker: str, text: str, message_id: str = "") -> None:
+    """bridge 自己维护的原始对话窗口，用于表情 occurrence。"""
+    text = str(text or "").strip()
+    if not chat_key or not text:
+        return
+    mid = str(message_id or "").strip() or f"{role}-{time.time_ns()}"
+    rows = CHAT_MEMORY.setdefault(chat_key, [])
+    if any(row.get("message_id") == mid for row in rows):
+        return
+    rows.append({
+        "message_id": mid,
+        "ts": time.time(),
+        "role": str(role or "user"),
+        "speaker": str(speaker or ""),
+        "text": text[:800],
+    })
+    del rows[:-80]
+
+
+def chat_memory_slice(chat_key: str, anchor_ts: float, before: float, after: float) -> list[dict]:
+    rows = CHAT_MEMORY.get(chat_key) or []
+    start, end = anchor_ts - before, anchor_ts + after
+    picked = []
+    for row in rows:
+        ts = float(row.get("ts") or 0)
+        if ts < start or ts > end:
+            continue
+        relation = "before" if ts < anchor_ts - 0.001 else ("after" if ts > anchor_ts + 0.001 else "anchor")
+        picked.append({**row, "relation": relation})
+    picked.sort(key=lambda item: float(item.get("ts") or 0))
+    return picked
+
+
 def _matched_slang(items: list[dict], text: str, limit: int = 6) -> list[dict]:
     hits = []
     for item in items:
@@ -932,6 +984,8 @@ async def _process_locked(dsh: Dsh, onebot: OneBot, mtype: str, target: int, cha
             # 生成期间又来了新消息：这条回复仍然发出去，避免“记忆里有、QQ 没有”
             log.info("处理期间来了新消息，本条仍发送，随后处理新消息 (%s)", chat_key)
         await onebot.send(mtype, target, reply)
+        if reply:
+            remember_chat_message(chat_key, "assistant", "洄", reply, f"assistant-{time.time_ns()}")
         try:
             proj_after = await dsh.projections(sid)
             set_state(chat_key, sid, int(proj_after.get("asOfSeq") or 0))
@@ -949,39 +1003,6 @@ async def _process_locked(dsh: Dsh, onebot: OneBot, mtype: str, target: int, cha
 async def process_message(dsh: Dsh, onebot: OneBot, mtype: str, target: int, chat_key: str, text: str, images: list[str] | None = None) -> str:
     async with chat_lock(chat_key):
         return await _process_locked(dsh, onebot, mtype, target, chat_key, text, images)
-
-
-async def sticker_enrich_loop(dsh: Dsh) -> None:
-    """后台补写表情包理解：索引里 caption 为空的，逐个让模型写描述。"""
-    while True:
-        await asyncio.sleep(60)
-        try:
-            users = CONFIG.get("allowed_users") or []
-            if not users:
-                continue
-            chat_key = f"private:{int(users[0])}"
-            if chat_lock(chat_key).locked():
-                continue
-            entries = load_index()
-            targets = [
-                e for e in entries
-                if not (e.get("caption") or "").strip() and (MEME_DIR / e.get("file", "")).is_file()
-            ]
-            if not targets:
-                continue
-            entry = targets[0]
-            path = str(MEME_DIR / entry["file"])
-            hint = "主人之前发过这张表情包"
-            facts = [str(entry.get("label") or "")]
-            for key in ("identity", "action", "expression", "generic"):
-                facts.extend(str(v) for v in (entry.get(key) or []))
-            facts = [f for f in facts if f]
-            if facts:
-                hint += "，已知语义：" + "、".join(facts[:6])
-            log.info("后台补写表情理解：%s", entry["file"])
-            await enrich_stickers(dsh, chat_key, [path], hint)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("sticker_enrich_loop err: %s", exc)
 
 
 async def sticker_meta_loop() -> None:
@@ -1015,52 +1036,133 @@ async def sticker_meta_loop() -> None:
             log.warning("sticker_meta_loop err: %s", exc)
 
 
-async def enrich_stickers(dsh: Dsh, chat_key: str, images: list[str], context_text: str) -> None:
-    """让模型在对话后自己写一条表情包理解（名字/描述/标签），写回索引。"""
-    for img in images:
-        rel_path = None
-        try:
-            raw = Path(img).read_bytes()
-            digest = hashlib.sha256(raw).hexdigest()[:16]
-            for candidate in MEME_DIR.rglob(f"u_{digest}*"):
-                rel_path = str(candidate.relative_to(MEME_DIR))
-                category = candidate.parent.name
-                break
-        except OSError:
-            continue
-        if not rel_path:
-            continue
-        prompt = (
-            "（内部记录，不要回复用户、不要调用工具）"
-            f"刚才收藏了一张表情包：{rel_path}，对话里主人说的是：{context_text[:120]!r}。"
-            "用你自己的理解，只输出 JSON："
-            '{"description":"一句话描述，80字以内",'
-            '"identity":["角色/IP"],"action":["动作"],"expression":["表情/情绪"],"generic":["泛词"]}'
+def _review_memory_text(messages: list[dict], max_messages: int, max_chars: int) -> str:
+    if not messages:
+        return "（没有可用的对话上下文）"
+    picked = list(messages)
+    if len(picked) > max_messages:
+        anchor = next((i for i, m in enumerate(picked) if m.get("relation") == "anchor"), len(picked) // 2)
+        half = max_messages // 2
+        picked = picked[max(0, anchor - half): anchor + half + 1]
+    lines = []
+    used = 0
+    for item in picked:
+        label = {"before": "之前", "anchor": "发图时", "after": "之后"}.get(
+            str(item.get("relation") or "before"), "之前"
         )
-        reply = await maintenance_turn(dsh, chat_key, prompt)
-        data = {}
+        speaker = str(item.get("speaker") or ("主人" if item.get("role") == "user" else "你"))
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        line = f"[{label}] {speaker}：{text}"
+        if used + len(line) > max_chars:
+            break
+        lines.append(line)
+        used += len(line)
+    return "\n".join(lines) or "（没有可用的对话上下文）"
+
+
+def _review_existing_text(entry: dict) -> str:
+    parts = []
+    if entry.get("label"):
+        parts.append(f"label={entry['label']}")
+    if entry.get("category"):
+        parts.append(f"category={entry['category']}")
+    if entry.get("caption"):
+        parts.append(f"caption={entry['caption']}")
+    for key in ("identity", "action", "expression", "generic"):
+        values = "、".join(str(v) for v in (entry.get(key) or []))
+        if values:
+            parts.append(f"{key}={values}")
+    return "；".join(parts) if parts else "无"
+
+
+async def review_sticker(dsh: Dsh, rel: str, occurrences: list[dict]) -> bool:
+    path = MEME_DIR / rel
+    if not path.is_file():
+        return False
+    cfg = sticker_review_cfg()
+    entries = load_index()
+    entry = next((e for e in entries if str(e.get("file") or "").replace("\\", "/") == rel), None)
+    if entry is None:
+        return False
+    messages = _occurrence_messages(occurrences)
+    memory = _review_memory_text(
+        messages,
+        int(cfg.get("max_messages", 20)),
+        int(cfg.get("max_chars", 2000)),
+    )
+    status = str(entry.get("meta_status") or ("reviewed" if entry.get("label") else "pending_review"))
+    existing = _review_existing_text(entry) if status == "reviewed" else "（未复盘，不给旧字段）"
+    prompt = (
+        "（内部表情复盘，不要回复用户，不要调用任何工具。）\n"
+        f"表情：{rel}\n"
+        f"当前状态：{status}\n"
+        f"已有语义：{existing}\n"
+        "下面是与这张表情相关的原始对话记忆，按时间排列：\n"
+        f"{memory}\n\n"
+        "请结合图片和记忆，更新表情语义。只输出 JSON（不要解释）：\n"
+        '{"changed":true|false,'
+        '"label":"2-10字短名，认不出就空",'
+        '"category":"happy|angry|sad|confused|surprised|shy|sleep|affection|food|money|greeting|work|entertainment|teasing|reply",'
+        '"caption":"一句话描述，80字以内",'
+        '"identity":["角色/IP"],"action":["动作"],"expression":["表情/情绪"],"generic":["泛词"]}\n'
+        "没有把握的字段留空；不要从标签拼名字；不要编造。"
+    )
+    try:
+        reply = await maintenance_turn(dsh, str((occurrences[0] or {}).get("chat_key") or ""), prompt, images=[str(path)])
         match = re.search(r"\{.*\}", reply or "", re.S)
-        if match:
-            try:
-                data = json.loads(match.group(0))
-            except Exception:  # noqa: BLE001
-                data = {}
-        if not isinstance(data, dict) or not any(data.get(k) for k in ("description", "identity", "action", "expression", "generic")):
-            log.info("表情包理解没拿到有效 JSON，跳过：%s", rel_path)
+        data = json.loads(match.group(0)) if match else {}
+        if not isinstance(data, dict) or not any(
+            k in data for k in ("changed", "label", "category", "caption", "identity", "action", "expression", "generic")
+        ):
+            log.info("表情复盘没有有效 JSON：%s", rel)
+            return False
+        result = review_entry(rel, data, source="model")
+        if not result.get("ok"):
+            return False
+        log.info("表情复盘已写入：%s changed=%s", rel, result.get("changed"))
+        return True
+    except Exception as exc:  # noqa: BLE001
+        log.warning("表情复盘失败：%s (%s)", rel, exc)
+        return False
+
+
+async def sticker_review_loop(dsh: Dsh) -> None:
+    """低频批量复盘：时间窗口内的表情按 rel 去重，每张只处理一次。"""
+    await asyncio.sleep(60)
+    while True:
+        cfg = sticker_review_cfg()
+        if not cfg.get("enabled", True):
+            await asyncio.sleep(600)
             continue
-        index_add(
-            rel_path,
-            category,
-            str(data.get("description") or ""),
-            identity=data.get("identity") or [],
-            action=data.get("action") or [],
-            expression=data.get("expression") or [],
-            generic=data.get("generic") or [],
-        )
-        log.info("表情包理解已写入：%s", rel_path)
+        try:
+            items = pending_occurrences(500)
+            if not items:
+                await asyncio.sleep(max(60, int(float(cfg.get("interval_hours", 12)) * 3600)))
+                continue
+            groups: dict[str, list[dict]] = {}
+            for item in items:
+                groups.setdefault(str(item.get("rel") or ""), []).append(item)
+            reviewed_ids: list[str] = []
+            done = 0
+            for rel, occs in groups.items():
+                if not rel or done >= int(cfg.get("max_per_run", 20)):
+                    break
+                ok = await review_sticker(dsh, rel, occs)
+                if ok:
+                    reviewed_ids.extend(str(o.get("id")) for o in occs)
+                    done += 1
+            if reviewed_ids:
+                mark_occurrences_reviewed(reviewed_ids)
+            log.info("表情复盘：处理 %s 张，标记 %s 条 occurrence", done, len(reviewed_ids))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("sticker_review_loop err: %s", exc)
+        await asyncio.sleep(max(60, int(float(cfg.get("interval_hours", 12)) * 3600)))
 
 
 RECENT_TEXT: dict[str, str] = {}
+CHAT_MEMORY: dict[str, list[dict]] = {}
 STICKER_META_QUEUE = DSH_HOME / "sticker-meta-queue.jsonl"
 LAST_SHARE: dict[str, dict] = {}
 MAINT_STATE_FILE = DSH_HOME / "maintenance-session.json"
@@ -1105,10 +1207,10 @@ async def maintenance_sid(dsh: Dsh) -> str:
     return sid
 
 
-async def maintenance_turn(dsh: Dsh, chat_key: str, prompt: str) -> str:
+async def maintenance_turn(dsh: Dsh, chat_key: str, prompt: str, images: list[str] | None = None) -> str:
     sid = await maintenance_sid(dsh)
     async with MAINT_LOCK:
-        return await internal_turn(dsh, sid, chat_key, prompt)
+        return await internal_turn(dsh, sid, chat_key, prompt, images=images)
 
 
 async def activity_sid(dsh: Dsh) -> str:
@@ -1290,12 +1392,12 @@ def quiet_now() -> bool:
     return hour >= start or hour < end
 
 
-async def internal_turn(dsh: Dsh, sid: str, chat_key: str, prompt: str) -> str:
+async def internal_turn(dsh: Dsh, sid: str, chat_key: str, prompt: str, images: list[str] | None = None) -> str:
     SUPPRESS[chat_key] = SUPPRESS.get(chat_key, 0) + 1
     try:
         proj = await dsh.projections(sid)
         baseline = int(proj.get("asOfSeq") or 0)
-        await dsh.prompt(sid, prompt)
+        await dsh.prompt(sid, prompt, images=images)
         reply = await dsh.wait_reply(sid, baseline)
     except Exception as exc:  # noqa: BLE001
         log.warning("internal_turn failed: %s", exc)
@@ -1423,13 +1525,90 @@ def group_merge_seconds() -> float:
         return 10.0
 
 
-async def collect_sticker_bg(path: Path, note: str) -> None:
+async def collect_sticker_bg(path: Path, note: str, chat_key: str = "", anchor: dict | None = None) -> None:
     try:
         await asyncio.wait_for(collect_sticker(path, category_from_text(note), note), timeout=30)
+        if not chat_key:
+            return
+        info = sticker_lookup_ref(f"source:{path}")
+        if not info.get("found"):
+            return
+        rel = str(info.get("file") or "")
+        if not rel:
+            return
+        cfg = sticker_review_cfg()
+        anchor_ts = float((anchor or {}).get("ts") or time.time())
+        messages = chat_memory_slice(
+            chat_key,
+            anchor_ts,
+            float(cfg.get("before_seconds", 180)),
+            0,
+        )
+        anchor_mid = str((anchor or {}).get("message_id") or "")
+        if anchor_mid and not any(str(m.get("message_id")) == anchor_mid for m in messages):
+            messages.append({
+                "message_id": anchor_mid,
+                "ts": anchor_ts,
+                "role": "user",
+                "speaker": "",
+                "text": "[表情包]",
+                "relation": "anchor",
+            })
+        occ_id = append_occurrence(
+            rel,
+            chat_key,
+            anchor or {"ts": anchor_ts},
+            messages,
+            before_seconds=float(cfg.get("before_seconds", 180)),
+            after_seconds=float(cfg.get("after_seconds", 120)),
+        )
+        if occ_id:
+            asyncio.create_task(finalize_occurrence(occ_id, chat_key, anchor_ts))
     except asyncio.TimeoutError:
         log.warning("后台表情包分类超时：%s", path)
     except Exception as exc:  # noqa: BLE001
         log.warning("后台表情包分类失败：%s", exc)
+
+
+async def finalize_occurrence(occ_id: str, chat_key: str, anchor_ts: float) -> None:
+    """等 after 窗口结束，把图片后的原始记忆补进 occurrence。"""
+    cfg = sticker_review_cfg()
+    await asyncio.sleep(max(1.0, float(cfg.get("after_seconds", 120))))
+    try:
+        messages = chat_memory_slice(
+            chat_key,
+            anchor_ts,
+            float(cfg.get("before_seconds", 180)),
+            float(cfg.get("after_seconds", 120)),
+        )
+        update_occurrence_messages(
+            occ_id,
+            messages,
+            before_seconds=float(cfg.get("before_seconds", 180)),
+            after_seconds=float(cfg.get("after_seconds", 120)),
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("occurrence finalize failed: %s", exc)
+
+
+def _occurrence_messages(occurrences: list[dict]) -> list[dict]:
+    """合并多个 occurrence 的原始记忆，按 message_id 去重。"""
+    merged: list[dict] = []
+    seen: set[str] = set()
+    for occ in occurrences:
+        anchor = occ.get("anchor") or {}
+        anchor_id = str(anchor.get("message_id") or "")
+        for item in occ.get("messages") or []:
+            mid = str(item.get("message_id") or "").strip()
+            if not mid or mid in seen:
+                continue
+            seen.add(mid)
+            row = dict(item)
+            if mid == anchor_id:
+                row["relation"] = "anchor"
+            merged.append(row)
+    merged.sort(key=lambda item: float(item.get("ts") or 0))
+    return merged
 
 
 async def schedule_flush(dsh: Dsh, onebot: OneBot, chat_key: str) -> None:
@@ -1452,8 +1631,15 @@ async def schedule_flush(dsh: Dsh, onebot: OneBot, chat_key: str) -> None:
     texts = [t for t in pending.get("texts", []) if t]
     merged = "\n".join(texts)
     notes = []
-    for img in pending.get("images", []):
+    image_items = pending.get("image_items") or []
+    for idx, img in enumerate(pending.get("images", [])):
         img_path = Path(img)
+        anchor = image_items[idx] if idx < len(image_items) else {}
+        anchor = {
+            "message_id": str(anchor.get("message_id") or f"image-{int(time.time() * 1000)}-{idx}"),
+            "ts": float(anchor.get("ts") or time.time()),
+            "image_index": int(anchor.get("image_index") or idx),
+        }
         meta = IMAGE_META.get(str(img_path)) or {}
         if meta.get("sticker"):
             notes.append(f"[表情包：{img_path}]")
@@ -1470,7 +1656,7 @@ async def schedule_flush(dsh: Dsh, onebot: OneBot, chat_key: str) -> None:
                     + "；".join(facets)
                     + f"；caption={old_caption}）"
                 )
-            asyncio.create_task(collect_sticker_bg(img_path, merged))
+            asyncio.create_task(collect_sticker_bg(img_path, merged, chat_key, anchor))
         else:
             notes.append(f"[图片：{img_path}]")
     if notes:
@@ -1490,9 +1676,6 @@ async def schedule_flush(dsh: Dsh, onebot: OneBot, chat_key: str) -> None:
             ACTIVE_GROUP[chat_key] = time.time()
             if pending.get("interjected"):
                 mark_interject(chat_key)
-        images = [str(p) for p in pending.get("images", [])]
-        if images:
-            await enrich_stickers(dsh, chat_key, images, merged)
         await extract_interests(dsh, chat_key, merged)
 
 
@@ -1536,6 +1719,14 @@ async def handle(dsh: Dsh, onebot: OneBot, event: dict, forced: bool = False) ->
     if text.startswith("/"):
         return
     speaker = sender_name(event) if mtype == "group" else ""
+    if text:
+        remember_chat_message(
+            chat_key,
+            "user",
+            speaker or ("九歌" if mtype == "private" else "群友"),
+            text,
+            str(event.get("message_id") or ""),
+        )
     if mtype == "group" and uid and speaker:
         asyncio.create_task(touch_guest(uid, speaker))
     elif mtype == "private" and uid:
@@ -1553,14 +1744,17 @@ async def handle(dsh: Dsh, onebot: OneBot, event: dict, forced: bool = False) ->
     async def collect_quietly(paths: list[str]) -> None:
         if not CONFIG.get("collect_group_stickers", True):
             return
-        for path in paths:
+        for idx, path in enumerate(paths):
             meta = IMAGE_META.get(path) or {}
             if not meta.get("sticker"):
                 continue
             try:
-                category = await collect_sticker(Path(path), category_from_text(text), text)
-                if category:
-                    log.info("群里静默收藏表情 -> %s (%s)", path, category)
+                anchor = {
+                    "message_id": str(event.get("message_id") or f"group-{int(time.time() * 1000)}:{idx}"),
+                    "ts": time.time(),
+                    "image_index": idx,
+                }
+                await collect_sticker_bg(Path(path), text, chat_key, anchor)
             except Exception as exc:  # noqa: BLE001
                 log.warning("collect_sticker failed: %s", exc)
 
@@ -1590,7 +1784,16 @@ async def handle(dsh: Dsh, onebot: OneBot, event: dict, forced: bool = False) ->
 
     pending = PENDING.setdefault(
         chat_key,
-        {"texts": [], "images": [], "task": None, "mtype": mtype, "target": target, "addressed": False, "need_gate": False},
+        {
+            "texts": [],
+            "images": [],
+            "image_items": [],
+            "task": None,
+            "mtype": mtype,
+            "target": target,
+            "addressed": False,
+            "need_gate": False,
+        },
     )
     if text:
         if mtype == "group":
@@ -1603,6 +1806,14 @@ async def handle(dsh: Dsh, onebot: OneBot, event: dict, forced: bool = False) ->
         else:
             pending["texts"].append(text)
     pending["images"].extend(images)
+    base_mid = str(event.get("message_id") or "").strip() or f"msg-{int(time.time() * 1000)}"
+    for idx, img in enumerate(images):
+        pending.setdefault("image_items", []).append({
+            "path": str(img),
+            "message_id": base_mid if len(images) == 1 else f"{base_mid}:{idx}",
+            "ts": time.time(),
+            "image_index": idx,
+        })
     pending["mtype"] = mtype
     pending["target"] = target
     pending["last_at"] = time.time()
@@ -2039,7 +2250,7 @@ async def run() -> None:
     asyncio.create_task(group_slang_loop(dsh))
     asyncio.create_task(report_watch(dsh, onebot))
     asyncio.create_task(session_watch(dsh, onebot))
-    asyncio.create_task(sticker_enrich_loop(dsh))
+    asyncio.create_task(sticker_review_loop(dsh))
     asyncio.create_task(sticker_meta_loop())
     asyncio.create_task(autonomy_loop(dsh, onebot))
     backoff = 3

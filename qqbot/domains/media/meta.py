@@ -13,6 +13,7 @@ from qqbot.domains.media.library import (
     find_signature_match,
     index_add,
     load_index,
+    review_entry,
     sticker_signature,
 )
 
@@ -85,7 +86,7 @@ def apply_record(record: dict) -> dict:
         return {"ok": False, "pending": ref.startswith("source:") or bool(record.get("source"))}
     index_add(
         rel,
-        Path(rel).parent.name,
+        str(record.get("category") or Path(rel).parent.name),
         str(record.get("caption") or ""),
         label=str(record.get("label") or ""),
         identity=record.get("identity") or [],
@@ -94,6 +95,7 @@ def apply_record(record: dict) -> dict:
         generic=record.get("generic") or [],
         replace_facets=bool(record.get("replace_facets")),
     )
+    review_entry(rel, {"changed": False}, source="model")
     return {"ok": True, "rel": rel}
 
 

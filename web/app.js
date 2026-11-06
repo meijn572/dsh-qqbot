@@ -322,6 +322,7 @@ async function load(){
       h+=`<div class="item sticker-item" data-file="${attr(it.file)}" data-name="${attr(shown || it.file)}" onclick="stickerSelect(this)">
         <img class="thumb" src="/api/sticker?file=${encodeURIComponent(it.file)}">
         <div class="sticker-label">${esc(it.label || '未命名')}</div>
+        <div class="mut" style="font-size:12px">${it.meta_status === 'reviewed' ? '已整理' : '待整理'}</div>
         <div class="sticker-tags">${stickerFacetHtml(it)}</div>
         <button class="sticker-x" hidden onclick="stickerConfirmDelete(event,this)">×</button>
       </div>`;
