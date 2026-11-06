@@ -2274,11 +2274,126 @@ async def qzone_loop(dsh: Dsh, onebot: OneBot) -> None:
     )
 
 
-async def emotion_check_loop(dsh: Dsh) -> None:
-    await growth_emotion.loop(
-        lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt),
-        CONFIG.get("emotion_check") or {},
-    )
+EMOTION_IDLE_STATE = DSH_HOME / "emotion-idle-state.json"
+
+
+def emotion_idle_cfg() -> dict:
+    merged = {
+        "enabled": True,
+        "idle_seconds": 300,
+        "interval_seconds": 30,
+        "max_messages": 8,
+    }
+    merged.update(CONFIG.get("emotion_idle") or {})
+    return merged
+
+
+def _load_emotion_idle_state() -> dict:
+    try:
+        data = json.loads(EMOTION_IDLE_STATE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _save_emotion_idle_state(state: dict) -> None:
+    try:
+        EMOTION_IDLE_STATE.write_text(
+            json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8"
+        )
+    except OSError:
+        pass
+
+
+def _format_emotion_window(rows: list[dict]) -> str:
+    lines = []
+    for row in rows:
+        role = str(row.get("role") or "user")
+        who = "洄" if role == "assistant" else "主人"
+        text = str(row.get("text") or "").strip()
+        images = row.get("images") or []
+        if images:
+            text = (text + " " if text else "") + f"[图片×{len(images)}]"
+        if text:
+            lines.append(f"{who}：{text[:600]}")
+    return "\n".join(lines)
+
+
+async def emotion_idle_loop(dsh: Dsh) -> None:
+    """主人私聊空闲 5 分钟后，回看刚刚结束的对话。"""
+    cfg = emotion_idle_cfg()
+    if not cfg.get("enabled", True):
+        log.info("情绪空闲复盘：未启用")
+        return
+    state = _load_emotion_idle_state()
+    if state.get("run_id") != RUN_ID:
+        state = {"run_id": RUN_ID, "reviewed": {}}
+        _save_emotion_idle_state(state)
+    reviewed = dict(state.get("reviewed") or {})
+    while True:
+        await asyncio.sleep(max(5, int(cfg.get("interval_seconds", 30))))
+        try:
+            if not cfg.get("enabled", True):
+                continue
+            rows = CHAT_MEMORY.get(OWNER_CHAT_KEY) or []
+            if not rows:
+                continue
+            last = rows[-1]
+            last_seq = int(last.get("seq") or 0)
+            if last_seq <= int(reviewed.get(OWNER_CHAT_KEY) or 0):
+                continue
+            now = time.time()
+            if now - float(last.get("ts") or 0) < float(cfg.get("idle_seconds", 300)):
+                continue
+            if now < float(state.get("retry_at") or 0):
+                continue
+            window = [
+                dict(row) for row in rows
+                if int(row.get("seq") or 0) > int(reviewed.get(OWNER_CHAT_KEY) or 0)
+            ][-max(1, int(cfg.get("max_messages", 8))):]
+            if not any(str(r.get("role")) == "user" for r in window):
+                reviewed[OWNER_CHAT_KEY] = last_seq
+                state["reviewed"] = reviewed
+                _save_emotion_idle_state(state)
+                continue
+            if not any(str(r.get("role")) == "assistant" for r in window):
+                # 还没回复，等回复后再复盘
+                continue
+            window_start = min(float(r.get("ts") or 0) for r in window)
+            # 强情绪工具已经记过这一段，避免重复
+            try:
+                st = await cmem_call("GET", "/state")
+                recent = (st or {}).get("emotion_recent") or []
+                if recent:
+                    newest = recent[0] if isinstance(recent[0], dict) else {}
+                    if (
+                        str(newest.get("source") or "") == "self"
+                        and float(newest.get("ts") or 0) >= window_start
+                    ):
+                        reviewed[OWNER_CHAT_KEY] = last_seq
+                        state["reviewed"] = reviewed
+                        _save_emotion_idle_state(state)
+                        continue
+            except Exception:  # noqa: BLE001
+                pass
+            transcript = _format_emotion_window(window)
+            if not transcript:
+                reviewed[OWNER_CHAT_KEY] = last_seq
+                state["reviewed"] = reviewed
+                _save_emotion_idle_state(state)
+                continue
+            await growth_emotion.review_turn(
+                lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt),
+                transcript,
+            )
+            reviewed[OWNER_CHAT_KEY] = last_seq
+            state["reviewed"] = reviewed
+            state.pop("retry_at", None)
+            _save_emotion_idle_state(state)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("情绪空闲复盘失败：%s", exc)
+            state["retry_at"] = time.time() + 300
+            _save_emotion_idle_state(state)
 
 
 async def important_check_loop(dsh: Dsh) -> None:
@@ -2337,7 +2452,7 @@ async def run() -> None:
     asyncio.create_task(persona_review_loop(dsh))
     asyncio.create_task(profile_refresh_loop(dsh))
     asyncio.create_task(qzone_loop(dsh, onebot))
-    asyncio.create_task(emotion_check_loop(dsh))
+    asyncio.create_task(emotion_idle_loop(dsh))
     asyncio.create_task(important_check_loop(dsh))
     asyncio.create_task(important_file_loop(dsh))
     asyncio.create_task(memory_batch_loop())

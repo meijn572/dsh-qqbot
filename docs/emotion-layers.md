@@ -1,6 +1,6 @@
 # 情绪分层：即时、每日、长期
 
-状态：方案，未实现。
+状态：情绪层第一版已实现；日记和人格消费未改。
 
 ## 1. 结论
 
@@ -396,3 +396,92 @@ state 不变
 ```
 
 各自只写自己那一层。
+
+## 13. 第一版实现
+
+### 代码
+
+```text
+bridge.py
+  emotion_idle_loop
+
+qqbot/domains/growth/emotion.py
+  review_turn
+  parse_emotion
+```
+
+### 触发
+
+```text
+主人私聊最后一条消息后空闲 5 分钟
+检查间隔 30 秒
+只看未复盘的新消息
+```
+
+配置：
+
+```yaml
+emotion_idle:
+  enabled: true
+  idle_seconds: 300
+  interval_seconds: 30
+  max_messages: 8
+```
+
+### 输入
+
+```text
+最近最多 8 条
+用户：...
+洄：...
+```
+
+不读 40 条 L0，不读人格块。
+
+### 输出
+
+```json
+{
+  "label": "心动又警惕",
+  "valence": 0.5,
+  "arousal": 0.4,
+  "reason": "..."
+}
+```
+
+写入：
+
+```text
+source = idle-review
+```
+
+### 去重
+
+```text
+reviewed[chat_key] = 已复盘的最后一个 bridge seq
+同一 bridge 进程内不重复
+bridge 重启后 run_id 重置
+```
+
+强情绪工具已经在窗口内记过：
+
+```text
+source = self 且 ts >= window_start
+→ 跳过本轮复盘
+```
+
+### 已移除
+
+```text
+3–5 小时情绪自检
+emotion_check_loop
+```
+
+### 还没做
+
+```text
+日记读取 emotion_recent
+人格消费日记
+预检情绪字段
+```
+
