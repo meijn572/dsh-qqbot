@@ -830,4 +830,214 @@ L4 → 来源 L3
 
 图能力以后可以作为 L3/L4 的查询层，不需要现在改存储。
 
+## 15. 改分层后的连带改动
+
+不是“几乎没有”。
+
+L4 现在会进人格 system prompt，L2 会进自动画像和 person 消息块，所以影响面比看起来大。
+
+### 15.1 影响面分级
+
+| 级别 | 内容 |
+| --- | --- |
+| P0 运行时 | L4 人格注入、L2 自动画像、profile()/检索、抽取器、批量 L4 |
+| P1 数据 | L2/L4 迁移、B 站历史 L3 |
+| P2 接口 | MCP、面板、测试、文档 |
+
+### 15.2 P0：必须一起改
+
+#### dsh-remembers 插件
+
+现在：
+
+```text
+client.profile() → persona.l4 → renderPersona()
+```
+
+L4 被当成“关系/规矩”塞进系统提示词。
+
+改成分层后：
+
+```text
+L4 = 核心记忆
+不再进 renderPersona 的规矩段
+改为按需召回
+```
+
+需要动：
+
+```text
+app.mjs: persona.l4 / refreshPersona / buildPersonaText
+hooks/persona.mjs: renderPersona 的 l4 参数
+client.mjs: profile() 的语义
+```
+
+#### MemoryStore.profile()
+
+现在：
+
+```text
+SELECT L4 + L2
+每轮必带
+```
+
+改成分层后：
+
+```text
+L4 核心记忆：不进 profile()
+L2 退役：不进 profile()
+profile() 只保留真正常驻的人格块，或直接废弃
+```
+
+#### L2 自动画像
+
+现在：
+
+```text
+_touch_profile()
+L2 文本追加到 profiles.profile
+```
+
+改成分层后：
+
+```text
+L2 不再写
+稳定画像走 persona.user_profile
+profiles.profile 只保留历史/停止增长
+```
+
+否则清空 L2 后，`profiles.profile` 仍会继续长。
+
+#### 抽取器
+
+现在：
+
+```text
+EXTRACT_SYSTEM 输出 L2 / L4
+batch_l4 每天从 L1/L3 提炼 L4
+```
+
+改成分层后：
+
+```text
+不再抽 L2
+规矩直接进 persona important 候选
+L4 只由复盘从 L3 提升
+```
+
+#### 检索
+
+现在：
+
+```text
+search 排除 L4
+默认 tiers 含 L2/L4
+```
+
+改成分层后：
+
+```text
+L2 从默认检索移除
+L4 允许高门槛召回
+L4 不再每轮注入
+```
+
+#### B 站
+
+现在：
+
+```text
+add_l1_event() → L3
+```
+
+改成分层后：
+
+```text
+B 站/自主活动 → activity
+```
+
+### 15.3 P1：数据迁移
+
+```text
+L2 用户画像 → persona.user_profile
+L4 规矩 → persona important / 核心设定
+L4 关系叙事 → 核心记忆或人格
+L3 里的 B 站历史 → 保留或标记
+```
+
+迁移前必须备份。
+
+### 15.4 P2：接口和外围
+
+#### MCP
+
+`service/mcp_server.py`：
+
+```text
+memory_ingest 的 tier enum
+profile 工具描述
+```
+
+要同步改，否则模型还会以为 L2/L4 是画像/规矩。
+
+#### 面板
+
+`service/server.py`：
+
+```text
+tier IN ('L1','L2','L3','L4')
+L4 规则列表
+batch l4 统计
+```
+
+要改标签和统计。
+
+#### 测试
+
+```text
+service/test_core.py
+  L4 永远注入
+  L2 画像
+
+service/test_gating.py
+  L2 更新
+
+service/test_transfer.py
+  tiers 列表
+```
+
+这些测试现在验证的是旧语义，必须改。
+
+#### 文档
+
+```text
+memory-layers.md
+persona-layers.md
+workflows.md
+architecture.md
+```
+
+### 15.5 不需要改的
+
+```text
+DSH 会话/消息链路
+情绪 5 分钟复盘
+日记的当天情绪事件输入
+bridge 的 prompt 主流程
+```
+
+### 15.6 建议实施顺序
+
+```text
+1. 备份 L2/L4
+2. 迁移 L4 规矩到 persona important
+3. 迁移 L2 画像到 persona.user_profile
+4. 停 L2/L4 新写入
+5. 改插件不再注入 L4 规矩
+6. 改 profile()/检索
+7. 接 L4 核心记忆召回
+8. 最后改 MCP/面板/测试
+```
+
+
 
