@@ -2985,13 +2985,15 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:  # noqa: BLE001
                     pass
             turns = []
+            source_rows = []
             if l0_ids:
                 marks2 = ",".join("?" for _ in l0_ids)
                 for row in store.conn.execute(
-                    f"SELECT text FROM memory WHERE tier='L0' AND id IN ({marks2}) ORDER BY id ASC",
+                    f"SELECT id,text FROM memory WHERE tier='L0' AND id IN ({marks2}) ORDER BY id ASC",
                     l0_ids,
                 ):
                     raw = str(row["text"])
+                    source_rows.append({"id": int(row["id"]), "text": raw})
                     user_lines, assistant_lines = [], []
                     for line in raw.splitlines():
                         if line.startswith("我："):
@@ -3008,6 +3010,7 @@ class Handler(BaseHTTPRequestHandler):
             res3 = extractor.summarize_episode(
                 turns, subject="self", window_hint=window,
                 context=self._batch_identity(), source_ids=pending,
+                source_rows=source_rows,
             )
             if res3.get("ok"):
                 self._meta_set("batch_l1_pending", "[]")

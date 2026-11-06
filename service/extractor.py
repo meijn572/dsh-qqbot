@@ -206,14 +206,21 @@ EPISODE_SYSTEM = """你把一段连续对话压缩成一条「以后想起来有
 - 助手自己说了什么（除非她明显因为那句话改变了语气）
 - 推测出来的东西
 
-输出要求：
+输出 JSON：
+{"text": "Markdown 正文", "evidence": ["从对话里逐字抄的 1–3 句"]}
+
+正文要求：
 - Markdown，150-400 字，每条以「- 」开头
 - 第一行是日期标题，形如「## 2026-10-24 凌晨」
 - 时段必须按上面「时间」那行给的**本地时间**判断，别从对话内容里猜：
   0-5 点=凌晨 / 6-8 点=清早 / 9-11 点=上午 / 12-13 点=中午 /
   14-17 点=下午 / 18-19 点=傍晚 / 20-22 点=晚上 / 23-24 点=深夜
 - 只写确实成立的事，不确定的一律不写
-- 直接输出正文，前后不要任何说明文字"""
+
+evidence 要求：
+- 从对话原文里逐字抄，不要改写、不要拼接
+- 选能支撑这条事件记录的 1–3 句
+- 只输出 JSON，不要代码块，不要额外说明"""
 
 
 @dataclass
@@ -520,7 +527,8 @@ class Extractor:
 
     def summarize_episode(self, turns: list[dict], subject: str = "self",
                           window_hint: str = "", context: str = "",
-                          source_ids: list[int] | None = None) -> dict:
+                          source_ids: list[int] | None = None,
+                          source_rows: list[dict] | None = None) -> dict:
         """把一批对话轮次压成一条 L3 事件记录。
 
         和 process_turn 的分工：
@@ -547,16 +555,28 @@ class Extractor:
                   if window_hint else f"对话：\n{transcript}")
         if context:
             prompt = f"【身份/现有规则】\n{context[:3000]}\n\n{prompt}"
-        text = self.llm.chat(EPISODE_SYSTEM, prompt, max_tokens=700)
-        if not text:
+        raw = self.llm.chat(EPISODE_SYSTEM, prompt, max_tokens=1000)
+        if not raw:
             return {"ok": False, "degraded": "llm-failed",
                     "error": getattr(self.llm, "last_error", None)}
 
-        text = text.strip()
+        raw = raw.strip()
+        data = None
+        match = re.search(r"\{.*\}", raw, re.S)
+        if match:
+            try:
+                candidate = json.loads(match.group(0))
+                if isinstance(candidate, dict):
+                    data = candidate
+            except (TypeError, ValueError):
+                data = None
+        text = str((data or {}).get("text") or raw).strip()
+        evidence = (data or {}).get("evidence") or []
         if len(text) < 10:
             return {"ok": False, "degraded": "too-short"}
         text = re.sub(r"^#+\s*", "", text).strip()
         text = strip_memory_prefix("L3", text)
+        matched, source_status = match_evidence(evidence, source_rows or [])
 
         vec = None
         vec_model = None
@@ -570,8 +590,8 @@ class Extractor:
             tier="L3",
             subject=subject,
             tags=["episode", f"turns:{len(turns)}"],
-            source_ids=source_ids or None,
-            source_status="batch" if source_ids else "unverified",
+            source_ids=matched or None,
+            source_status=source_status,
             vec=vec,
             vec_model=vec_model,
         ))

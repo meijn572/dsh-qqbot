@@ -1092,8 +1092,8 @@ service/test_core 等旧测试同步
 `source_ids` 不是自动推导的，是写入时由生产者带上的。
 
 ```text
-L1 事实   → source_ids = L0 id 列表
-L3 经历   → source_ids = L1 id 列表
+L1 事实   → source_ids = L0 id 列表（evidence）
+L3 经历   → source_ids = L0 id 列表（evidence）
 L4 核心   → source_ids = L3 id（可再带 L3 自己的 source_ids）
 ```
 
@@ -1150,7 +1150,7 @@ L4 详情页显示来源 L3/L0
 
 ## 18. evidence 与精确 source_ids
 
-状态：L1 evidence 匹配与 source_status 第一版已实现；L3 仍用批次来源。
+状态：L1 和 L3 的 evidence 匹配与 source_status 第一版已实现；L4 自动提升未接。
 
 ### 18.1 决定
 
@@ -1398,8 +1398,10 @@ L1 批次抽取：
   写 source_ids + source_status
 
 L3 episode：
-  仍用一批 L1 的 id
-  source_status = batch
+  模型输出 text + evidence
+  evidence 匹配输入 L0
+  source_ids = 命中的 L0 id
+  source_status = verified / unverified
 
 L4 核心：
   历史 4 条 source_status = legacy
@@ -1416,7 +1418,6 @@ L4 4 条 legacy
 还没做：
 
 ```text
-L3 也做 evidence 级来源
 L4 提升时写 source_ids
 面板显示 source_status
 ```
