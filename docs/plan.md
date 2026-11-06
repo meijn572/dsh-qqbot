@@ -103,6 +103,8 @@ max_facts 6 → 动态/12
 L1 半衰期 30 天 → 180 天
 UPDATE 时合并 source_ids
 删掉 keywords 里的「情绪:xxx」
+EXTRACT_SYSTEM 还写着 L1 含“近况/小观察”，与目标不一致
+evidence 跨多条 L0 时，逐行匹配可能失败，需要拼接窗口
 ```
 
 ## 4. 待验证
