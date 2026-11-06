@@ -118,6 +118,8 @@ source = idle-review
 
 ## 4. 第二层：日记
 
+日记的定位和提示词设计见 [日记](diary.md)。
+
 ### 现状
 
 `qqbot/domains/growth/diary.py`：
