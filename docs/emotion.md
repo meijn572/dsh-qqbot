@@ -819,6 +819,70 @@ valence/arousal 描述
 ```text
 当前自然语言拼接：保留
 结构化字段：只用于存储、面板、调试
-prompt 里最多加一句“这种情绪大概怎么说话”
+不额外加固定表达倾向
 不要把情绪 prompt 改成字段表
 ```
+
+## 13. set_emotion 工具契约
+
+工具：`set_emotion`
+
+### 参数
+
+```text
+label      必填，一两个词
+valence    必填，-1..1
+arousal    可选，0..1
+reason     一句由头
+```
+
+不再有：
+
+```text
+intensity
+```
+
+也不再：
+
+```text
+valence 缺失时按 label 猜正负
+```
+
+### 工具描述
+
+```text
+记录你自己此刻的真实情绪。
+label 用一两个词；
+valence 必填，-1 很负面、0 中性、1 很正面；
+arousal 0 很平静、0.5 普通、1 很激动；
+reason 写一句由头。
+不要用 intensity，也不要按 label 猜正负；
+valence 必须由你判断。
+```
+
+### 校验
+
+```text
+label 为空 → 报错
+valence 缺失或非数字 → 报错
+valence 超出范围 → clamp
+arousal 超出范围 → clamp
+```
+
+这样模型不能再靠 `intensity + label` 让代码自动猜正负。
+
+### 和自检 prompt 的关系
+
+两条写入路径现在一致：
+
+```text
+定时情绪自检
+→ 模型输出 label/valence/arousal/reason
+→ set_emotion
+
+主模型主动调用
+→ set_emotion(label, valence, arousal, reason)
+```
+
+都不再用标签白名单。
+
