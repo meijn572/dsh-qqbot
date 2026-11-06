@@ -76,23 +76,12 @@ powershell -ExecutionPolicy Bypass -File D:\path\to\dshbot\stop-dshbot.ps1
 | `web/` | 面板前端 `index.html` / `app.js` / `style.css` |
 | `scripts/smoke.py` | 端口 + 核心接口检查 |
 | `scripts/check.ps1` | 单测 + smoke |
-| `tests/` | 22 条单测 |
-| `docs/refactor-plan.md` | 重构计划与阶段记录 |
-| `docs/refactor-summary.md` | 重构总结 |
+| `tests/` | 单测与集成测试 |
+| `docs/README.md` | 文档地图：目标框架/工作流、历史改动、当前计划 |
+| `docs/plan.md` | 当前改动计划 |
 | `docs/architecture.md` | 架构说明 |
-| `docs/persona-layers.md` | 人格分层、写入权限与结构化校验 |
-| `docs/conversation-preflight.md` | 对话预检、检索阶段提示词与工作流 |
-| `docs/thesis/` | 论文素材：观察、决策、原始数据说明 |
-| `docs/stickers.md` | 表情包、label、分面、选取与语义工具 |
-| `docs/sticker-metadata.md` | 表情元数据实时兜底与离线复盘 |
-| `docs/emotion.md` | 情绪双轴、面板指标与亲密度计算 |
-| `docs/emotion-layers.md` | 情绪分层：5 分钟复盘、日记、人格 |
-| `docs/diary.md` | 日记的定位、范例式提示词与输入 |
-| `docs/memory-layers.md` | 记忆分层：L4 核心记忆、L2 退役 |
-| `docs/extraction-rules.md` | L0→L1/L3 的提取规则与待讨论问题 |
-| `docs/model-facing-language.md` | 模型层自然语言、存储层结构化原则 |
-| `docs/lexicon.md` | 统一词库：kind / scope / status、工具与面板 |
-| `docs/open-source.md` | 公开与第三方依赖说明 |
+| `docs/refactor-plan.md` | 历史：重构计划与阶段记录 |
+| `docs/refactor-summary.md` | 历史：重构总结 |
 | `THIRD_PARTY.md` | 第三方版权/许可证声明 |
 
 ## 运行数据
@@ -327,20 +316,23 @@ AstrBot 旧部署仍在，回退时恢复 AstrBot 白名单/平台开关即可�
 
 ## 相关文档
 
+- [文档地图](docs/README.md)
+- [当前改动计划](docs/plan.md)
+
+### 目标框架与工作流
+
 - [架构说明](docs/architecture.md)
-- [人格分层](docs/persona-layers.md)
-- [对话预检](docs/conversation-preflight.md)
-- [论文素材](docs/thesis/README.md)
-- [表情包系统](docs/stickers.md)
-- [表情元数据与离线复盘](docs/sticker-metadata.md)
-- [情绪与关系指标](docs/emotion.md)
-- [情绪分层](docs/emotion-layers.md)
-- [日记](docs/diary.md)
+- [工作流与记忆逻辑](docs/workflows.md)
 - [记忆分层](docs/memory-layers.md)
 - [提取规则](docs/extraction-rules.md)
+- [人格分层](docs/persona-layers.md)
+- [情绪分层](docs/emotion-layers.md)
+- [日记](docs/diary.md)
+- [对话预检](docs/conversation-preflight.md)
 - [模型层自然语言原则](docs/model-facing-language.md)
-- [词库系统](docs/lexicon.md)
-- [工作流与记忆逻辑](docs/workflows.md)
-- [开源与第三方依赖](docs/open-source.md)
+
+### 历史改动
+
 - [重构计划](docs/refactor-plan.md)
 - [重构总结](docs/refactor-summary.md)
+- [论文素材](docs/thesis/README.md)
