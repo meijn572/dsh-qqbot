@@ -99,6 +99,80 @@ occurrence 是“一次表情出现”的记录。
 
 图片的位置由它所在的 `seq` 决定。
 
+### occurrence 是存储结构，不是 prompt
+
+occurrence 里的 JSON 只给代码用。
+
+不要直接把这段 JSON 塞给模型：
+
+```json
+{
+  "messages": [...],
+  "seq": 11,
+  "images": [...]
+}
+```
+
+模型看到的应该是拼好的、容易读的时间线：
+
+```text
+[#11] 九歌：这个是奶龙吗
+[#12] 九歌：[图片：unsorted/u_xxx.jpg]
+[#13] 洄：原来这个叫奶龙
+[#14] 九歌：那再发一张
+[#15] 九歌：[图片：unsorted/u_xxx.jpg]
+```
+
+规则：
+
+```text
+每条消息一行
+显示 seq、说话人、文本
+有图片就加 [图片：rel]
+没有文本只有图片，就只显示图片行
+不显示 message_id
+不显示 JSON 字段名
+```
+
+如果有缺口：
+
+```text
+[#20] 九歌：...
+（中间有 8 条消息未纳入）
+[#29] 九歌：...
+```
+
+模型需要同时看到图片本体和这条时间线：
+
+```text
+图片附件
++ 文本时间线
++ 当前是否 reviewed
++ 如果 reviewed，才附现有字段
+```
+
+图片本体负责“看清是什么”，时间线负责“出现在什么位置、周围说了什么”。
+
+### 渲染函数
+
+复盘前统一调用：
+
+```text
+render_occurrence_timeline(occurrences)
+```
+
+职责：
+
+```text
+1. 按 chat_key + run_id + seq 去重
+2. 按 seq 排序
+3. 同一 run 连续/重叠 → 合并
+4. 有缺口 → 插入缺口标记
+5. 输出纯文本时间线
+```
+
+不要把这个渲染逻辑分散在 prompt 字符串里。
+
 ### seq
 
 `seq` 是 bridge 自己的消息顺序，不是 QQ 的 `message_id`。
@@ -373,17 +447,19 @@ reviewed
 
 ### prompt 里的时间线
 
-不再显示 `[之前/之后]`，直接展示消息流：
+不再显示 `[之前/之后]`，由 `render_occurrence_timeline` 生成消息流：
 
 ```text
-[seq 11] 九歌：这个是奶龙吗
-[seq 12] 九歌：[图片 happy/xxx.jpg]
-[seq 13] 洄：原来这个叫奶龙
-[seq 14] 九歌：那再发一张
-[seq 15] 九歌：[图片 happy/xxx.jpg]
+[#11] 九歌：这个是奶龙吗
+[#12] 九歌：[图片：happy/xxx.jpg]
+[#13] 洄：原来这个叫奶龙
+[#14] 九歌：那再发一张
+[#15] 九歌：[图片：happy/xxx.jpg]
 ```
 
 模型自己看图片和消息流判断。
+
+不要把 occurrence 的 JSON 原样放进 prompt。
 
 ### 写回
 
@@ -500,6 +576,9 @@ images
 - 按 rel 合并 occurrence
 - 合并时按 `chat_key + run_id + seq` 去重
 - 不再生成 relation 标签
+- 新增 `render_occurrence_timeline`：结构化 occurrence → 纯文本时间线
+- prompt 里放渲染后的文本，不放 occurrence JSON
+- 图片附件单独传给模型
 
 ### 9.4 面板
 
