@@ -885,23 +885,41 @@ def sticker_review_cfg() -> dict:
     return merged
 
 
-def remember_chat_message(chat_key: str, role: str, speaker: str, text: str, message_id: str = "") -> None:
+def next_seq(chat_key: str) -> int:
+    seq = int(CHAT_SEQ.get(chat_key) or 0) + 1
+    CHAT_SEQ[chat_key] = seq
+    return seq
+
+
+def remember_chat_message(
+    chat_key: str,
+    seq: int,
+    role: str,
+    speaker: str,
+    text: str,
+    message_id: str = "",
+    images: list[str] | None = None,
+) -> None:
     """bridge 自己维护的原始对话窗口，用于表情 occurrence。"""
-    text = str(text or "").strip()
-    if not chat_key or not text:
+    if not chat_key or int(seq or 0) <= 0:
         return
-    mid = str(message_id or "").strip() or f"{role}-{time.time_ns()}"
+    text = str(text or "").strip()
+    image_paths = [str(p) for p in (images or []) if str(p).strip()]
+    if not text and not image_paths:
+        return
     rows = CHAT_MEMORY.setdefault(chat_key, [])
-    if any(row.get("message_id") == mid for row in rows):
+    if any(int(row.get("seq") or 0) == int(seq) for row in rows):
         return
     rows.append({
-        "message_id": mid,
+        "seq": int(seq),
+        "message_id": str(message_id or ""),
         "ts": time.time(),
         "role": str(role or "user"),
         "speaker": str(speaker or ""),
         "text": text[:800],
+        "images": [{"path": p} for p in image_paths[:4]],
     })
-    del rows[:-80]
+    del rows[:-120]
 
 
 def chat_memory_slice(chat_key: str, anchor_ts: float, before: float, after: float) -> list[dict]:
@@ -912,9 +930,8 @@ def chat_memory_slice(chat_key: str, anchor_ts: float, before: float, after: flo
         ts = float(row.get("ts") or 0)
         if ts < start or ts > end:
             continue
-        relation = "before" if ts < anchor_ts - 0.001 else ("after" if ts > anchor_ts + 0.001 else "anchor")
-        picked.append({**row, "relation": relation})
-    picked.sort(key=lambda item: float(item.get("ts") or 0))
+        picked.append(dict(row))
+    picked.sort(key=lambda item: int(item.get("seq") or 0))
     return picked
 
 
@@ -985,7 +1002,14 @@ async def _process_locked(dsh: Dsh, onebot: OneBot, mtype: str, target: int, cha
             log.info("处理期间来了新消息，本条仍发送，随后处理新消息 (%s)", chat_key)
         await onebot.send(mtype, target, reply)
         if reply:
-            remember_chat_message(chat_key, "assistant", "洄", reply, f"assistant-{time.time_ns()}")
+            remember_chat_message(
+                chat_key,
+                next_seq(chat_key),
+                "assistant",
+                "洄",
+                reply,
+                f"assistant-{RUN_ID}-{CHAT_SEQ.get(chat_key, 0)}",
+            )
         try:
             proj_after = await dsh.projections(sid)
             set_state(chat_key, sid, int(proj_after.get("asOfSeq") or 0))
@@ -1036,32 +1060,6 @@ async def sticker_meta_loop() -> None:
             log.warning("sticker_meta_loop err: %s", exc)
 
 
-def _review_memory_text(messages: list[dict], max_messages: int, max_chars: int) -> str:
-    if not messages:
-        return "（没有可用的对话上下文）"
-    picked = list(messages)
-    if len(picked) > max_messages:
-        anchor = next((i for i, m in enumerate(picked) if m.get("relation") == "anchor"), len(picked) // 2)
-        half = max_messages // 2
-        picked = picked[max(0, anchor - half): anchor + half + 1]
-    lines = []
-    used = 0
-    for item in picked:
-        label = {"before": "之前", "anchor": "发图时", "after": "之后"}.get(
-            str(item.get("relation") or "before"), "之前"
-        )
-        speaker = str(item.get("speaker") or ("主人" if item.get("role") == "user" else "你"))
-        text = str(item.get("text") or "").strip()
-        if not text:
-            continue
-        line = f"[{label}] {speaker}：{text}"
-        if used + len(line) > max_chars:
-            break
-        lines.append(line)
-        used += len(line)
-    return "\n".join(lines) or "（没有可用的对话上下文）"
-
-
 def _review_existing_text(entry: dict) -> str:
     parts = []
     if entry.get("label"):
@@ -1086,11 +1084,10 @@ async def review_sticker(dsh: Dsh, rel: str, occurrences: list[dict]) -> bool:
     entry = next((e for e in entries if str(e.get("file") or "").replace("\\", "/") == rel), None)
     if entry is None:
         return False
-    messages = _occurrence_messages(occurrences)
-    memory = _review_memory_text(
-        messages,
-        int(cfg.get("max_messages", 20)),
+    memory = _render_timeline(
+        occurrences,
         int(cfg.get("max_chars", 2000)),
+        int(cfg.get("max_messages", 20)),
     )
     status = str(entry.get("meta_status") or ("reviewed" if entry.get("label") else "pending_review"))
     existing = _review_existing_text(entry) if status == "reviewed" else "（未复盘，不给旧字段）"
@@ -1163,6 +1160,9 @@ async def sticker_review_loop(dsh: Dsh) -> None:
 
 RECENT_TEXT: dict[str, str] = {}
 CHAT_MEMORY: dict[str, list[dict]] = {}
+CHAT_SEQ: dict[str, int] = {}
+EVENT_SEEN: dict[str, set[str]] = {}
+RUN_ID = uuid.uuid4().hex
 STICKER_META_QUEUE = DSH_HOME / "sticker-meta-queue.jsonl"
 LAST_SHARE: dict[str, dict] = {}
 MAINT_STATE_FILE = DSH_HOME / "maintenance-session.json"
@@ -1538,39 +1538,59 @@ async def collect_sticker_bg(path: Path, note: str, chat_key: str = "", anchor: 
             return
         cfg = sticker_review_cfg()
         anchor_ts = float((anchor or {}).get("ts") or time.time())
+        start_ts = anchor_ts - float(cfg.get("before_seconds", 180))
+        end_ts = anchor_ts + float(cfg.get("after_seconds", 120))
         messages = chat_memory_slice(
             chat_key,
             anchor_ts,
             float(cfg.get("before_seconds", 180)),
             0,
         )
-        anchor_mid = str((anchor or {}).get("message_id") or "")
-        if anchor_mid and not any(str(m.get("message_id")) == anchor_mid for m in messages):
+        anchor_seq = int((anchor or {}).get("seq") or 0)
+        if anchor_seq and not any(int(m.get("seq") or 0) == anchor_seq for m in messages):
             messages.append({
-                "message_id": anchor_mid,
+                "seq": anchor_seq,
+                "message_id": str((anchor or {}).get("message_id") or ""),
                 "ts": anchor_ts,
                 "role": "user",
                 "speaker": "",
-                "text": "[表情包]",
-                "relation": "anchor",
+                "text": "",
+                "images": [{"path": str(path)}],
             })
+        for message in messages:
+            if int(message.get("seq") or 0) != anchor_seq:
+                continue
+            old_images = message.get("images") or []
+            patched = []
+            for img in old_images:
+                item = dict(img) if isinstance(img, dict) else {"path": str(img)}
+                if len(old_images) == 1 or str(item.get("path") or "") == str(path):
+                    item["rel"] = rel
+                patched.append(item)
+            message["images"] = patched or [{"rel": rel, "path": str(path)}]
         occ_id = append_occurrence(
             rel,
             chat_key,
-            anchor or {"ts": anchor_ts},
+            RUN_ID,
+            start_ts,
+            end_ts,
             messages,
-            before_seconds=float(cfg.get("before_seconds", 180)),
-            after_seconds=float(cfg.get("after_seconds", 120)),
         )
         if occ_id:
-            asyncio.create_task(finalize_occurrence(occ_id, chat_key, anchor_ts))
+            asyncio.create_task(finalize_occurrence(occ_id, chat_key, anchor_ts, rel, str(path)))
     except asyncio.TimeoutError:
         log.warning("后台表情包分类超时：%s", path)
     except Exception as exc:  # noqa: BLE001
         log.warning("后台表情包分类失败：%s", exc)
 
 
-async def finalize_occurrence(occ_id: str, chat_key: str, anchor_ts: float) -> None:
+async def finalize_occurrence(
+    occ_id: str,
+    chat_key: str,
+    anchor_ts: float,
+    rel: str = "",
+    image_path: str = "",
+) -> None:
     """等 after 窗口结束，把图片后的原始记忆补进 occurrence。"""
     cfg = sticker_review_cfg()
     await asyncio.sleep(max(1.0, float(cfg.get("after_seconds", 120))))
@@ -1581,34 +1601,93 @@ async def finalize_occurrence(occ_id: str, chat_key: str, anchor_ts: float) -> N
             float(cfg.get("before_seconds", 180)),
             float(cfg.get("after_seconds", 120)),
         )
+        if rel:
+            for message in messages:
+                patched = []
+                for img in (message.get("images") or []):
+                    item = dict(img) if isinstance(img, dict) else {"path": str(img)}
+                    if str(item.get("path") or "") == image_path or not image_path:
+                        item["rel"] = rel
+                    patched.append(item)
+                message["images"] = patched
         update_occurrence_messages(
             occ_id,
             messages,
-            before_seconds=float(cfg.get("before_seconds", 180)),
-            after_seconds=float(cfg.get("after_seconds", 120)),
+            start_ts=anchor_ts - float(cfg.get("before_seconds", 180)),
+            end_ts=anchor_ts + float(cfg.get("after_seconds", 120)),
         )
     except Exception as exc:  # noqa: BLE001
         log.warning("occurrence finalize failed: %s", exc)
 
 
 def _occurrence_messages(occurrences: list[dict]) -> list[dict]:
-    """合并多个 occurrence 的原始记忆，按 message_id 去重。"""
-    merged: list[dict] = []
-    seen: set[str] = set()
+    """合并 occurrence 的消息，按 run_id + seq 去重。"""
+    merged: dict[tuple[str, int], dict] = {}
     for occ in occurrences:
-        anchor = occ.get("anchor") or {}
-        anchor_id = str(anchor.get("message_id") or "")
+        run_id = str(occ.get("run_id") or "")
         for item in occ.get("messages") or []:
-            mid = str(item.get("message_id") or "").strip()
-            if not mid or mid in seen:
+            seq = int(item.get("seq") or 0)
+            if seq <= 0:
                 continue
-            seen.add(mid)
-            row = dict(item)
-            if mid == anchor_id:
-                row["relation"] = "anchor"
-            merged.append(row)
-    merged.sort(key=lambda item: float(item.get("ts") or 0))
-    return merged
+            key = (run_id, seq)
+            if key in merged:
+                continue
+            merged[key] = {
+                "seq": seq,
+                "ts": float(item.get("ts") or 0),
+                "role": str(item.get("role") or "user"),
+                "speaker": str(item.get("speaker") or ""),
+                "text": str(item.get("text") or "").strip(),
+                "images": item.get("images") or [],
+                "run_id": run_id,
+            }
+    return sorted(merged.values(), key=lambda item: (float(item.get("ts") or 0), item["run_id"], item["seq"]))
+
+
+def _render_timeline(occurrences: list[dict], max_chars: int = 2000, max_messages: int = 20) -> str:
+    """把结构化 occurrence 渲染成给模型看的纯文本时间线。"""
+    messages = _occurrence_messages(occurrences)
+    if not messages:
+        return "（没有可用的对话上下文）"
+    # 以每张图的 seq 为中心收窄过长消息流。
+    anchors = []
+    for occ in occurrences:
+        rel = str(occ.get("rel") or "")
+        for item in occ.get("messages") or []:
+            if any(str(img.get("rel") or "") == rel for img in (item.get("images") or [])):
+                anchors.append(int(item.get("seq") or 0))
+                break
+    if len(messages) > max_messages and anchors:
+        center = sorted(anchors)[len(anchors) // 2]
+        messages = sorted(messages, key=lambda item: abs(int(item["seq"]) - center))[:max_messages]
+        messages.sort(key=lambda item: (float(item.get("ts") or 0), item.get("run_id"), item["seq"]))
+    lines = []
+    used = 0
+    prev_key = None
+    for item in messages:
+        key = (item.get("run_id"), int(item["seq"]))
+        if prev_key and key[0] == prev_key[0] and int(item["seq"]) > int(prev_key[1]) + 1:
+            gap = int(item["seq"]) - int(prev_key[1]) - 1
+            marker = f"（中间有 {gap} 条消息未纳入）"
+            lines.append(marker)
+            used += len(marker)
+        speaker = str(item.get("speaker") or ("主人" if item.get("role") == "user" else "你"))
+        text = str(item.get("text") or "").strip()
+        imgs = []
+        for img in (item.get("images") or []):
+            rel = str(img.get("rel") or "").strip()
+            imgs.append(f"[图片：{rel}]" if rel else "[图片]")
+        if imgs:
+            text = (text + " " if text else "") + " ".join(imgs)
+        if not text:
+            text = "[图片]"
+        line = f"[#{item['seq']}] {speaker}：{text}"
+        if used + len(line) > max_chars:
+            break
+        lines.append(line)
+        used += len(line)
+        prev_key = key
+    return "\n".join(lines) or "（没有可用的对话上下文）"
 
 
 async def schedule_flush(dsh: Dsh, onebot: OneBot, chat_key: str) -> None:
@@ -1637,6 +1716,7 @@ async def schedule_flush(dsh: Dsh, onebot: OneBot, chat_key: str) -> None:
         anchor = image_items[idx] if idx < len(image_items) else {}
         anchor = {
             "message_id": str(anchor.get("message_id") or f"image-{int(time.time() * 1000)}-{idx}"),
+            "seq": int(anchor.get("seq") or 0),
             "ts": float(anchor.get("ts") or time.time()),
             "image_index": int(anchor.get("image_index") or idx),
         }
@@ -1718,15 +1798,17 @@ async def handle(dsh: Dsh, onebot: OneBot, event: dict, forced: bool = False) ->
     text = extract_text(event)
     if text.startswith("/"):
         return
+    event_mid = str(event.get("message_id") or "").strip()
+    if event_mid:
+        seen = EVENT_SEEN.setdefault(chat_key, set())
+        if event_mid in seen:
+            log.info("忽略重复入站事件：%s %s", chat_key, event_mid)
+            return
+        seen.add(event_mid)
+        if len(seen) > 500:
+            EVENT_SEEN[chat_key] = set(list(seen)[-300:])
+    event_seq = next_seq(chat_key)
     speaker = sender_name(event) if mtype == "group" else ""
-    if text:
-        remember_chat_message(
-            chat_key,
-            "user",
-            speaker or ("九歌" if mtype == "private" else "群友"),
-            text,
-            str(event.get("message_id") or ""),
-        )
     if mtype == "group" and uid and speaker:
         asyncio.create_task(touch_guest(uid, speaker))
     elif mtype == "private" and uid:
@@ -1741,7 +1823,19 @@ async def handle(dsh: Dsh, onebot: OneBot, event: dict, forced: bool = False) ->
     async def download_images() -> list[str]:
         return await media_download(event, Path(CONFIG["cwd"]) / "inbox", IMAGE_META, local_path_from)
 
+    def record_user(paths: list[str]) -> None:
+        remember_chat_message(
+            chat_key,
+            event_seq,
+            "user",
+            speaker or ("九歌" if mtype == "private" else "群友"),
+            text,
+            event_mid,
+            images=paths,
+        )
+
     async def collect_quietly(paths: list[str]) -> None:
+        record_user(paths)
         if not CONFIG.get("collect_group_stickers", True):
             return
         for idx, path in enumerate(paths):
@@ -1749,12 +1843,12 @@ async def handle(dsh: Dsh, onebot: OneBot, event: dict, forced: bool = False) ->
             if not meta.get("sticker"):
                 continue
             try:
-                anchor = {
-                    "message_id": str(event.get("message_id") or f"group-{int(time.time() * 1000)}:{idx}"),
+                await collect_sticker_bg(Path(path), text, chat_key, {
+                    "message_id": event_mid,
+                    "seq": event_seq,
                     "ts": time.time(),
                     "image_index": idx,
-                }
-                await collect_sticker_bg(Path(path), text, chat_key, anchor)
+                })
             except Exception as exc:  # noqa: BLE001
                 log.warning("collect_sticker failed: %s", exc)
 
@@ -1781,6 +1875,7 @@ async def handle(dsh: Dsh, onebot: OneBot, event: dict, forced: bool = False) ->
 
     if not text and not images:
         return
+    record_user(images)
 
     pending = PENDING.setdefault(
         chat_key,
@@ -1811,6 +1906,7 @@ async def handle(dsh: Dsh, onebot: OneBot, event: dict, forced: bool = False) ->
         pending.setdefault("image_items", []).append({
             "path": str(img),
             "message_id": base_mid if len(images) == 1 else f"{base_mid}:{idx}",
+            "seq": event_seq,
             "ts": time.time(),
             "image_index": idx,
         })

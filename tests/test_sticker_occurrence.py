@@ -1,4 +1,3 @@
-import json
 import tempfile
 import time
 import unittest
@@ -26,17 +25,21 @@ class StickerOccurrenceTest(unittest.TestCase):
         occ_id = library.append_occurrence(
             "happy/a.jpg",
             "private:1",
-            {"message_id": "m2", "ts": now, "image_index": 0},
+            "run-1",
+            now - 180,
+            now + 120,
             [
-                {"message_id": "m1", "ts": now - 1, "role": "user", "text": "这是奶龙"},
-                {"message_id": "m2", "ts": now, "role": "user", "text": "[表情包]", "relation": "anchor"},
-                {"message_id": "m1", "ts": now - 1, "role": "user", "text": "这是奶龙"},
+                {"seq": 1, "message_id": "m1", "ts": now - 1, "role": "user", "text": "这是奶龙"},
+                {"seq": 2, "message_id": "m2", "ts": now, "role": "user", "text": "", "images": [{"path": "x"}]},
+                {"seq": 1, "message_id": "m1", "ts": now - 1, "role": "user", "text": "这是奶龙"},
             ],
         )
         self.assertTrue(occ_id)
         items = library.pending_occurrences()
         self.assertEqual(len(items), 1)
-        self.assertEqual([m["message_id"] for m in items[0]["messages"]], ["m1", "m2"])
+        self.assertEqual([m["seq"] for m in items[0]["messages"]], [1, 2])
+        self.assertEqual(items[0]["run_id"], "run-1")
+        self.assertTrue(items[0]["messages"][1]["images"])
         library.mark_occurrences_reviewed([occ_id])
         self.assertEqual(library.pending_occurrences(), [])
 
@@ -54,29 +57,41 @@ class StickerOccurrenceTest(unittest.TestCase):
         self.assertEqual(entry["meta_status"], "pending_review")
         self.assertEqual(entry["meta_source"], "vision")
 
-    def test_chat_memory_slice_uses_time_window(self):
+    def test_chat_memory_slice_uses_seq_and_time_window(self):
         now = time.time()
         bridge.CHAT_MEMORY["private:test"] = [
-            {"message_id": "old", "ts": now - 500, "role": "user", "text": "太旧"},
-            {"message_id": "before", "ts": now - 10, "role": "user", "text": "之前"},
-            {"message_id": "anchor", "ts": now, "role": "user", "text": "[表情包]"},
-            {"message_id": "after", "ts": now + 10, "role": "assistant", "text": "之后"},
+            {"seq": 1, "ts": now - 500, "role": "user", "text": "太旧"},
+            {"seq": 2, "ts": now - 10, "role": "user", "text": "之前"},
+            {"seq": 3, "ts": now, "role": "user", "text": ""},
+            {"seq": 4, "ts": now + 10, "role": "assistant", "text": "之后"},
         ]
         rows = bridge.chat_memory_slice("private:test", now, 180, 120)
-        self.assertEqual([r["message_id"] for r in rows], ["before", "anchor", "after"])
+        self.assertEqual([r["seq"] for r in rows], [2, 3, 4])
 
-    def test_occurrence_merge_dedupes_by_message_id(self):
+    def test_occurrence_merge_uses_run_and_seq(self):
         merged = bridge._occurrence_messages([
-            {"anchor": {"message_id": "a"}, "messages": [
-                {"message_id": "m1", "ts": 1, "text": "一"},
-                {"message_id": "a", "ts": 2, "text": "[表情包]"},
+            {"run_id": "run-1", "messages": [
+                {"seq": 1, "ts": 1, "text": "一"},
+                {"seq": 2, "ts": 2, "text": "", "images": [{"rel": "a.jpg"}]},
             ]},
-            {"anchor": {"message_id": "b"}, "messages": [
-                {"message_id": "m1", "ts": 1, "text": "一"},
-                {"message_id": "m2", "ts": 3, "text": "二"},
+            {"run_id": "run-1", "messages": [
+                {"seq": 1, "ts": 1, "text": "一"},
+                {"seq": 3, "ts": 3, "text": "二"},
             ]},
         ])
-        self.assertEqual([m["message_id"] for m in merged], ["m1", "a", "m2"])
+        self.assertEqual([m["seq"] for m in merged], [1, 2, 3])
+
+    def test_timeline_renders_images_and_gap(self):
+        text = bridge._render_timeline([
+            {"run_id": "run-1", "rel": "a.jpg", "messages": [
+                {"seq": 1, "ts": 1, "role": "user", "speaker": "九歌", "text": "看这个"},
+                {"seq": 2, "ts": 2, "role": "user", "speaker": "九歌", "text": "", "images": [{"rel": "a.jpg"}]},
+                {"seq": 5, "ts": 5, "role": "assistant", "speaker": "洄", "text": "看到了"},
+            ]},
+        ])
+        self.assertIn("[#1] 九歌：看这个", text)
+        self.assertIn("[#2] 九歌：[图片：a.jpg]", text)
+        self.assertIn("中间有 2 条消息未纳入", text)
 
 
 if __name__ == "__main__":

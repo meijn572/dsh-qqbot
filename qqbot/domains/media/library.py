@@ -530,36 +530,51 @@ def _save_occurrences(data: dict) -> None:
 
 def _clean_messages(messages: list[dict]) -> list[dict]:
     kept: list[dict] = []
-    seen: set[str] = set()
+    seen: set[int] = set()
     for item in messages or []:
         if not isinstance(item, dict):
             continue
-        message_id = str(item.get("message_id") or "").strip()
-        if not message_id or message_id in seen:
+        try:
+            seq = int(item.get("seq") or 0)
+        except (TypeError, ValueError):
+            seq = 0
+        if seq <= 0 or seq in seen:
             continue
         text = str(item.get("text") or "").strip()
-        if not text:
+        images = []
+        for raw in item.get("images") or []:
+            if isinstance(raw, dict):
+                rel = str(raw.get("rel") or "").replace("\\", "/").strip()
+                path = str(raw.get("path") or "").strip()
+                if rel or path:
+                    images.append({"rel": rel, "path": path})
+            else:
+                value = str(raw or "").strip()
+                if value:
+                    images.append({"rel": "", "path": value})
+        if not text and not images:
             continue
-        seen.add(message_id)
+        seen.add(seq)
         kept.append({
-            "message_id": message_id,
+            "seq": seq,
+            "message_id": str(item.get("message_id") or ""),
             "ts": float(item.get("ts") or 0),
             "role": str(item.get("role") or "user"),
             "speaker": str(item.get("speaker") or ""),
             "text": text[:800],
-            "relation": str(item.get("relation") or "before"),
+            "images": images[:4],
         })
-    kept.sort(key=lambda item: item["ts"])
+    kept.sort(key=lambda item: item["seq"])
     return kept
 
 
 def append_occurrence(
     rel: str,
     chat_key: str,
-    anchor: dict,
+    run_id: str,
+    start_ts: float,
+    end_ts: float,
     messages: list[dict],
-    before_seconds: float = 180,
-    after_seconds: float = 120,
 ) -> str:
     """记录一次表情出现；rel 只能来自 hash/签名解析。"""
     rel = str(rel or "").replace("\\", "/")
@@ -568,19 +583,14 @@ def append_occurrence(
     data = _load_occurrences()
     occ_id = str(uuid.uuid4())
     items = data.setdefault("items", [])
-    anchor_ts = float((anchor or {}).get("ts") or time.time())
     items.append({
         "id": occ_id,
         "rel": rel,
         "chat_key": str(chat_key or ""),
-        "anchor": {
-            "message_id": str((anchor or {}).get("message_id") or ""),
-            "ts": anchor_ts,
-            "image_index": int((anchor or {}).get("image_index") or 0),
-        },
+        "run_id": str(run_id or ""),
         "window": {
-            "start_ts": anchor_ts - float(before_seconds),
-            "end_ts": anchor_ts + float(after_seconds),
+            "start_ts": float(start_ts or 0),
+            "end_ts": float(end_ts or 0),
         },
         "messages": _clean_messages(messages),
         "reviewed": False,
@@ -595,20 +605,16 @@ def append_occurrence(
 def update_occurrence_messages(
     occ_id: str,
     messages: list[dict],
-    before_seconds: float | None = None,
-    after_seconds: float | None = None,
+    start_ts: float | None = None,
+    end_ts: float | None = None,
 ) -> None:
     data = _load_occurrences()
     for item in data.get("items", []):
         if item.get("id") != occ_id:
             continue
         item["messages"] = _clean_messages(messages)
-        if before_seconds is not None and after_seconds is not None:
-            anchor_ts = float((item.get("anchor") or {}).get("ts") or time.time())
-            item["window"] = {
-                "start_ts": anchor_ts - float(before_seconds),
-                "end_ts": anchor_ts + float(after_seconds),
-            }
+        if start_ts is not None and end_ts is not None:
+            item["window"] = {"start_ts": float(start_ts), "end_ts": float(end_ts)}
         _save_occurrences(data)
         return
 
