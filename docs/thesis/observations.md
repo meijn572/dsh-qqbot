@@ -146,3 +146,61 @@ stickers/index.json 重复条目；bridge.log 表情写入记录。
 - 工具说明也是提示词
 - “给事实”与“给输出格式”要分开
 - 可以比较：默认引用 vs 仅在用户要求时引用
+
+---
+
+## 2026-11-06：推理语言、推理强度和角色语气
+
+### 场景
+
+讨论推理过程用中文还是英文、是否影响说话风格；顺带查了当前鱼会话的推理设置。
+
+### 看到什么
+
+当前 QQ 鱼会话的 request header：
+
+```text
+provider: deepseek-official
+model: deepseek-flash
+reasoningEffort: high
+```
+
+当前没有显式控制推理语言，也没有在 reasoning 开头注入角色风格。
+
+外部实践里有一种说法：
+
+- 在 reasoning 开头注入人格/风格种子
+- 后续不重复注入
+- 模型会沿这个方向继续推理
+- 最终回答更有角色味
+
+有人把这种方法叫 `reasoning intro` / `reasoning scaffold`。
+
+### 为什么意外
+
+如果风格种子能影响 reasoning 的“思考方式”，而不只是最终措辞，那就不是简单的提示词后缀，而是对推理过程本身的诱导。
+
+但这也可能只是模型对开头 token 的自回归延续，不保证长期稳定。
+
+### 证据
+
+- 当前 request header：`reasoningEffort: high`
+- [reasoning intro 实践文章](https://zenn.dev/cardy0828/articles/reasoning-intro-persona-control)
+- 该实践基于 llama.cpp 的 draft PR，不是标准 API；作者也说明没有统计基准
+
+### 可以往哪个方向想
+
+- 区分三种东西：
+  - System Prompt 里的语气
+  - reasoning 开头的风格种子
+  - 最终回答的语言/口吻
+- 比较：
+  - reasoning high vs medium
+  - 有风格种子 vs 无风格种子
+  - 中文推理 vs 英文推理
+- 观察指标：
+  - 角色一致性
+  - 自然度/人味
+  - 事实正确性
+  - 是否出现语气泄漏或过度扮演
+- 当前 DSH / DeepSeek provider 是否支持 reasoning 前缀注入，需要单独确认；不能把“system prompt 写喵”当成同一件事。
