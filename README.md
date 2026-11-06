@@ -86,6 +86,7 @@ powershell -ExecutionPolicy Bypass -File D:\path\to\dshbot\stop-dshbot.ps1
 | `docs/stickers.md` | 表情包、label、分面、选取与语义工具 |
 | `docs/sticker-metadata.md` | 表情元数据实时兜底与离线复盘 |
 | `docs/emotion.md` | 情绪双轴、面板指标与亲密度计算 |
+| `docs/emotion-layers.md` | 情绪分层：5 分钟复盘、日记、人格 |
 | `docs/model-facing-language.md` | 模型层自然语言、存储层结构化原则 |
 | `docs/lexicon.md` | 统一词库：kind / scope / status、工具与面板 |
 | `docs/open-source.md` | 公开与第三方依赖说明 |
@@ -330,6 +331,7 @@ AstrBot 旧部署仍在，回退时恢复 AstrBot 白名单/平台开关即可�
 - [表情包系统](docs/stickers.md)
 - [表情元数据与离线复盘](docs/sticker-metadata.md)
 - [情绪与关系指标](docs/emotion.md)
+- [情绪分层](docs/emotion-layers.md)
 - [模型层自然语言原则](docs/model-facing-language.md)
 - [词库系统](docs/lexicon.md)
 - [工作流与记忆逻辑](docs/workflows.md)
