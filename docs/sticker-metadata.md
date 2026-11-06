@@ -108,7 +108,113 @@ user 消息收进来：seq += 1
 assistant 消息发出去：seq += 1
 ```
 
-`message_id` 只用于去重，不用于排序。
+`message_id` 只用于入站事件去重和审计，不用于排序，也不作为 occurrence 的唯一键。
+
+### seq 怎么维护
+
+bridge 启动时生成一个：
+
+```text
+run_id = uuid()
+```
+
+每个 chat 维护自己的计数器：
+
+```text
+chat_key -> next_seq
+```
+
+规则：
+
+```text
+1. 每条入站用户消息分配一个 seq
+2. 一条消息里有多张图，仍然只占一个 seq
+3. 每条发出的 assistant 消息分配一个 seq
+4. seq 在分配时同步 +1，不等待网络请求
+5. 同一 chat 内不重复
+6. bridge 重启后 seq 归零，但 run_id 变化
+```
+
+伪代码：
+
+```python
+def next_seq(chat_key):
+    seq = CHAT_SEQ.get(chat_key, 0) + 1
+    CHAT_SEQ[chat_key] = seq
+    return seq
+```
+
+这条赋值中间没有 await，所以同一个事件循环里不会并发拿到同一个 seq。
+
+### 入站重复事件
+
+OneBot 可能重复投递同一条消息。
+
+在分配 seq 之前先按：
+
+```text
+chat_key + message_id
+```
+
+去重。
+
+通过后再：
+
+```text
+seq = next_seq(chat_key)
+```
+
+这样：
+
+```text
+message_id 负责“这条事件是不是重复”
+seq 负责“这条消息在消息流里的位置”
+```
+
+### 图片消息
+
+一条图片消息只分配一个 seq。
+
+```json
+{
+  "seq": 12,
+  "message_id": "msg-123",
+  "images": [
+    {"rel": "happy/a.jpg"},
+    {"rel": "sad/b.jpg"}
+  ]
+}
+```
+
+多张图共享同一个 seq，用 `image_index` 区分是哪一张触发的 occurrence。
+
+### 跨 run
+
+```text
+run_id 不同
+seq 不能直接比较
+```
+
+复盘时：
+
+```text
+同一 run_id：按 seq 排序、判断连续
+不同 run_id：按 ts 排序，作为不同段落
+```
+
+### 去重
+
+同一条消息按：
+
+```text
+chat_key + run_id + seq
+```
+
+去重。
+
+不是按文本去重。
+
+`message_id` 只作为可选审计字段保留。
 
 ### run_id
 
@@ -153,12 +259,14 @@ after_seconds = 120
 同一条消息按：
 
 ```text
-chat_key + message_id
+chat_key + run_id + seq
 ```
 
 去重。
 
 不是按文本去重。
+
+`message_id` 只用于入站事件去重和审计，不参与 occurrence 合并。
 
 ### 图片消息
 
@@ -180,8 +288,8 @@ chat_key + message_id
 ### 合并规则
 
 ```text
-1. 先按 chat_key + message_id 精确去重
-2. 再按 seq 排序
+1. 先按 chat_key + run_id + seq 精确去重
+2. 同一 run_id 内按 seq 排序
 3. 同一 run_id 内，seq 连续或重叠 → 合并成一条连续时间线
 4. seq 有缺口 → 不假装连续，保留缺口标记
 5. 不同 run_id → 按时间排序，作为不同段落
@@ -390,7 +498,7 @@ images
 - pending 不带现有字段
 - reviewed 带现有字段
 - 按 rel 合并 occurrence
-- 合并时按 message_id 去重
+- 合并时按 `chat_key + run_id + seq` 去重
 - 不再生成 relation 标签
 
 ### 9.4 面板
@@ -427,7 +535,7 @@ rel 是唯一索引
 图片消息本身在 messages 里
 没有 relation 字段
 按 seq 排序
-按 message_id 精确去重
+按 chat_key + run_id + seq 精确去重
 同 run 且 seq 连续 → 合并
 seq 有缺口 → 保留缺口标记
 不同 run 不直接拼接
@@ -460,7 +568,7 @@ changed=false 不写
    → 保留缺口标记
 
 5. 同一句话出现在两个 occurrence
-   → 按 message_id 只保留一份
+   → 按 chat_key + run_id + seq 只保留一份
 
 6. 面板改 label
    → 下一轮 reviewed 可参考
@@ -473,7 +581,7 @@ rel 唯一索引
 图片消息进入完整消息流
 去掉 before / anchor / after
 用 bridge seq 排序
-用 message_id 精确去重
+用 chat_key + run_id + seq 精确去重
 seq 连续或重叠 → 合并
 seq 有缺口 → 保留缺口
 不同 run → 不直接拼接
