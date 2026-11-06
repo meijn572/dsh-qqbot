@@ -50,7 +50,6 @@ export function renderState(state, prev, selfModel, proactive, thinkCn) {
   // ---------- 3. 心情 + 情绪（变了才加） ----------
   const moodMap = { happy: "开心", tired: "累", annoyed: "烦", bored: "无聊", normal: "平常" };
   let moodText = `心情：${moodMap[state.mood] || "平常"}`;
-  let moodTip = "";
   if (state.emotion) {
     const v = Number(state.emotion.valence) || 0;
     const a = Number(state.emotion.arousal) || 0.5;
@@ -58,17 +57,11 @@ export function renderState(state, prev, selfModel, proactive, thinkCn) {
     const aDesc = a > 0.7 ? "很兴奋" : a > 0.55 ? "有点激动" : a < 0.25 ? "很安静" : a < 0.4 ? "有点安静" : "";
     const extras = [vDesc, aDesc].filter(Boolean).join("，");
     if (extras) moodText += `（${extras}）`;
-    if (v > 0.4 && a < 0.4) moodTip = "心里是暖的，语气可以软一点。";
-    else if (v > 0.4 && a > 0.6) moodTip = "有点兴奋，话可以轻快一点。";
-    else if (v < -0.4 && a > 0.6) moodTip = "有点烦躁，别把火撒到对方身上。";
-    else if (v < -0.1 && a < 0.4) moodTip = "有点低落，回话短一点。";
-    else if (a < 0.3) moodTip = "有点蔫，慢一点。";
   }
-  const moodHash = hash(moodText + moodTip);
+  const moodHash = hash(moodText);
   if (hashes.mood !== moodHash) {
     hashes.mood = moodHash;
     blocks.push(moodText + "。");
-    if (moodTip) blocks.push(moodTip);
     const recent = Array.isArray(state.emotion_recent) ? state.emotion_recent : [];
     if (recent.length) {
       const items = [];
