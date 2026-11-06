@@ -126,6 +126,7 @@ class MemoryInput:
     subject: str = "self"
     summary: str | None = None
     source_ids: Sequence[int] | None = None
+    source_status: str = "legacy"
     tags: Sequence[str] | None = None
     ts: float | None = None
     half_life_days: float | None = field(default=None)
@@ -217,6 +218,11 @@ class MemoryStore:
         if "scope" not in mem_cols:
             try:
                 self.conn.execute("ALTER TABLE memory ADD COLUMN scope TEXT DEFAULT 'global'")
+            except Exception:
+                pass
+        if "source_status" not in mem_cols:
+            try:
+                self.conn.execute("ALTER TABLE memory ADD COLUMN source_status TEXT NOT NULL DEFAULT 'legacy'")
             except Exception:
                 pass
 
@@ -328,7 +334,7 @@ class MemoryStore:
     def list_memories(self, tier: str | None = None, q: str = "", limit: int = 100,
                       offset: int = 0) -> dict:
         """管理用：列出记忆（按时间倒序），带 tier 过滤和关键词搜索。"""
-        sql = "SELECT id, tier, subject, text, summary, tags, ts, half_life_days FROM memory"
+        sql = "SELECT id, tier, subject, text, summary, tags, source_ids, source_status, ts, half_life_days FROM memory"
         conds = []
         args: list = []
         if tier and tier != "all":
@@ -358,6 +364,8 @@ class MemoryStore:
                 "text": r["text"],
                 "summary": r["summary"],
                 "tags": tags,
+                "source_ids": json.loads(r["source_ids"] or "[]"),
+                "source_status": r["source_status"],
                 "ts": float(r["ts"] or 0),
                 "half_life_days": r["half_life_days"],
             })
@@ -382,9 +390,9 @@ class MemoryStore:
         cur = self.conn.execute(
             """
             INSERT INTO memory
-              (tier, subject, text, summary, source_ids, tags, ts, half_life_days,
+              (tier, subject, text, summary, source_ids, source_status, tags, ts, half_life_days,
                vec, vec_dim, vec_model, created_at, updated_at, user_id, scope)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 item.tier,
@@ -392,6 +400,7 @@ class MemoryStore:
                 item.text,
                 item.summary,
                 json.dumps(list(item.source_ids or []), ensure_ascii=False),
+                str(item.source_status or "legacy")[:20],
                 json.dumps(list(item.tags or []), ensure_ascii=False),
                 ts,
                 half,

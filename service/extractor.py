@@ -17,6 +17,8 @@ import os
 import re
 from dataclasses import dataclass
 
+from evidence_match import match_evidence
+
 
 def strip_memory_prefix(tier: str, text: str) -> str:
     """存储层不写「我记得」；注入层统一加提示词。"""
@@ -60,6 +62,10 @@ EXTRACT_SYSTEM = """你从一段对话里抽取值得长期记住的内容。
 
 原则：**宁可多抽一条，也不要漏掉他告诉过你的事。** 漏掉的东西他得再说一遍，多抽的顶多占一行。
 
+每条事实必须带 `evidence`：从输入原文里逐字抄 1–2 句，作为来源。
+不要改写、不要拼接、不要写输入里没有的话。
+这段 evidence 会用来匹配原文 id；匹配不上就只标 unverified，不会丢事实。
+
 ## 视角
 
 - 关于你自己的经历、答应过的事，用第一人称：「我记得…」「我答应过…」
@@ -95,17 +101,21 @@ EXTRACT_SYSTEM = """你从一段对话里抽取值得长期记住的内容。
 
 主人：我叫老王，在杭州做后端，养了只猫叫豆豆
 我：记住你了
-→ [{"text": "主人叫老王，在杭州做后端开发", "tier": "L1", "importance": 0.8},
-   {"text": "主人养了一只猫叫豆豆", "tier": "L1", "importance": 0.7}]
+→ [{"text": "主人叫老王，在杭州做后端开发", "tier": "L1", "importance": 0.8,
+    "evidence": ["我叫老王，在杭州做后端"]},
+   {"text": "主人养了一只猫叫豆豆", "tier": "L1", "importance": 0.7,
+    "evidence": ["养了只猫叫豆豆"]}]
 
 主人：好麻烦啊，我现在准备转正了，但是好多事情要做啊
 我：转正要办一堆手续吧，慢慢来
 → [{"text": "我记得主人正在准备转正，事情很多觉得麻烦", "tier": "L3", "importance": 0.7,
+    "evidence": ["我现在准备转正了，但是好多事情要做啊"],
     "emotion": {"label": "烦", "valence": -0.5, "arousal": 0.5, "reason": "转正手续多"}}]
 
 主人：我今天加班到现在，累死了
 我：那你早点睡
 → [{"text": "我记得主人今天加班到很晚，非常累", "tier": "L3", "importance": 0.6,
+    "evidence": ["我今天加班到现在，累死了"],
     "emotion": {"label": "累", "valence": -0.7, "arousal": 0.2, "reason": "加班到现在"}}]
 
 主人：（系统提醒：你醒着，现在是 21 点。抽到：想撒个娇）
@@ -157,6 +167,7 @@ keywords 里再加一个「情绪:<情绪>」标签。
 text 直接写内容本身，不要加「我记得 / 我记住」前缀；主人仍称「主人」，自己称「我」，不要用「用户 / 助手 / 她」。
 严格 JSON 数组，不要任何其他文字：
 [{"text": "一句话", "tier": "L1|L3", "subject": "self", "importance": 0.0,
+  "evidence": ["从原文逐字抄的 1–2 句"],
   "keywords": ["词1", "词2"],
   "emotion": {"label": "难过", "valence": -0.7, "arousal": 0.4, "reason": "..."} | null}]
 """
@@ -389,7 +400,8 @@ class Extractor:
 
     def _apply_facts(self, facts: list, subject: str = "self",
                      source_ids: list[int] | None = None,
-                     allowed_tiers: set[str] | None = None) -> dict:
+                     allowed_tiers: set[str] | None = None,
+                     source_rows: list[dict] | None = None) -> dict:
         """把抽出来的 fact 逐条判定并落库。"""
         applied = {"add": 0, "update": 0, "delete": 0, "none": 0}
         details = []
@@ -401,8 +413,10 @@ class Extractor:
             tier = str(fact.get("tier") or "L1").upper()
             if allowed_tiers is not None and tier not in allowed_tiers:
                 continue
-            if source_ids:
-                fact["source_ids"] = source_ids
+            evidence = fact.get("evidence") or []
+            matched, source_status = match_evidence(evidence, source_rows or [])
+            fact["source_ids"] = matched
+            fact["source_status"] = source_status
             neighbors = self.store.candidates(text, top_k=self.config.neighbor_k, subject=subject)
             decision = self._decide(fact, idx, neighbors)
             if decision is None:
@@ -458,7 +472,23 @@ class Extractor:
         for fact in facts:
             if isinstance(fact, dict):
                 fact["tier"] = "L1"
-        return self._apply_facts(facts, subject="self", source_ids=source_ids, allowed_tiers={"L1"})
+        source_rows = []
+        if source_ids:
+            try:
+                marks = ",".join("?" for _ in source_ids)
+                source_rows = [
+                    {"id": int(r["id"]), "text": str(r["text"] or "")}
+                    for r in self.store.conn.execute(
+                        f"SELECT id,text FROM memory WHERE tier='L0' AND id IN ({marks})",
+                        list(source_ids),
+                    ).fetchall()
+                ]
+            except Exception:
+                source_rows = []
+        return self._apply_facts(
+            facts, subject="self", source_ids=source_ids,
+            allowed_tiers={"L1"}, source_rows=source_rows,
+        )
 
     def extract_rules(self, material: str, current_rules: str, context: str = "") -> list[str]:
         """从 L1/L3 + 现有 L4 里找真正的约定/底线。"""
@@ -541,6 +571,7 @@ class Extractor:
             subject=subject,
             tags=["episode", f"turns:{len(turns)}"],
             source_ids=source_ids or None,
+            source_status="batch" if source_ids else "unverified",
             vec=vec,
             vec_model=vec_model,
         ))
@@ -750,7 +781,8 @@ class Extractor:
             tier=tier,
             subject=str(fact.get("subject") or subject),
             tags=["extracted"] + [str(k) for k in (fact.get("keywords") or [])][:8],
-            source_ids=getattr(self, "_cur_source_ids", None) or fact.get("source_ids") or None,
+            source_ids=fact.get("source_ids") or None,
+            source_status=str(fact.get("source_status") or "unverified"),
             vec=vec,
             vec_model=vec_model,
             user_id=getattr(self, "_cur_user_id", ""),

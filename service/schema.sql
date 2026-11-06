@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS memory (
   text           TEXT    NOT NULL,
   summary        TEXT,
   source_ids     TEXT,                       -- JSON 数组，回溯到原话
+  source_status  TEXT NOT NULL DEFAULT 'legacy', -- verified / unverified / batch / legacy
   tags           TEXT,                       -- JSON 数组，精确筛选用
   ts             REAL    NOT NULL,           -- 事件发生时间（unix 秒）
   half_life_days REAL,                       -- NULL = 不衰减

@@ -1150,7 +1150,7 @@ L4 详情页显示来源 L3/L0
 
 ## 18. evidence 与精确 source_ids
 
-状态：方案，未实现。
+状态：L1 evidence 匹配与 source_status 第一版已实现；L3 仍用批次来源。
 
 ### 18.1 决定
 
@@ -1354,6 +1354,84 @@ source_status 是否加列
 代码负责把它变成 id
 匹配不上就 unverified，不猜
 ```
+
+### 18.12 第一版实现
+
+已加：
+
+```text
+service/evidence_match.py
+  normalize
+  match_evidence
+```
+
+匹配：
+
+```text
+精确子串
+去标点/空白/大小写
+difflib 最长公共片段覆盖 >= 0.85
+```
+
+已加列：
+
+```sql
+source_status TEXT NOT NULL DEFAULT 'legacy'
+```
+
+状态：
+
+```text
+verified
+unverified
+batch
+legacy
+```
+
+当前实现：
+
+```text
+L1 批次抽取：
+  模型输出 evidence
+  extract_batch 取回 L0 原文
+  match_evidence 映射 id
+  写 source_ids + source_status
+
+L3 episode：
+  仍用一批 L1 的 id
+  source_status = batch
+
+L4 核心：
+  历史 4 条 source_status = legacy
+```
+
+已回填：
+
+```text
+L1 128 条 legacy
+L3 16 条 batch
+L4 4 条 legacy
+```
+
+还没做：
+
+```text
+L3 也做 evidence 级来源
+L4 提升时写 source_ids
+面板显示 source_status
+```
+
+测试：
+
+```text
+tests/test_evidence_match.py
+  精确命中
+  标点容错
+  轻微漏字
+  无命中
+  空 evidence
+```
+
 
 
 
