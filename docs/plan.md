@@ -45,7 +45,7 @@ L3 事件线程：
 ```text
 L2 从 L0 + L1 生成
 带 confidence
-带 basis / derived_from
+带 basis（memory_links）
 默认 hypothesis
 7–30 天
 不直接当事实注入
@@ -64,7 +64,7 @@ L2 从 L0 + L1 生成
   status
   opened_at / last_seen_at / closed_at
   summary
-  source_ids / derived_from
+  source_ids / memory_links
 ```
 
 ### P3 提取时机
@@ -83,17 +83,17 @@ L3 根据事件线程续写/新建
 每天 04:00
 输入：前一天 closed L3 + L0
 输出：0–2 条核心记忆
-带 derived_from
+带 memory_links
 ```
 
 ### P5 来源字段
 
 ```text
 source_ids = 精确 L0 证据
-derived_from = L1/L2/L3 输入
+memory_links = 直接输入层（L1/L2/L3）
 ```
 
-当前只实现了 `source_ids`，`derived_from` 未加列。
+当前只实现了 `source_ids`，`memory_links` 未建表。
 
 ### P6 提取规则细节
 

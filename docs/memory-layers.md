@@ -544,56 +544,167 @@ L3 → L0
 L4 → L0
 ```
 
-### derived_from
+### 为什么不是一棵树
 
-直接输入层 id。
+L2/L3 不是只依赖下一层：
 
 ```text
-L1 → 空
-L2 → L1
-L3 → L1 / L2
-L4 → L3
+L2 ← L0 + L1
+L3 ← L0 窗口 + L1 + L2
+```
+
+同一个 L3 可以同时依赖：
+
+```text
+多个 L1 事实
+多个 L2 判断
+若干 L0 原话
+```
+
+所以它是 DAG，不是树。
+
+只存一个 `parent_id` 不够。
+
+用 JSON 数组存 `derived_from` 也能跑，但查询和遍历会越来越别扭。
+
+### 推荐：source_ids + memory_links
+
+```text
+source_ids       叶子 L0，直接查原话
+memory_links     依赖边，查“从哪些记忆推出来”
+```
+
+`source_ids` 保留，用于：
+
+```text
+展示证据
+快速回查原话
+不递归
+```
+
+`memory_links` 负责：
+
+```text
+L2 ← L1
+L3 ← L1 / L2
+L4 ← L3
+多父节点
+边上的角色
+```
+
+### memory_links 表
+
+```sql
+memory_links(
+  child_id    INTEGER NOT NULL,   -- 上层记忆
+  parent_id   INTEGER NOT NULL,   -- 直接输入
+  relation    TEXT NOT NULL,      -- derived_from / updates / supports
+  role        TEXT DEFAULT '',    -- fact / judgment / context / evidence
+  created_at  REAL NOT NULL,
+  PRIMARY KEY(child_id, parent_id, relation, role)
+)
+```
+
+索引：
+
+```sql
+CREATE INDEX idx_links_child  ON memory_links(child_id);
+CREATE INDEX idx_links_parent ON memory_links(parent_id);
+```
+
+### 例子
+
+L3 由两个 L1、一个 L2 推出：
+
+```text
+L3#301 --derived_from/fact--> L1#101
+L3#301 --derived_from/fact--> L1#102
+L3#301 --derived_from/judgment--> L2#201
+```
+
+L4 由 L3 提升：
+
+```text
+L4#401 --derived_from--> L3#301
+```
+
+### 查询
+
+直接输入：
+
+```sql
+SELECT parent_id, relation, role
+FROM memory_links
+WHERE child_id = ?
+```
+
+反向查引用：
+
+```sql
+SELECT child_id
+FROM memory_links
+WHERE parent_id = ?
+```
+
+递归溯源：
+
+```sql
+WITH RECURSIVE ancestry(id, depth) AS (
+  SELECT parent_id, 1 FROM memory_links WHERE child_id = ?
+  UNION ALL
+  SELECT l.parent_id, a.depth + 1
+  FROM memory_links l JOIN ancestry a ON l.child_id = a.id
+)
+SELECT * FROM ancestry;
+```
+
+### 为什么不用只存直接下层
+
+可以存，但必须解决：
+
+```text
+一个 L3 有多个 L1/L2 父节点
+父节点跨层
+边上要知道是事实还是判断
+```
+
+单列 `parent_id` 解决不了。
+
+JSON 数组可以临时用，但：
+
+```text
+按父节点反查难
+去重难
+加角色难
+递归查询难
+```
+
+### 为什么还保留 source_ids
+
+`memory_links` 能递归到 L0，但每次展示证据都递归太慢。
+
+所以：
+
+```text
+source_ids = 预先拍平的叶子证据
+memory_links = 依赖关系
+```
+
+两者不是重复：
+
+```text
+source_ids 回答“哪句原话”
+memory_links 回答“从哪些记忆推出来”
 ```
 
 ### 当前实现
 
-现在只实现了 `source_ids`，而且重点是直达 L0：
-
 ```text
-L1.source_ids = L0
-L3.source_ids = L0（evidence 改造后）
-L4.source_ids = 空 / legacy
+source_ids：已实现
+memory_links：未实现
 ```
 
-`derived_from` 还没加列。
-
-所以当前不是树形逐层找：
-
-```text
-L1 / L3 直接指向原话
-```
-
-代价是：
-
-```text
-丢了“这条 L3 由哪些 L1/L2 推出来”的中间依赖
-```
-
-### 目标
-
-```text
-source_ids   = 叶子（L0）
-derived_from = 父节点（直接输入层）
-```
-
-这样既能直接回到原话，也能沿依赖关系往上/往下查。
-
-是 DAG，不是严格树：
-
-```text
-一个 L3 可以依赖多个 L1/L2
-一个 L4 可以依赖多个 L3
-```
+所以现在能直接回查原话，但还不能查“这条 L3 由哪些 L1/L2 推出来”。
 
 ### evidence
 
