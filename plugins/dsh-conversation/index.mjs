@@ -14,20 +14,26 @@ export const inject = ["tools", "systemPrompt"];
 
 const SECTION = "conversation:preflight";
 
-const PROTOCOL = `【对话预检】
+const PROTOCOL = `【对话预检流程】
 
-每次回答用户前，先调用 preflight_state 工具。
-只提交 unknown 和 action，不要在这一步回答用户。
+每个新的用户回合开始时：
+1. 正式回答前调用 preflight_state 一次。
+2. 同一回合只调用一次，不要重复预检。
+3. 以最近一次 preflight_state 返回的 phase 作为当前状态。
+4. 新用户消息到来时重新开始，不要沿用上一回合的 phase。
 
-action 只能是：
-- answer：不需要外部信息，直接回应
-- search：需要外部信息，先检索再回应
-- ask：信息不足，先问清楚
+调用时 action 只能是：
+- answer：不需要外部信息
+- search：需要外部信息
+- ask：信息不足，需要先问清楚
+
+返回 phase 后按它执行：
+- phase=answer：直接回应用户，不要检索
+- phase=research：只做检索，不要回答用户；检索完成后直接回答，不要再次预检
+- phase=ask：只问澄清问题，不要回答，不要检索
 
 unknown 只写真正不确定、且会影响回答的点，最多 3 条。
 不要把原文没有的推断写成事实。
-
-search 后按 preflight_state 返回的指令进入检索。
 不要向用户解释预检、检索或阶段。`;
 
 const RESEARCH = `你现在处于检索阶段。
@@ -119,9 +125,9 @@ export function apply(ctx) {
       tools.register(defineTool({
         name: "preflight_state",
         description:
-          "对话预检。仅当系统提示里有【对话预检】时，才在正式回答前调用一次；"
-          + "没有该提示时不要调用。只提交 unknown 和 action，不回答用户。"
-          + "action=answer|search|ask。",
+          "对话预检。仅当系统提示里有【对话预检流程】时，才在正式回答前调用一次；"
+          + "同一用户回合只调用一次。没有该提示时不要调用。"
+          + "只提交 unknown 和 action，不回答用户。action=answer|search|ask。",
         parameters: {
           unknown: {
             type: "array",
@@ -156,6 +162,7 @@ export function apply(ctx) {
               action,
               unknown,
               instruction: RESEARCH,
+              note: "本回合预检已完成，不要再次调用 preflight_state。",
             };
           }
 
@@ -166,6 +173,7 @@ export function apply(ctx) {
               action,
               unknown,
               instruction: "现在只问澄清问题，不要回答，也不要检索。用你自己的语气问。",
+              note: "本回合预检已完成，不要再次调用 preflight_state。",
             };
           }
 
@@ -175,6 +183,7 @@ export function apply(ctx) {
             action,
             unknown,
             instruction: "现在直接回应用户，不要检索，不要提预检。",
+            note: "本回合预检已完成，不要再次调用 preflight_state。",
           };
         },
       }));

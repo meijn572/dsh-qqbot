@@ -114,24 +114,30 @@ ASK    → assistant/message（澄清）
 建议原文：
 
 ```text
-【对话预检】
+【对话预检流程】
 
-每次回答用户前，先调用 preflight_state 工具。
-只提交 unknown 和 action，不要在这一步回答用户。
+每个新的用户回合开始时：
+1. 正式回答前调用 preflight_state 一次。
+2. 同一回合只调用一次，不要重复预检。
+3. 以最近一次 preflight_state 返回的 phase 作为当前状态。
+4. 新用户消息到来时重新开始，不要沿用上一回合的 phase。
 
-action 只能是：
-- answer：不需要外部信息，直接回应
-- search：需要外部信息，先检索再回应
-- ask：信息不足，先问清楚
+调用时 action 只能是：
+- answer：不需要外部信息
+- search：需要外部信息
+- ask：信息不足，需要先问清楚
+
+返回 phase 后按它执行：
+- phase=answer：直接回应用户，不要检索
+- phase=research：只做检索，不要回答用户；检索完成后直接回答，不要再次预检
+- phase=ask：只问澄清问题，不要回答，不要检索
 
 unknown 只写真正不确定、且会影响回答的点，最多 3 条。
 不要把原文没有的推断写成事实。
-
-search 后按 preflight_state 返回的指令进入检索。
 不要向用户解释预检、检索或阶段。
 ```
 
-这段是常驻协议，不随轮次变化。
+这段是常驻协议，不随轮次变化。模型通过最近一次 `preflight_state` 的 `phase` 知道当前处于哪个阶段。
 
 ## 5. 工具结果指令
 
@@ -141,7 +147,8 @@ search 后按 preflight_state 返回的指令进入检索。
 {
   "ok": true,
   "phase": "answer",
-  "instruction": "现在直接回应用户，不要检索。"
+  "instruction": "现在直接回应用户，不要检索。",
+  "note": "本回合预检已完成，不要再次调用 preflight_state。"
 }
 ```
 
@@ -151,7 +158,8 @@ search 后按 preflight_state 返回的指令进入检索。
 {
   "ok": true,
   "phase": "ask",
-  "instruction": "现在只问澄清问题，不要回答。"
+  "instruction": "现在只问澄清问题，不要回答。",
+  "note": "本回合预检已完成，不要再次调用 preflight_state。"
 }
 ```
 
@@ -161,7 +169,8 @@ search 后按 preflight_state 返回的指令进入检索。
 {
   "ok": true,
   "phase": "research",
-  "instruction": "现在只检索，不要回答。补齐 unknown 后直接回应用户。"
+  "instruction": "现在只检索，不要回答。补齐 unknown 后直接回应用户。",
+  "note": "本回合预检已完成，不要再次调用 preflight_state。"
 }
 ```
 
