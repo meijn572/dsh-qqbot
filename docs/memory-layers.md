@@ -697,6 +697,64 @@ source_ids 回答“哪句原话”
 memory_links 回答“从哪些记忆推出来”
 ```
 
+### 图是逻辑模型，不是每次跑算法
+
+```text
+逻辑上：DAG
+物理上：SQLite 邻接表
+```
+
+不需要：
+
+```text
+Neo4j
+每次对话跑图算法
+每次注入递归到 L0
+```
+
+实际分两条路径：
+
+```text
+快路径：source_ids 直接查 L0
+慢路径：memory_links 按需查依赖
+```
+
+`source_ids` 是**预先拍平的叶子缓存**：
+
+```text
+L1 / L2 / L3 / L4 都直接带 L0 id
+展示证据时不再递归
+```
+
+`memory_links` 只在：
+
+```text
+看这条记忆从哪来
+查反向引用
+审计/面板溯源
+```
+
+时用。
+
+### 一致性
+
+写入时同一事务：
+
+```text
+写 memory
+写 memory_links
+写 source_ids
+```
+
+`source_ids` 是权威证据缓存；`memory_links` 是依赖结构。
+
+两者不一致时：
+
+```text
+以 source_ids 为展示依据
+memory_links 可重建
+```
+
 ### 当前实现
 
 ```text
