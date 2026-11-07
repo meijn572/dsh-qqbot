@@ -1039,6 +1039,12 @@ class Extractor:
                 trigger=reason[:200],
                 source="extract",
             )
+            # 情绪日志和当前状态是两件事：日志只追加，状态要跟着最新情绪走，
+            # 否则面板会一直显示几小时前的 valence。
+            try:
+                self.store.set_emotion(valence, arousal)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -1067,6 +1073,10 @@ class Extractor:
                 trigger=reason[:200],
                 source="extract",
             )
+            try:
+                self.store.set_emotion(valence, arousal)
+            except Exception:
+                pass
         except Exception:
             pass
 
