@@ -23,6 +23,9 @@ L3：open 超过 14 天标 dormant，不删除
 L3：标题支持模糊匹配
 旧 L3：16 条旧流水账 archived，拆成 41 条事件线程
 旧 L1：保留 legacy，不重算 source_ids
+旧提示词审计：L1 抽取只产 L1；上下文标签自然语言；batch 不再带 L4
+旧 episode 链路：插件默认关闭
+便签旧作者：已统一为「洄」
 UPDATE：合并 source_ids
 去掉 keywords 里的「情绪:xxx」
 memory_links：建表，L1/L3 写依赖边

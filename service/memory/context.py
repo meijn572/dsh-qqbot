@@ -91,12 +91,12 @@ def build_context(store, body: dict, embedder) -> dict:
         if not text:
             continue
         counts[tier] = counts.get(tier, 0) + 1
-        label = {"L0": "原话", "L1": "事实", "L2": "退役", "L3": "经历", "L4": "核心记忆"}.get(tier, tier)
+        label = {"L0": "原话", "L1": "上次聊到的", "L2": "我的判断", "L3": "记得的事", "L4": "核心记忆"}.get(tier, tier)
         if tier in ("L0", "L3"):
             stamp = time.strftime("%m-%d %H:%M", time.localtime(float(item["ts"] or 0)))
-            lines.append(f"[{tier} · {label} · {stamp}] {text}")
+            lines.append(f"[{label} · {stamp}] {text}")
         else:
-            lines.append(f"[{tier} · {label}] {text}")
+            lines.append(f"[{label}] {text}")
     header = (
         "以下是最近的对话原话（按时间从早到晚）："
         if purpose == "recent"

@@ -153,9 +153,9 @@ export function renderPersona(data, maxChars, proactive, opts = {}) {
 
 const TIER_LABEL = {
   L4: "核心记忆",
-  L3: "经历",
-  L2: "退役",
-  L1: "事实",
+  L3: "记得的事",
+  L2: "我的判断",
+  L1: "上次聊到的",
   L0: "原话",
 };
 

@@ -6,7 +6,7 @@
 端点
   GET  /health                      健康 + embedding 状态 + 记忆统计
   GET  /stats                       记忆统计
-  GET  /profile?subject=            取 L4 人格块（每轮必带）
+  GET  /profile?subject=            已废弃：L4 不再每轮注入
   POST /ingest                      写一条记忆（可带 embed 开关）
   POST /search                      混合检索（BM25 + 向量 + 衰减 + 诚实出口）
   POST /forget/{id}                 删除一条
@@ -15,7 +15,11 @@
   GET  /persona                     人格设定：宪法区 + 自我认知区
   POST /persona                     设置页保存（两半都能写）
   POST /persona/self                插件/AI 写入（只能写自我认知区，宪法区没有参数）
-  POST /episode                     把一段对话压成一条 L3 事件记录（需要配 LLM）
+  POST /episode                     旧路径：压一条 L3（当前由 /batch/run 取代）
+  POST /batch/run                   按会话段抽 L1 / 更新 L3
+  POST /core/review                 每 3 天从 closed/standalone L3 提升 L4
+  GET  /threads/open                还没完的事
+  GET  /threads/get?q=              按标题查事件线程
 """
 
 from __future__ import annotations
@@ -2914,20 +2918,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def _batch_identity(self) -> str:
         persona = store.get_persona()
-        rules = []
-        try:
-            for row in store.conn.execute(
-                "SELECT text FROM memory WHERE tier='L4' ORDER BY id DESC LIMIT 20"
-            ):
-                rules.append(str(row["text"]))
-        except Exception:  # noqa: BLE001
-            pass
         parts = [
             "主人：九歌；群友不是主人；她是大肥鱼。",
             "【核心设定】\n" + str(persona.get("constitution") or "")[:1200],
             "【自我认知】\n" + str(persona.get("self_model") or "")[:800],
             "【我眼中的主人】\n" + str(persona.get("user_profile") or "")[:500],
-            "【核心记忆】\n" + ("\n".join(f"- {x}" for x in rules) or "（空）"),
         ]
         return "\n\n".join(part for part in parts if part.strip())
 

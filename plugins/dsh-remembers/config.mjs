@@ -88,9 +88,8 @@ export function resolveConfig(input = {}, env = process.env) {
     // 给不给 AI 写「自我认知区」的权限。宪法区无论如何都写不到（服务端没有那个入口）
     personaAllowWrite: toBool(value("personaAllowWrite"), true),
 
-    // episode：攒够一段对话就压成一条 L3 事件，防止上下文被 compaction 压扁后什么都不剩。
-    // 服务端没配 LLM 时会静默跳过（日志记 episode_degraded），不影响对话。
-    episodeEnabled: toBool(value("episodeEnabled"), true),
+    // 旧 episode 链路已由 /batch/run 的 L3 事件线程取代，默认关闭。
+    episodeEnabled: toBool(value("episodeEnabled"), false),
     // 攒够这么多轮就压一次。20 轮大概是一段完整话题的量
     episodeEveryTurns: toInt(value("episodeEveryTurns"), 20, 3, 200),
     // 或者从这一段开始算起超过这么久也压一次：夜里断断续续聊也能收住
