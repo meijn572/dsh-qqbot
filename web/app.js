@@ -108,7 +108,7 @@ function renderLex(){
     const kind=LEX_KIND[it.kind]||it.kind||'词条';
     const scope=it.category==='group'?`群 ${esc(it.scope)}`:'全局';
     const aliases=(it.aliases||[]).length?` <span class="mut">别名：${(it.aliases||[]).map(esc).join('、')}</span>`:'';
-    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${kind} · ${scope}</span> <b>${esc(it.term)}</b>${aliases} <span class="tag">${LEX_STATUS[it.status]||it.status}</span> <span class="mut">×${it.count||1}</span> <button style="float:right" onclick="lexDel('${encodeURIComponent(it.id||'')}')">删</button><div>${esc(it.meaning||'')}</div></div>`;
+    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${kind} · ${scope}</span> <b>${esc(it.term)}</b>${aliases} <span class="tag">${LEX_STATUS[it.status]||it.status}</span> <span class="mut">×${it.count||1}</span> <button style="float:right" onclick="lexDel('${encodeURIComponent(it.id||'')}', this)">删</button><div>${esc(it.meaning||'')}</div></div>`;
   }
   const box=document.getElementById('lexlist'); if(box) box.innerHTML=h||'<div class="mut">还没有词条</div>';
 }
@@ -183,11 +183,23 @@ async function lexAdd(){
   const r=await fetch('/api/lexicon/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({term,meaning,kind,aliases,status})});
   const data=await r.json(); if(!data.ok) alert(data.error||'失败'); load();
 }
-async function lexDel(id){
+async function lexDel(id,btn){
   id=decodeURIComponent(id);
-  if(!confirm('删掉这个词条？')) return;
-  await fetch('/api/lexicon/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
-  load();
+  if(!id){ alert('没有识别到词条 id'); return; }
+  if(btn){ btn.disabled=true; btn.textContent='删除中…'; }
+  try{
+    const r=await fetch('/api/lexicon/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+    const j=await r.json();
+    if(!j.ok){
+      if(btn){ btn.disabled=false; btn.textContent='删'; }
+      alert(j.error||'删除失败');
+      return;
+    }
+    await load();
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.textContent='删'; }
+    alert('删除失败：'+e);
+  }
 }
 async function load(){
   const s=await j('/api/status');
