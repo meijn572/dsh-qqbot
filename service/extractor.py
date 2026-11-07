@@ -140,10 +140,14 @@ L4 是以后从 L3 里再挑的。
 输出 JSON：
 {
   "updates": [
-    {"title": "现有标题", "summary": "更新后的摘要", "status": "open|closed", "source_refs": [1], "evidence": ["原文"]}
+    {"title": "现有标题", "summary": "更新后的摘要", "status": "open|closed",
+     "closeness_delta": 0, "trust_delta": 0, "tension_delta": 0,
+     "source_refs": [1], "evidence": ["原文"]}
   ],
   "new": [
-    {"title": "新标题", "summary": "摘要", "status": "open|closed|standalone", "source_refs": [1, 2], "evidence": ["原文"]}
+    {"title": "新标题", "summary": "摘要", "status": "open|closed|standalone",
+     "closeness_delta": 0, "trust_delta": 0, "tension_delta": 0,
+     "source_refs": [1, 2], "evidence": ["原文"]}
   ]
 }
 
@@ -151,6 +155,14 @@ status：
 - open：还有后续
 - closed：这次结束了
 - standalone：一个瞬间/一段话，没有后续
+
+关系增量（closeness_delta / trust_delta / tension_delta）：
+- 是这条事件对关系的边际变化，不是总分。
+- 正向：更亲近、更信任，填正数。
+- 冲突、失约、越界：tension_delta 填正数，trust_delta 可填负数。
+- 修复：更新同一条事件，把 tension_delta 改小或改成 0，trust_delta 可补正数。
+- 拿不准就填 0，不要为了有变化硬填。
+- 单条大约 -10..+10。
 
 规则：
 - title 必须短，2–12 个字。

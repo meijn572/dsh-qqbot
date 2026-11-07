@@ -268,6 +268,9 @@ def mood_payload() -> dict:
     valence = float(state.get("valence") or 0)
     arousal = float(state.get("arousal") or 0.5)
     intimacy = float(state.get("intimacy") or 0)
+    rel = state.get("relationship") or {}
+    if not isinstance(rel, dict):
+        rel = {}
     emotion = state.get("emotion") or {}
     dims = {}
     if isinstance(emotion, dict):
@@ -277,7 +280,12 @@ def mood_payload() -> dict:
             except (TypeError, ValueError):
                 continue
     dims.setdefault("心情值", round((valence + 1) * 50))
-    dims.setdefault("亲密度", round(min(100, intimacy / 10)))
+    if rel:
+        dims["亲近"] = round(float(rel.get("closeness") or 0))
+        dims["信任"] = round(float(rel.get("trust") or 0))
+        dims["张力"] = round(float(rel.get("tension") or 0))
+    else:
+        dims.setdefault("亲密度", round(min(100, intimacy / 10)))
     dims.setdefault("唤醒", round(arousal * 100))
     timeline = []
     for item in (state.get("emotion_recent") or [])[-12:]:
@@ -307,6 +315,7 @@ def mood_payload() -> dict:
         "active": state.get("mood") or "",
         "intimacy": intimacy,
         "stage": (state.get("stage") or {}).get("name", ""),
+        "relationship": rel,
         "activity": state.get("activity", ""),
         "valence": valence,
         "arousal": arousal,

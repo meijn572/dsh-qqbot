@@ -26,6 +26,9 @@ CREATE TABLE IF NOT EXISTS memory (
   thread_last_seen_at REAL DEFAULT NULL,
   thread_closed_at REAL DEFAULT NULL,
   stale_at       REAL DEFAULT NULL,          -- L1 过期标记，不删除
+  closeness_delta REAL NOT NULL DEFAULT 0,   -- L3 对亲近度的增量
+  trust_delta     REAL NOT NULL DEFAULT 0,   -- L3 对信任的增量
+  tension_delta   REAL NOT NULL DEFAULT 0,   -- L3 对张力的增量
   tags           TEXT,                       -- JSON 数组，精确筛选用
   ts             REAL    NOT NULL,           -- 事件发生时间（unix 秒）
   half_life_days REAL,                       -- NULL = 不衰减
@@ -150,7 +153,11 @@ CREATE TABLE IF NOT EXISTS state (
   -- 2026-10-27 补：get_state() 一直在读这三列
   game_score       INTEGER NOT NULL DEFAULT 0,
   game_plays       INTEGER NOT NULL DEFAULT 0,
-  chat_since_wake  INTEGER NOT NULL DEFAULT 0
+  chat_since_wake  INTEGER NOT NULL DEFAULT 0,
+  interaction_count REAL NOT NULL DEFAULT 0,
+  base_closeness    REAL NOT NULL DEFAULT 0,
+  base_trust        REAL NOT NULL DEFAULT 0,
+  base_tension      REAL NOT NULL DEFAULT 0
 );
 INSERT OR IGNORE INTO state(id) VALUES (1);
 

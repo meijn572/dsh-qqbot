@@ -161,13 +161,13 @@ async function bumpChat() {
   }
 }
 
-/** 真实互动涨亲密度（fire-and-forget），默认 +0.2 一轮。 */
-async function bumpIntimacy(delta = 1.0) {
+/** 真实互动计数（fire-and-forget）。只统计私聊，不参与关系阶段。 */
+async function bumpInteraction(delta = 1.0) {
   try {
     await fetch(config.endpoint + "/state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bump: delta }),
+      body: JSON.stringify({ bump_interaction: delta }),
       signal: AbortSignal.timeout(3000),
     });
   }
@@ -612,9 +612,9 @@ const soft = (key) => {
     state.turnAssistant = "";
     console.log("[dsh-remembers-debug] flush cfg extract=" + config.extract + " captureRaw=" + config.captureRaw + " userLen=" + user.length + " asstLen=" + assistant.length);
     // 自我认知复盘已改由服务端每天 22:00 触发，不再按 20 轮截断计数。
-    // 亲密度：只有「老大真的说话」才涨（唤醒剥完就没内容了，不会走到这）
-    if (keptUser && assistant) {
-      void bumpIntimacy(1.0);
+    // 互动计数：只统计私聊；群聊不涨全局关系。
+    if (keptUser && assistant && scopeOf.scope.startsWith("private:")) {
+      void bumpInteraction(1.0);
       void bumpChat();
     }
     // 情感层：旧的 /emotion auto 只看当前状态值，标签很粗；改由抽取模型给 semantic emotion

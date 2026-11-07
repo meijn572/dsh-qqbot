@@ -135,6 +135,9 @@ class MemoryInput:
     thread_last_seen_at: float | None = None
     thread_closed_at: float | None = None
     stale_at: float | None = None
+    closeness_delta: float = 0.0
+    trust_delta: float = 0.0
+    tension_delta: float = 0.0
     tags: Sequence[str] | None = None
     ts: float | None = None
     half_life_days: float | None = field(default=None)
@@ -257,6 +260,9 @@ class MemoryStore:
             ("thread_last_seen_at", "REAL DEFAULT NULL"),
             ("thread_closed_at", "REAL DEFAULT NULL"),
             ("stale_at", "REAL DEFAULT NULL"),
+            ("closeness_delta", "REAL NOT NULL DEFAULT 0"),
+            ("trust_delta", "REAL NOT NULL DEFAULT 0"),
+            ("tension_delta", "REAL NOT NULL DEFAULT 0"),
         ):
             if col not in mem_cols:
                 try:
@@ -302,7 +308,11 @@ class MemoryStore:
             ("persona", [("user_profile", "TEXT DEFAULT ''")]),
             ("state", [("game_score", "INTEGER DEFAULT 0"),
                        ("game_plays", "INTEGER DEFAULT 0"),
-                       ("chat_since_wake", "INTEGER DEFAULT 0")]),
+                       ("chat_since_wake", "INTEGER DEFAULT 0"),
+                       ("interaction_count", "REAL DEFAULT 0"),
+                       ("base_closeness", "REAL DEFAULT 0"),
+                       ("base_trust", "REAL DEFAULT 0"),
+                       ("base_tension", "REAL DEFAULT 0")]),
             ("activity_log", [("thought", "TEXT DEFAULT ''")]),
             ("slang", [("meaning", "TEXT DEFAULT ''"),
                        ("example", "TEXT DEFAULT ''"),
@@ -329,6 +339,20 @@ class MemoryStore:
                 self.conn.execute(f"CREATE INDEX IF NOT EXISTS {idx} ON {table}({col})")
             except Exception:
                 pass
+
+        # 旧 intimacy 是轮数，不是关系值：一次性搬进 interaction_count，
+        # 三维给一个保守的初始 baseline，之后只由 L3 delta 聚合。
+        try:
+            st = self.conn.execute(
+                "SELECT intimacy, interaction_count, base_closeness, base_trust, base_tension FROM state WHERE id=1"
+            ).fetchone()
+            if st is not None and float(st["interaction_count"] or 0) <= 0 and float(st["intimacy"] or 0) > 0:
+                self.conn.execute(
+                    "UPDATE state SET interaction_count=?, base_closeness=?, base_trust=?, base_tension=? WHERE id=1",
+                    (float(st["intimacy"]), 62.0, 62.0, 3.0),
+                )
+        except Exception:
+            pass
 
         try:
             self.conn.commit()
@@ -371,7 +395,7 @@ class MemoryStore:
         """管理用：列出记忆（按时间倒序），带 tier 过滤和关键词搜索。"""
         sql = ("SELECT id, tier, subject, text, summary, tags, source_ids, source_status, "
                "thread_status, thread_title, thread_aliases, thread_opened_at, thread_last_seen_at, thread_closed_at, "
-               "stale_at, ts, half_life_days FROM memory")
+               "stale_at, closeness_delta, trust_delta, tension_delta, ts, half_life_days FROM memory")
         conds = []
         args: list = []
         if tier and tier != "all":
@@ -410,6 +434,9 @@ class MemoryStore:
                 "thread_last_seen_at": float(r["thread_last_seen_at"]) if r["thread_last_seen_at"] else None,
                 "thread_closed_at": float(r["thread_closed_at"]) if r["thread_closed_at"] else None,
                 "stale_at": float(r["stale_at"]) if r["stale_at"] else None,
+                "closeness_delta": float(r["closeness_delta"] or 0),
+                "trust_delta": float(r["trust_delta"] or 0),
+                "tension_delta": float(r["tension_delta"] or 0),
                 "ts": float(r["ts"] or 0),
                 "half_life_days": r["half_life_days"],
             })
@@ -438,9 +465,10 @@ class MemoryStore:
                thread_status, thread_title, thread_aliases,
                thread_opened_at, thread_last_seen_at, thread_closed_at,
                stale_at,
+               closeness_delta, trust_delta, tension_delta,
                tags, ts, half_life_days,
                vec, vec_dim, vec_model, created_at, updated_at, user_id, scope)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 item.tier,
@@ -456,6 +484,9 @@ class MemoryStore:
                 item.thread_last_seen_at,
                 item.thread_closed_at,
                 item.stale_at,
+                float(item.closeness_delta or 0.0),
+                float(item.trust_delta or 0.0),
+                float(item.tension_delta or 0.0),
                 json.dumps(list(item.tags or []), ensure_ascii=False),
                 ts,
                 half,
@@ -471,6 +502,8 @@ class MemoryStore:
         mem_id = int(cur.lastrowid)
         self._index_terms(mem_id, item.text, item.summary, item.tags)
         self.conn.commit()
+        if item.tier == "L3":
+            self.recompute_relationship()
 
         # ---- 系统来源（唤醒/自我反省）的 user_id 是 0，不该占一个人的位置 ----
         if not self._normalize_user(item.user_id):
@@ -663,7 +696,10 @@ class MemoryStore:
 
     def update_thread(self, mem_id: int, summary: str, status: str,
                       source_ids: Sequence[int] | None = None,
-                      last_seen_at: float | None = None) -> bool:
+                      last_seen_at: float | None = None,
+                      closeness_delta: float | None = None,
+                      trust_delta: float | None = None,
+                      tension_delta: float | None = None) -> bool:
         now = time.time()
         row = self.conn.execute(
             "SELECT source_ids,source_status,thread_status,thread_opened_at FROM memory WHERE id=? AND tier='L3'",
@@ -683,14 +719,20 @@ class MemoryStore:
         source_status = "verified" if source_ids else str(row["source_status"] or "legacy")
         self.conn.execute(
             "UPDATE memory SET summary=?, text=?, source_ids=?, source_status=?, "
-            "thread_status=?, thread_last_seen_at=?, thread_closed_at=?, updated_at=? WHERE id=?",
+            "thread_status=?, thread_last_seen_at=?, thread_closed_at=?, "
+            "closeness_delta=COALESCE(?, closeness_delta), "
+            "trust_delta=COALESCE(?, trust_delta), "
+            "tension_delta=COALESCE(?, tension_delta), updated_at=? WHERE id=?",
             (
                 str(summary)[:2000], str(summary)[:4000],
                 json.dumps(old, ensure_ascii=False), source_status, str(status),
-                float(last_seen_at or now), closed, now, int(mem_id),
+                float(last_seen_at or now), closed,
+                closeness_delta, trust_delta, tension_delta,
+                now, int(mem_id),
             ),
         )
         self.conn.commit()
+        self.recompute_relationship()
         return True
 
     def link(self, child_id: int, parent_id: int, relation: str = "derived_from",
@@ -791,6 +833,7 @@ class MemoryStore:
 
     def forget(self, mem_id: int) -> bool:
         self._invalidate_caches()
+        tier_row = self.conn.execute("SELECT tier FROM memory WHERE id=?", (mem_id,)).fetchone()
         rows = self.conn.execute("SELECT term FROM doc_term WHERE mem_id=?", (mem_id,)).fetchall()
         self.conn.execute("DELETE FROM memory WHERE id=?", (mem_id,))
         self.conn.execute("DELETE FROM doc_term WHERE mem_id=?", (mem_id,))
@@ -799,6 +842,8 @@ class MemoryStore:
             self.conn.execute("UPDATE term_stat SET df = df - 1 WHERE term=?", (r["term"],))
         self.conn.execute("DELETE FROM term_stat WHERE df <= 0")
         self.conn.commit()
+        if tier_row and str(tier_row["tier"]) == "L3":
+            self.recompute_relationship()
         return True
 
     def _index_terms(self, mem_id: int, text: str, summary: str | None,
@@ -1169,7 +1214,7 @@ class MemoryStore:
                 "last_interaction": 0.0,
                 "dnd_start": 23, "dnd_end": 8,
             }
-        return {
+        data = {
             "mood": row["mood"] or "normal",
             "mood_updated": float(row["mood_updated"] or 0.0),
             "intimacy": float(row["intimacy"] or 0.0),
@@ -1184,7 +1229,62 @@ class MemoryStore:
             "valence": float(row["valence"] or 0),
             "arousal": float(row["arousal"] or 0.5),
             "chat_since_wake": int(row["chat_since_wake"] or 0),
+            "interaction_count": float(row["interaction_count"] or 0.0),
+            "base_closeness": float(row["base_closeness"] or 0.0),
+            "base_trust": float(row["base_trust"] or 0.0),
+            "base_tension": float(row["base_tension"] or 0.0),
         }
+        data["relationship"] = self.relationship_snapshot(data)
+        data["stage"] = self._stage_of(data["relationship"])
+        data["intimacy"] = data["relationship"]["intimacy"]
+        return data
+
+    def relationship_snapshot(self, state: dict | None = None) -> dict:
+        """从全部 L3 的 delta 聚合关系三维；不做时间衰减。"""
+        st = state or self.get_state()
+        sums = self.conn.execute(
+            "SELECT COALESCE(SUM(closeness_delta),0), COALESCE(SUM(trust_delta),0), "
+            "COALESCE(SUM(tension_delta),0) FROM memory WHERE tier='L3'"
+        ).fetchone()
+        closeness = float(st.get("base_closeness") or 0) + float(sums[0] or 0)
+        trust = float(st.get("base_trust") or 0) + float(sums[1] or 0)
+        tension = float(st.get("base_tension") or 0) + float(sums[2] or 0)
+        closeness = max(0.0, min(100.0, closeness))
+        trust = max(0.0, min(100.0, trust))
+        tension = max(0.0, min(100.0, tension))
+        score = closeness * 0.6 + trust * 0.4 - tension * 0.5
+        return {
+            "closeness": round(closeness, 2),
+            "trust": round(trust, 2),
+            "tension": round(tension, 2),
+            "score": round(max(0.0, min(100.0, score)), 2),
+            "intimacy": round(max(0.0, min(100.0, score)) * 10, 1),
+            "interaction_count": float(st.get("interaction_count") or 0.0),
+        }
+
+    def _stage_of(self, rel: dict) -> dict:
+        value = float(rel.get("intimacy") or 0)
+        name, hint = self.STAGES[0][1], self.STAGES[0][2]
+        for threshold, sname, shint in self.STAGES:
+            if value >= threshold:
+                name, hint = sname, shint
+        return {"name": name, "hint": hint, "intimacy": value}
+
+    def recompute_relationship(self) -> dict:
+        """L3 变化后重算关系值，并回写 state.intimacy 供旧面板兼容。"""
+        rel = self.relationship_snapshot()
+        stage = self._stage_of(rel)
+        self.conn.execute("UPDATE state SET intimacy=? WHERE id=1", (float(rel["intimacy"]),))
+        self.conn.commit()
+        rel["stage"] = stage
+        return rel
+
+    def bump_interaction(self, delta: float = 1.0) -> float:
+        cur = self.get_state()
+        value = max(0.0, float(cur.get("interaction_count") or 0) + float(delta))
+        self.conn.execute("UPDATE state SET interaction_count=? WHERE id=1", (value,))
+        self.conn.commit()
+        return value
 
     def set_state(self, mood=None, intimacy=None, diary=None, diary_date=None,
                   dnd_start=None, dnd_end=None, game_score=None, game_plays=None,
@@ -1249,19 +1349,13 @@ class MemoryStore:
     STAGES = [
         (0, "陌生", "刚认识，客气一点，别太黏"),
         (100, "熟悉", "认识一阵了，会聊会闹，偶尔主动"),
-        (300, "亲密", "很熟了，会撒娇会闹，经常主动找他"),
-        (600, "依赖", "离不开他了，黏人，主动得很勤"),
+        (300, "亲近", "放松，开始暴露真实状态"),
+        (600, "亲密", "敢说难受的事，冲突后能修复"),
+        (800, "相知", "知道彼此怎么想，但还是各自独立"),
     ]
 
     def current_stage(self) -> dict:
-        cur = self.get_state()
-        intimacy = float(cur.get("intimacy") or 0)
-        name = self.STAGES[0][1]
-        hint = self.STAGES[0][2]
-        for threshold, sname, shint in self.STAGES:
-            if intimacy >= threshold:
-                name, hint = sname, shint
-        return {"name": name, "hint": hint, "intimacy": intimacy}
+        return self._stage_of(self.relationship_snapshot())
 
     def current_activity(self, hour: int | None = None) -> str:
         """她现在在干嘛：她自己写的优先，否则从真实活动日志推断。"""

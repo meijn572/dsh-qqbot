@@ -1,6 +1,6 @@
 # 关系与亲密度
 
-状态：设计稿，未改代码。
+状态：第一版已实现（L3 三维 delta + 聚合）。
 
 ## 1. 现在的问题
 
@@ -575,17 +575,17 @@ interaction_count = 461
 三维给一个初始 baseline，例如：
 
 ```text
-base_closeness = 45
-base_trust     = 50
+base_closeness = 62
+base_trust     = 62
 base_tension   = 3
 ```
 
 得到：
 
 ```text
-score ≈ 45.5
-intimacy ≈ 455
-stage = 亲近/亲密边界
+score ≈ 60.5
+intimacy ≈ 605
+stage = 亲密
 ```
 
 如果觉得不够准，再做一次有界初始化，替换 baseline。
@@ -634,7 +634,7 @@ stage = 亲近/亲密边界
 ```text
 L3 单条 delta 的合理范围（-10..+10？）
 每天 delta 总和上限
-baseline 45/50/3 是否合适
+baseline 62/62/3 是否合适
 L3 prompt 能不能稳定判断三维方向
 ```
 

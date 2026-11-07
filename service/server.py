@@ -494,9 +494,9 @@ class Handler(BaseHTTPRequestHandler):
         kwargs = {}
         if "mood" in body:
             kwargs["mood"] = str(body.get("mood") or "normal")
-        if "bump" in body:
-            cur = store.get_state()
-            kwargs["intimacy"] = cur["intimacy"] + float(body.get("bump") or 0)
+        if "bump_interaction" in body or "bump" in body:
+            with _lock:
+                store.bump_interaction(float(body.get("bump_interaction") or body.get("bump") or 0))
         elif "intimacy" in body:
             kwargs["intimacy"] = float(body.get("intimacy") or 0)
         if "diary" in body:
@@ -2991,6 +2991,13 @@ class Handler(BaseHTTPRequestHandler):
 
         now = time.time()
         role_for = {"L0": "evidence", "L1": "fact", "L2": "judgment", "L3": "core"}
+
+        def _delta(v) -> float:
+            try:
+                return max(-10.0, min(10.0, float(v or 0)))
+            except Exception:
+                return 0.0
+
         updates = plan.get("updates") if isinstance(plan.get("updates"), list) else []
         for item in updates[:8]:
             if not isinstance(item, dict):
@@ -3010,7 +3017,12 @@ class Handler(BaseHTTPRequestHandler):
                 ref_pairs = ref_pairs + [("L0", x) for x in l0_ids]
             if not summary:
                 continue
-            store.update_thread(int(target["id"]), summary, status, source_ids=l0_ids, last_seen_at=now)
+            store.update_thread(
+                int(target["id"]), summary, status, source_ids=l0_ids, last_seen_at=now,
+                closeness_delta=_delta(item.get("closeness_delta")),
+                trust_delta=_delta(item.get("trust_delta")),
+                tension_delta=_delta(item.get("tension_delta")),
+            )
             if not ref_pairs:
                 ref_pairs = [("L1", x) for x in l1_ids] + [("L0", x) for x in l0_ids]
             for tier, rid in ref_pairs:
@@ -3049,6 +3061,9 @@ class Handler(BaseHTTPRequestHandler):
                 thread_opened_at=now,
                 thread_last_seen_at=now,
                 thread_closed_at=now if status == "closed" else None,
+                closeness_delta=_delta(item.get("closeness_delta")),
+                trust_delta=_delta(item.get("trust_delta")),
+                tension_delta=_delta(item.get("tension_delta")),
             ))
             for tier, rid in ref_pairs:
                 store.link(mid, rid, "derived_from", role_for.get(tier, "evidence"))

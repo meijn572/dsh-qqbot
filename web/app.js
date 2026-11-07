@@ -221,9 +221,17 @@ async function load(){
   }
   if(!$('#mood').hidden){
     const m=await j('/api/mood');
+    const rel=m.relationship||{};
+    const relBars = rel.stage || rel.closeness != null
+      ? `<div style="margin-top:10px"><div class="k">亲近 ${Number(rel.closeness||0).toFixed(1)}</div><div class="bar"><i style="width:${Math.max(0,Math.min(100,Number(rel.closeness||0)))}%"></i></div>
+         <div class="k" style="margin-top:6px">信任 ${Number(rel.trust||0).toFixed(1)}</div><div class="bar"><i style="width:${Math.max(0,Math.min(100,Number(rel.trust||0)))}%"></i></div>
+         <div class="k" style="margin-top:6px">张力 ${Number(rel.tension||0).toFixed(1)}</div><div class="bar"><i style="width:${Math.max(0,Math.min(100,Number(rel.tension||0)))}%"></i></div>
+         <div class="k" style="margin-top:8px">阶段：${esc(m.stage||'')} · 互动 ${Number(rel.interaction_count||0).toFixed(0)} 轮</div></div>`
+      : `<div class="k">亲密度 ${(m.intimacy??0).toFixed(1)} · ${esc(m.stage||'')}</div>`;
     let h=`<div class="card"><div class="k">现在的心情</div><div class="v" style="font-size:26px">${m.mood ?? '—'} <span class="mut" style="font-size:13px">/100</span> ${m.mood>=70?'😊':m.mood>=40?'🙂':'😔'}</div>
       <div class="bar" style="margin:10px 0"><i style="width:${m.mood ?? 0}%"></i></div>
-      <div class="k">亲密度 ${(m.intimacy??0).toFixed(1)} · ${esc(m.stage||'')} · 唤醒 ${Math.round((m.arousal??0)*100)}% · 情绪值 ${Math.round((m.valence??0)*100)}</div></div>`;
+      ${relBars}
+      <div class="k" style="margin-top:8px">唤醒 ${Math.round((m.arousal??0)*100)}% · 情绪值 ${Math.round((m.valence??0)*100)}</div></div>`;
     h+=`<div class="card"><div class="k">情绪维度</div><div id="dims"></div></div>`;
     h+=`<div class="card"><div class="k">她正在做什么</div><div>${esc(m.activity||'—')}</div></div>`;
     h+=`<div class="card"><div class="k">最近一次情绪的由头</div><div>${esc(m.emotion_label||'—')}${m.reason?('：'+esc(m.reason)):''}</div></div>`;

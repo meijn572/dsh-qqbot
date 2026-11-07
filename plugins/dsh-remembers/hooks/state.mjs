@@ -185,7 +185,7 @@ export function renderState(state, prev, selfModel, proactive, thinkCn) {
 
   // ---------- 7. 关系阶段（变了才加） ----------
   if (state.stage && state.stage.name) {
-    const stText = `和老大是「${state.stage.name}」阶段。`;
+    const stText = `和老大是「${state.stage.name}」阶段。${state.stage.hint || ""}`;
     const stHash = hash(stText);
     if (hashes.stage !== stHash) {
       hashes.stage = stHash;
