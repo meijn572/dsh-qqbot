@@ -14,6 +14,7 @@ B 站历史 L3：57 条迁到 activity_log
 B 站新数据：走 activity，不再写 memory
 抽取器：只抽 L1 / L3
 L1 / L3：evidence 匹配 L0，写 source_ids
+evidence：ref 优先，原话兜底
 source_status：verified / unverified / batch / legacy
 L1：会话段总结（可多条，互动允许）；max_facts 20
 UPDATE：合并 source_ids
@@ -69,14 +70,14 @@ L2 从 L0 + L1 生成
 ```text
 L1 半衰期：180 天 → 30–90 天
 
-evidence 改为：
+evidence 已改为：
   输入 L0/L1/L2/L3 统一编号
   模型输出 source_refs
   代码按 ref 映射 tier/id
   ref 无效才回退单条原话匹配
 ```
 
-当前仍是纯原话匹配。
+已实现 ref 优先。
 
 ## 4. 待验证
 

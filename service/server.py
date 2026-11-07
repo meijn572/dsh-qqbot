@@ -31,7 +31,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from embedding import Embedder
-from extractor import ExtractConfig, Extractor, strip_memory_prefix
+from extractor import (ExtractConfig, Extractor, strip_memory_prefix,
+                       _refs_to_ids, _tier_of_refs)
 from evidence_match import match_evidence
 from llm import LLM
 from memory_core import MemoryInput, MemoryStore
@@ -2962,7 +2963,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         batch = rows[:max_messages]
-        source_rows = [{"id": int(r["id"]), "text": str(r["text"])} for r in batch]
+        source_rows = [{"id": int(r["id"]), "tier": "L0", "text": str(r["text"])} for r in batch]
         source_ids = [int(r["id"]) for r in batch]
         text = "\n\n".join(str(r["text"]) for r in batch)
         res = extractor.extract_batch(text, context=self._batch_identity(), source_ids=source_ids)
@@ -2973,22 +2974,26 @@ class Handler(BaseHTTPRequestHandler):
         self._meta_set("batch_l1_pending", "[]")
         stats["l1"] = int(res.get("applied", {}).get("add", 0))
         l1_ids = [int(x) for x in (res.get("ids") or [])]
+        l1_rows = []
         facts = []
         if l1_ids:
             marks = ",".join("?" for _ in l1_ids)
             for row in store.conn.execute(
-                f"SELECT text FROM memory WHERE tier='L1' AND id IN ({marks}) ORDER BY id ASC",
+                f"SELECT id,text FROM memory WHERE tier='L1' AND id IN ({marks}) ORDER BY id ASC",
                 l1_ids,
             ):
+                l1_rows.append({"id": int(row["id"]), "tier": "L1", "text": str(row["text"])})
                 facts.append(str(row["text"]))
 
+        ref_rows = source_rows + l1_rows
         open_threads = store.open_threads(8)
-        plan = extractor.plan_threads(text, facts, open_threads)
+        plan = extractor.plan_threads(text, facts, open_threads, source_rows=ref_rows)
         if not isinstance(plan, dict):
             self._json(200, stats)
             return
 
         now = time.time()
+        role_for = {"L0": "evidence", "L1": "fact", "L2": "judgment", "L3": "core"}
         updates = plan.get("updates") if isinstance(plan.get("updates"), list) else []
         for item in updates[:8]:
             if not isinstance(item, dict):
@@ -3006,14 +3011,18 @@ class Handler(BaseHTTPRequestHandler):
             status = str(item.get("status") or "open").lower()
             if status not in ("open", "closed"):
                 status = "open"
-            ev_ids, _ = match_evidence(item.get("evidence") or [], source_rows)
+            ref_pairs = _tier_of_refs(item.get("source_refs"), ref_rows)
+            l0_ids = [rid for tier, rid in ref_pairs if tier == "L0"]
+            if not l0_ids:
+                l0_ids, _ = match_evidence(item.get("evidence") or [], source_rows)
+                ref_pairs = ref_pairs + [("L0", x) for x in l0_ids]
             if not summary:
                 continue
-            store.update_thread(int(target["id"]), summary, status, source_ids=ev_ids, last_seen_at=now)
-            for lid in l1_ids:
-                store.link(int(target["id"]), lid, "derived_from", "fact")
-            for sid in ev_ids:
-                store.link(int(target["id"]), sid, "derived_from", "evidence")
+            store.update_thread(int(target["id"]), summary, status, source_ids=l0_ids, last_seen_at=now)
+            if not ref_pairs:
+                ref_pairs = [("L1", x) for x in l1_ids] + [("L0", x) for x in l0_ids]
+            for tier, rid in ref_pairs:
+                store.link(int(target["id"]), rid, "derived_from", role_for.get(tier, "evidence"))
             stats["l3"] += 1
 
         new_items = plan.get("new") if isinstance(plan.get("new"), list) else []
@@ -3027,15 +3036,21 @@ class Handler(BaseHTTPRequestHandler):
             status = str(item.get("status") or "open").lower()
             if status not in ("open", "closed", "standalone"):
                 status = "open"
-            ev_ids, ev_status = match_evidence(item.get("evidence") or [], source_rows)
+            ref_pairs = _tier_of_refs(item.get("source_refs"), ref_rows)
+            l0_ids = [rid for tier, rid in ref_pairs if tier == "L0"]
+            if not l0_ids:
+                l0_ids, _ = match_evidence(item.get("evidence") or [], source_rows)
+                ref_pairs = ref_pairs + [("L0", x) for x in l0_ids]
+            if not ref_pairs:
+                ref_pairs = [("L1", x) for x in l1_ids] + [("L0", x) for x in l0_ids]
             mid = store.add(MemoryInput(
                 text=summary,
                 tier="L3",
                 subject="self",
                 summary=summary,
                 tags=["thread", "episode"],
-                source_ids=ev_ids or None,
-                source_status=ev_status,
+                source_ids=l0_ids or None,
+                source_status="verified" if l0_ids else "unverified",
                 thread_status=status,
                 thread_title=title,
                 thread_aliases=[],
@@ -3043,10 +3058,8 @@ class Handler(BaseHTTPRequestHandler):
                 thread_last_seen_at=now,
                 thread_closed_at=now if status == "closed" else None,
             ))
-            for lid in l1_ids:
-                store.link(mid, lid, "derived_from", "fact")
-            for sid in ev_ids:
-                store.link(mid, sid, "derived_from", "evidence")
+            for tier, rid in ref_pairs:
+                store.link(mid, rid, "derived_from", role_for.get(tier, "evidence"))
             stats["l3"] += 1
 
         self._json(200, stats)

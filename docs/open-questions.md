@@ -182,17 +182,20 @@ refs 只取 L3
 source_ids 继承 L3 的 L0
 ```
 
-### 还没做
-
-当前代码仍是纯 evidence 原话匹配。
-
-需要改：
+### 已做
 
 ```text
-prompt 给所有来源加 ref
-输出加 source_refs
+L1 / L3 输入带统一编号
+prompt 要求 source_refs
 代码按 ref 映射 tier/id
-ref 无效才回退单条原话
+ref 无效回退单条原话
+```
+
+### 剩余
+
+```text
+L4 仍按标题选，还没有 ref
+旧数据没有 ref
 ```
 
 ### L0 仍然是一轮一条

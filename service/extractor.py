@@ -82,10 +82,10 @@ THREAD_SYSTEM = """你维护一组“还没完的事”和“已经结束的事�
 输出 JSON：
 {
   "updates": [
-    {"title": "现有标题", "summary": "更新后的摘要", "status": "open|closed", "evidence": ["原文"]}
+    {"title": "现有标题", "summary": "更新后的摘要", "status": "open|closed", "source_refs": [1], "evidence": ["原文"]}
   ],
   "new": [
-    {"title": "新标题", "summary": "摘要", "status": "open|closed|standalone", "evidence": ["原文"]}
+    {"title": "新标题", "summary": "摘要", "status": "open|closed|standalone", "source_refs": [1, 2], "evidence": ["原文"]}
   ]
 }
 
@@ -96,6 +96,7 @@ status：
 
 规则：
 - title 必须短，2–12 个字。
+- source_refs 引用上面来源的编号，可多条；evidence 可选，作为兜底。
 - evidence 从当前对话原文逐字抄，不要改写。
 - 没有要更新的就 "updates": []
 - 没有新事件就 "new": []
@@ -128,9 +129,10 @@ EXTRACT_SYSTEM = """你从一段对话里抽取值得长期记住的内容。
 
 原则：**宁可多抽一条，也不要漏掉他告诉过你的事。** 漏掉的东西他得再说一遍，多抽的顶多占一行。
 
-每条事实必须带 `evidence`：从输入原文里逐字抄 1–2 句，作为来源。
+每条事实必须带 `source_refs`：引用输入里的编号，可以多条。
+如果输入没有编号，才用 `evidence` 从原文逐字抄 1–2 句兜底。
 不要改写、不要拼接、不要写输入里没有的话。
-这段 evidence 会用来匹配原文 id；匹配不上就只标 unverified，不会丢事实。
+来源会用来落 source_ids / memory_links；ref 无效才回退原话匹配。
 
 ## 视角
 
@@ -288,6 +290,53 @@ evidence 要求：
 - 从对话原文里逐字抄，不要改写、不要拼接
 - 选能支撑这条事件记录的 1–3 句
 - 只输出 JSON，不要代码块，不要额外说明"""
+
+
+def _ref_label(tier: str) -> str:
+    return {
+        "L0": "原话",
+        "L1": "你记得的事实",
+        "L2": "你的判断",
+        "L3": "之前的事",
+        "L4": "核心记忆",
+    }.get(str(tier or "").upper(), "记忆")
+
+
+def _render_refs(rows: list[dict]) -> str:
+    lines = []
+    for i, row in enumerate(rows, 1):
+        lines.append(f"[{i}] {_ref_label(row.get('tier', 'L0'))}：{str(row.get('text') or '')}")
+    return "\n\n".join(lines)
+
+
+def _refs_to_ids(refs, rows: list[dict]) -> list[int]:
+    out = []
+    for ref in refs or []:
+        try:
+            idx = int(ref) - 1
+        except Exception:  # noqa: BLE001
+            continue
+        if 0 <= idx < len(rows):
+            rid = int(rows[idx]["id"])
+            if rid not in out:
+                out.append(rid)
+    return out
+
+
+def _tier_of_refs(refs, rows: list[dict]) -> list[tuple[str, int]]:
+    out = []
+    for ref in refs or []:
+        try:
+            idx = int(ref) - 1
+        except Exception:  # noqa: BLE001
+            continue
+        if 0 <= idx < len(rows):
+            tier = str(rows[idx].get("tier") or "L0").upper()
+            rid = int(rows[idx]["id"])
+            if (tier, rid) not in out:
+                out.append((tier, rid))
+    return out
+
 
 
 @dataclass
@@ -494,7 +543,11 @@ class Extractor:
             if allowed_tiers is not None and tier not in allowed_tiers:
                 continue
             evidence = fact.get("evidence") or []
-            matched, source_status = match_evidence(evidence, source_rows or [])
+            ref_ids = _refs_to_ids(fact.get("source_refs"), source_rows or [])
+            if ref_ids:
+                matched, source_status = ref_ids, "verified"
+            else:
+                matched, source_status = match_evidence(evidence, source_rows or [])
             fact["source_ids"] = matched
             fact["source_status"] = source_status
             neighbors = self.store.candidates(text, top_k=self.config.neighbor_k, subject=subject)
@@ -552,26 +605,26 @@ class Extractor:
         """一批 L0 原话 → 只产 L1 短事实。"""
         if not self.enabled:
             return {"ok": False, "degraded": "llm-disabled"}
-        facts = self._extract(text, "", context)
+        source_rows = []
+        if source_ids:
+            try:
+                marks = ",".join("?" for _ in source_ids)
+                source_rows = [
+                    {"id": int(r["id"]), "tier": "L0", "text": str(r["text"] or "")}
+                    for r in self.store.conn.execute(
+                        f"SELECT id,text FROM memory WHERE tier='L0' AND id IN ({marks}) ORDER BY id ASC",
+                        list(source_ids),
+                    ).fetchall()
+                ]
+            except Exception:
+                source_rows = []
+        facts = self._extract(text, "", context, source_rows=source_rows or None)
         if facts is None:
             return {"ok": False, "degraded": "extract-failed",
                     "error": getattr(self.llm, "last_error", None)}
         for fact in facts:
             if isinstance(fact, dict):
                 fact["tier"] = "L1"
-        source_rows = []
-        if source_ids:
-            try:
-                marks = ",".join("?" for _ in source_ids)
-                source_rows = [
-                    {"id": int(r["id"]), "text": str(r["text"] or "")}
-                    for r in self.store.conn.execute(
-                        f"SELECT id,text FROM memory WHERE tier='L0' AND id IN ({marks})",
-                        list(source_ids),
-                    ).fetchall()
-                ]
-            except Exception:
-                source_rows = []
         return self._apply_facts(
             facts, subject="self", source_ids=source_ids,
             allowed_tiers={"L1"}, source_rows=source_rows,
@@ -682,7 +735,8 @@ class Extractor:
         return {"ok": True, "id": mid, "text": text, "chars": len(text), "turns": len(turns)}
 
     def plan_threads(self, transcript: str, facts: list[str],
-                     open_threads: list[dict]) -> dict | None:
+                     open_threads: list[dict],
+                     source_rows: list[dict] | None = None) -> dict | None:
         """决定当前段续写哪些 open L3、新建哪些 L3。"""
         if self.llm is None or not getattr(self.llm, "enabled", False):
             return None
@@ -696,9 +750,13 @@ class Extractor:
                 )
         else:
             blocks.append("【现有 open 事件】\n（空）")
-        if facts:
-            blocks.append("【这段抽出的事实】\n" + "\n".join(f"- {x}" for x in facts[:20]))
-        blocks.append("【当前对话】\n" + str(transcript or "")[:8000])
+        if source_rows:
+            blocks.append("【可引用来源】\n" + _render_refs(source_rows))
+            blocks.append("每条结果请给 source_refs（引用上面的编号，可多条）；evidence 可选。")
+        else:
+            if facts:
+                blocks.append("【这段抽出的事实】\n" + "\n".join(f"- {x}" for x in facts[:20]))
+            blocks.append("【当前对话】\n" + str(transcript or "")[:8000])
         data = self.llm.chat_json(THREAD_SYSTEM, "\n\n".join(blocks), max_tokens=900)
         if not isinstance(data, dict):
             return None
@@ -746,16 +804,21 @@ class Extractor:
 
     # -- 内部 ---------------------------------------------------------------
 
-    def _extract(self, user_text: str, assistant_text: str, context: str = ""):
+    def _extract(self, user_text: str, assistant_text: str, context: str = "",
+                 source_rows: list[dict] | None = None):
         """抽取事实。空结果重试一次。
 
         实测 deepseek-flash 在 temperature=0 下也会偶发返回空数组——
         同一条「我爸住院了」有过抽出 1 条、也有过抽出 0 条。
         漏抽比多抽一次更贵（那条记忆就永远没了），所以重试一次。
         """
-        convo = f"用户：{user_text[:self.config.max_context_chars]}"
-        if assistant_text:
-            convo += f"\n她：{assistant_text[:self.config.max_context_chars]}"
+        if source_rows:
+            convo = _render_refs(source_rows)
+            convo += "\n\n每条结果请给 source_refs（引用上面的编号，可多条）；evidence 可选，作为兜底。"
+        else:
+            convo = f"用户：{user_text[:self.config.max_context_chars]}"
+            if assistant_text:
+                convo += f"\n她：{assistant_text[:self.config.max_context_chars]}"
         if context:
             convo = f"【身份/现有规则】\n{context[:3000]}\n\n{convo}"
 
