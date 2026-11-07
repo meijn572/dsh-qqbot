@@ -235,7 +235,7 @@ tension    每天最多 +6
 ```text
 closeness  不自动衰减
 trust      不自动衰减
-tension    聚合时按 60 天半衰期淡化
+tension    不自动衰减
 ```
 
 研究里有一个很值得注意的点：
@@ -454,24 +454,27 @@ state.base_tension      REAL NOT NULL DEFAULT 0
 ```text
 closeness = base_closeness + SUM(L3.closeness_delta)
 trust     = base_trust     + SUM(L3.trust_delta)
-tension   = base_tension   + SUM(effective_tension_delta)
+tension   = base_tension   + SUM(L3.tension_delta)
 ```
 
 `closeness` / `trust` / `tension` 都 clamp 到 0–100。
 
-`tension` 的时间衰减在聚合时做：
+第一版不做时间衰减：
 
 ```text
-effective_tension_delta = tension_delta * 0.5 ** (age_days / 60)
+closeness 不自动掉
+trust 不自动掉
+tension 不自动掉
 ```
 
-只淡化，不等于修复。
+关系稳定后可以聊得少，不因为一段时间没互动就掉。
 
-`closeness` / `trust` 不自动衰减：
+tension 只会在这些时候变化：
 
 ```text
-稳定关系可以聊得少
-不因为一段时间没互动就掉
+新的冲突 L3
+同一条 L3 被修复
+L3 被删除
 ```
 
 派生：
@@ -618,7 +621,6 @@ stage = 亲近/亲密边界
 ```text
 L3 单条 delta 的合理范围（-10..+10？）
 每天 delta 总和上限
-tension 60 天半衰期是否合适
 baseline 45/50/3 是否合适
 L3 prompt 能不能稳定判断三维方向
 ```
