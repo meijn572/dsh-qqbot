@@ -457,6 +457,19 @@ trust     = base_trust     + SUM(L3.trust_delta)
 tension   = base_tension   + SUM(L3.tension_delta)
 ```
 
+这里的 L3 包括全部形态：
+
+```text
+open         进行中
+closed       已结束
+standalone   独立片段
+dormant      很久没提
+```
+
+`standalone` 也必须有 delta。
+
+不是只有 open / closed 才影响关系。
+
 `closeness` / `trust` / `tension` 都 clamp 到 0–100。
 
 第一版不做时间衰减：
