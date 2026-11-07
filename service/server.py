@@ -3122,7 +3122,10 @@ class Handler(BaseHTTPRequestHandler):
         anchors = [dict(r) for r in store.conn.execute(
             "SELECT id,text,thread_title FROM memory WHERE tier='L4' ORDER BY ts DESC LIMIT 5"
         ).fetchall()]
-        result = extractor.review_relationship(current, impacts, open_threads, anchors)
+        result = extractor.review_relationship(
+            current, impacts, open_threads, anchors,
+            persona=str((store.get_persona() or {}).get("constitution") or ""),
+        )
         if not isinstance(result, dict):
             self._json(200, {"ok": True, "skipped": "no-result"})
             return

@@ -980,16 +980,18 @@ class Extractor:
         return [x for x in items if isinstance(x, dict)] if isinstance(items, list) else []
 
     def review_relationship(self, current: dict, impacts: list[dict],
-                            open_threads: list[dict], anchors: list[dict]) -> dict | None:
+                            open_threads: list[dict], anchors: list[dict],
+                            persona: str = "") -> dict | None:
         if self.llm is None or not getattr(self.llm, "enabled", False):
             return None
         lines = [
             "【当前关系】",
             f"stage: {current.get('stage')}",
             f"summary: {current.get('summary') or '（还没有）'}",
-            "",
-            "【最近的关系影响】",
         ]
+        if persona:
+            lines.extend(["", "【人格边界（只读）】", persona[:3000]])
+        lines.extend(["", "【最近的关系影响】"])
         for i, item in enumerate(impacts, 1):
             lines.append(f"[{i}] {str(item.get('text') or '')}")
         lines.append("\n【还没解开的 L3】")
