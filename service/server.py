@@ -2714,13 +2714,12 @@ class Handler(BaseHTTPRequestHandler):
         user_text = str(body.get("user_text") or "")
         assistant_text = str(body.get("assistant_text") or "")
         if not user_text:
-            # 自动取当天素材
-            import datetime as _dt
-            today_start = _dt.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+            # 早上 7 点复盘，取最近 24 小时，而不是当天 0 点后的几条
+            since = time.time() - 86400
             try:
                 rows = store.conn.execute(
-                    "SELECT text FROM memory WHERE tier='L0' AND ts >= ? ORDER BY ts DESC LIMIT 6",
-                    (today_start,),
+                    "SELECT text FROM memory WHERE tier='L0' AND ts >= ? ORDER BY ts DESC LIMIT 20",
+                    (since,),
                 ).fetchall()
                 user_text = "\n".join(str(r["text"])[:300] for r in rows)
             except Exception:

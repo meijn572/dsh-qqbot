@@ -324,13 +324,13 @@ class Scheduler:
         _log("diary: nudged model to write")
         return True
 
-    # ---------- 4. 自我认知演化（22 点）----------
+    # ---------- 4. 自我认知演化（7 点）----------
     def _tick_evolve(self, st: dict, now: float) -> bool:
         today = datetime.date.today().isoformat()
         if st.get("evolve_date") == today:
             return False
         dt = datetime.datetime.now()
-        if dt.hour < 22:
+        if dt.hour < 7:
             return False
         st["evolve_date"] = today
         # 自我认知复盘按天做，不按轮数；LLM 调用要几十秒，放到后台线程，

@@ -2134,6 +2134,9 @@ async def profile_refresh_loop(dsh: Dsh) -> None:
     await asyncio.sleep(120)
     while True:
         try:
+            if not is_review_hour():
+                await asyncio.sleep(1800)
+                continue
             state = {}
             if PROFILE_STATE_FILE.exists():
                 try:
@@ -2152,6 +2155,12 @@ STYLE_END = "<!-- style:end -->"
 STYLE_PROPOSAL_FILE = DSH_HOME / "persona-roles" / "state" / "style-proposal.json"
 STYLE_STATE_FILE = DSH_HOME / "persona-roles" / "state" / "style-review-state.json"
 STYLE_DAYS = int(CONFIG.get("style_review_days", 3))
+REVIEW_HOUR = 7
+
+
+def is_review_hour() -> bool:
+    """所有周期复盘统一在早上 7 点这一小时内跑。"""
+    return time.localtime().tm_hour == REVIEW_HOUR
 
 
 def style_block(constitution: str) -> str:
@@ -2175,6 +2184,9 @@ async def persona_review_loop(dsh: Dsh) -> None:
     await asyncio.sleep(420)
     while True:
         try:
+            if not is_review_hour():
+                await asyncio.sleep(1800)
+                continue
             state = growth_review.load_state()
             last = float(state.get("last_run") or 0)
             days = max(1, int(persona_reflect_cfg().get("persona_review_days", 30)))
@@ -2189,6 +2201,9 @@ async def style_review_loop(dsh: Dsh) -> None:
     await asyncio.sleep(300)
     while True:
         try:
+            if not is_review_hour():
+                await asyncio.sleep(1800)
+                continue
             if not STYLE_PROPOSAL_FILE.exists():
                 state = {}
                 if STYLE_STATE_FILE.exists():
@@ -2395,10 +2410,13 @@ async def important_file_loop(dsh: Dsh) -> None:
 
 
 async def core_review_loop() -> None:
-    """每 6 小时检查一次，服务端自己按 3 天节流。"""
+    """每 6 小时检查一次，只在早上 7 点这一小时触发；服务端再按 3 天节流。"""
     await asyncio.sleep(120)
     while True:
         try:
+            if not is_review_hour():
+                await asyncio.sleep(1800)
+                continue
             result = await cmem_call("POST", "/core/review", {})
             if result.get("created"):
                 log.info("核心记忆复盘：新增 %s 条", result.get("created"))
