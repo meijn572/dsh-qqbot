@@ -6,8 +6,6 @@ def build_persona_context(persona: dict) -> dict:
     parts = [
         ("核心设定", str(persona.get("constitution") or "")),
         ("自我认知", str(persona.get("self_model") or "")),
-        ("身份", str(persona.get("identity") or "")),
-        ("自我形象", str(persona.get("self_image") or "")),
         ("我眼中的主人", str(persona.get("user_profile") or "")),
     ]
     text = "\n\n".join(f"【{name}】\n{content}" for name, content in parts if content.strip())

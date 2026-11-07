@@ -69,9 +69,6 @@ CREATE TABLE IF NOT EXISTS persona (
   id               INTEGER PRIMARY KEY CHECK (id = 1),
   constitution     TEXT NOT NULL DEFAULT '',
   self_model       TEXT NOT NULL DEFAULT '',
-  -- 2026-10-27 补：这三列代码早就在用了，schema 里一直没有（线上靠手工 ALTER 活着）
-  self_image       TEXT NOT NULL DEFAULT '',   -- 她的形象（给文生图/自拍用）
-  identity         TEXT NOT NULL DEFAULT '',   -- 结构化身份卡（JSON）
   user_profile     TEXT NOT NULL DEFAULT '',   -- 手编的「老大画像」
   updated_at       REAL NOT NULL DEFAULT 0,
   self_updated_at  REAL NOT NULL DEFAULT 0

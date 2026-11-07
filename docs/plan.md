@@ -26,6 +26,7 @@ L3：标题支持模糊匹配
 旧提示词审计：L1 抽取只产 L1；上下文标签自然语言；batch 不再带 L4
 人格旧提示词：EVOLVE 不再写「我发现自己」；无变化输出 SKIP
 自我认知：去重；set_emotion 工具提示改成 valence/arousal
+人格旧字段：self_image / identity 已从代码、面板、数据库删除
 旧 episode 链路：插件默认关闭
 便签旧作者：已统一为「洄」
 UPDATE：合并 source_ids

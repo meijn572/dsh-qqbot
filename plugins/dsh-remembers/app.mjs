@@ -496,8 +496,7 @@ const soft = (key) => {
     try {
       const st = await fetchState();
       const st2 = stateFor(agent.session);
-      const r = renderState(st, st2.stateHashes || {}, persona.selfModel || "", persona.proactive,
-        Boolean(persona.data?.identity && (() => { try { return JSON.parse(persona.data.identity).think_cn; } catch { return false; } })()));
+      const r = renderState(st, st2.stateHashes || {}, persona.selfModel || "", persona.proactive, false);
       st2.stateHashes = r.hashes;
       if (!r.text) return decision;      // 这轮什么都没变、连时间都没有 → 不塞
       log("state_injected", { session: st2.id, chars: r.text.length });

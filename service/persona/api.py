@@ -13,8 +13,6 @@ def payload(store, data: dict) -> dict:
         "chars": {
             "constitution": len(data["constitution"]),
             "self_model": len(data["self_model"]),
-            "self_image": len(str(data.get("self_image") or "")),
-            "identity": len(str(data.get("identity") or "")),
         },
         "limits": {
             "constitution": MemoryStore.CONSTITUTION_MAX,

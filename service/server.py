@@ -2735,8 +2735,6 @@ class Handler(BaseHTTPRequestHandler):
             for name, text in (
                 ("核心设定", str(persona_obj.get("constitution") or "")),
                 ("自我认知", str(persona_obj.get("self_model") or "")),
-                ("身份", str(persona_obj.get("identity") or "")),
-                ("自我形象", str(persona_obj.get("self_image") or "")),
                 ("我眼中的主人", str(persona_obj.get("user_profile") or "")),
             )
             if text.strip()

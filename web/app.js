@@ -241,11 +241,10 @@ async function load(){
   if(!$('#persona').hidden && !window.__coreLock){
     const p=await j('/api/persona');
     const st=await j('/api/style');
-    let h=`<div class="card"><div class="k">人格 · ${esc(p.identity||'大肥鱼')}</div>
+    let h=`<div class="card"><div class="k">人格设定</div>
       <div class="grid" style="margin-top:8px">
-        <div><div class="k">身份</div><div class="v">${esc(p.identity||'—')}</div></div>
-        <div><div class="k">自我形象</div><div class="v">${esc(p.self_image||'—')}</div></div>
-        <div><div class="k">字数</div><div class="v">核心设定 ${(p.chars||{}).constitution||0} · 自我认知 ${(p.chars||{}).self_model||0}</div></div>
+        <div><div class="k">核心设定</div><div class="v">${(p.chars||{}).constitution||0} 字</div></div>
+        <div><div class="k">自我认知</div><div class="v">${(p.chars||{}).self_model||0} 字</div></div>
       </div></div>`;
     if(st.proposal && st.proposal.style){
       h+=`<div class="card" style="border-color:#d29922"><div class="k">风格提议（待确认）</div>
