@@ -318,6 +318,7 @@ AstrBot 旧部署仍在，回退时恢复 AstrBot 白名单/平台开关即可�
 
 - [文档地图](docs/README.md)
 - [当前改动计划](docs/plan.md)
+- [未解决问题](docs/open-questions.md)
 
 ### 目标框架与工作流
 

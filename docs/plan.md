@@ -95,6 +95,7 @@ L4 复盘是否只在 3 天后触发
 ## 6. 相关文档
 
 - [文档地图](README.md)
+- [未解决问题](open-questions.md)
 - [记忆分层](memory-layers.md)
 - [提取规则](extraction-rules.md)
 - [日记](diary.md)
