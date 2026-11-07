@@ -36,6 +36,7 @@
 ### 1.5 对话与表达
 
 - [对话预检](conversation-preflight.md)
+- [小本子](notebook.md)
 - [表情包系统](stickers.md)
 - [表情元数据与离线复盘](sticker-metadata.md)
 - [词库系统](lexicon.md)
