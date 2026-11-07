@@ -70,9 +70,9 @@ L2 从 L0 + L1 生成
 L1 半衰期：180 天 → 30–90 天
 
 evidence 改为：
-  输入 L0 带本地 ref
+  输入 L0/L1/L2/L3 统一编号
   模型输出 source_refs
-  ref 有效直接映射
+  代码按 ref 映射 tier/id
   ref 无效才回退单条原话匹配
 ```
 
