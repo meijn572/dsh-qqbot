@@ -638,6 +638,16 @@ baseline 62/62/3 是否合适
 L3 prompt 能不能稳定判断三维方向
 ```
 
+已知限制：
+
+```text
+历史 L3 的 scope 全是 global
+第一版关系聚合暂时全算
+群聊来源的 L3 还没按 scope 排除
+```
+
+等 L3 新建时带上 scope，再把聚合法收紧到主人私聊。
+
 ## 16. 参考
 
 - Skjuve et al., *My Chatbot Companion - a Study of Human-Chatbot Relationships* (2021)：用 Social Penetration Theory 访谈 18 位 Replika 用户，关系从表层好奇进入情感探索、信任与自我暴露，稳定后互动频率下降但关系仍有价值。DOI: https://doi.org/10.1016/j.ijhcs.2021.102601
