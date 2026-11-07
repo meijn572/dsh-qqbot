@@ -275,18 +275,21 @@ def mood_payload() -> dict:
     dims = {}
     if isinstance(emotion, dict):
         for key, value in list(emotion.items())[:7]:
+            if str(key) in ("valence", "arousal"):
+                continue
             try:
                 dims[str(key)] = round(float(value) * 100)
             except (TypeError, ValueError):
                 continue
     dims.setdefault("心情值", round((valence + 1) * 50))
-    if rel:
-        dims["亲近"] = round(float(rel.get("closeness") or 0))
-        dims["信任"] = round(float(rel.get("trust") or 0))
-        dims["张力"] = round(float(rel.get("tension") or 0))
-    else:
-        dims.setdefault("亲密度", round(min(100, intimacy / 10)))
     dims.setdefault("唤醒", round(arousal * 100))
+    rel_dims = {}
+    if rel:
+        rel_dims = {
+            "亲近": round(float(rel.get("closeness") or 0)),
+            "信任": round(float(rel.get("trust") or 0)),
+            "张力": round(float(rel.get("tension") or 0)),
+        }
     timeline = []
     for item in (state.get("emotion_recent") or [])[-12:]:
         if isinstance(item, dict):
@@ -307,6 +310,7 @@ def mood_payload() -> dict:
         "per_day": 0,
         "mood": round((valence + 1) * 50),
         "dims": dims,
+        "relationship_dims": rel_dims,
         "reason": str(last_emotion.get("reason") or state.get("activity") or ""),
         "emotion_label": str(last_emotion.get("mood") or ""),
         "confidence": 50,

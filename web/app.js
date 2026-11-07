@@ -234,16 +234,12 @@ async function load(){
       : `<div class="k">亲密度 ${(m.intimacy??0).toFixed(1)} · ${esc(m.stage||'')}</div>`;
     let h=`<div class="card"><div class="k">现在的心情</div><div class="v" style="font-size:26px">${m.mood ?? '—'} <span class="mut" style="font-size:13px">/100</span> ${m.mood>=70?'😊':m.mood>=40?'🙂':'😔'}</div>
       <div class="bar" style="margin:10px 0"><i style="width:${m.mood ?? 0}%"></i></div>
-      ${relBars}
-      <div class="k" style="margin-top:8px">唤醒 ${Math.round((m.arousal??0)*100)}% · 情绪值 ${Math.round((m.valence??0)*100)}</div></div>`;
-    h+=`<div class="card"><div class="k">情绪维度</div><div id="dims"></div></div>`;
+      <div class="k">情绪值 ${Math.round((m.valence??0)*100)} · 唤醒 ${Math.round((m.arousal??0)*100)}%</div></div>`;
+    h+=`<div class="card"><div class="k">和你的关系</div>${relBars}</div>`;
     h+=`<div class="card"><div class="k">她正在做什么</div><div>${esc(m.activity||'—')}</div></div>`;
     h+=`<div class="card"><div class="k">最近一次情绪的由头</div><div>${esc(m.emotion_label||'—')}${m.reason?('：'+esc(m.reason)):''}</div></div>`;
     h+=`<div class="card"><div class="k">情绪时间线（最近 ${m.timeline.length} 条）</div><div id="tl"></div></div>`;
     $('#mood').innerHTML=h;
-    const dims=m.dims||{}; let dh='';
-    for(const [k,v] of Object.entries(dims)) dh+=`<div class="dim"><span class="name">${k}</span><div class="bar"><i style="width:${Math.max(0,Math.min(100,v))}%"></i></div><span class="mut">${v}</span></div>`;
-    $('#dims').innerHTML=dh||'<span class="mut">还没有数据</span>';
     let tl='';
     for(const t of m.timeline){
       const time=t.at?new Date(t.at*1000).toLocaleString('zh-CN',{hour12:false}):'';
