@@ -79,6 +79,15 @@ class ThreadStoreTest(unittest.TestCase):
         self.assertEqual(self.store.resolve_thread("万机之神")["title"], "万机之神设定讨论")
         self.assertEqual(self.store.find_threads("万机之神")[0]["title"], "万机之神设定讨论")
 
+    def test_manual_close(self):
+        mid = self.store.add(mc.MemoryInput(
+            text="还没完的事", tier="L3", thread_status="open",
+            thread_title="还没完的事", thread_last_seen_at=time.time(),
+        ))
+        self.assertTrue(self.store.close_thread(mid))
+        self.assertEqual(self.store.open_threads(), [])
+        self.assertEqual(self.store.find_threads("还没完")[0]["status"], "closed")
+
 
 if __name__ == "__main__":
     unittest.main()

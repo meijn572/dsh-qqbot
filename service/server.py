@@ -3056,6 +3056,22 @@ class Handler(BaseHTTPRequestHandler):
 
         self._json(200, stats)
 
+    def _close_thread(self) -> None:
+        body = self._body()
+        try:
+            mid = int(body.get("id") or 0)
+        except Exception:
+            mid = 0
+        if not mid:
+            target = store.resolve_thread(str(body.get("title") or ""), store.open_threads(8))
+            if target:
+                mid = int(target["id"])
+        if not mid:
+            self._json(400, {"ok": False, "error": "thread not found"})
+            return
+        ok = store.close_thread(mid)
+        self._json(200 if ok else 400, {"ok": ok, "id": mid})
+
     def _core_review(self) -> None:
         """每 3 天从 closed L3 里挑 0–2 条核心记忆。"""
         cfg = _load_config().get("core_review") or {}

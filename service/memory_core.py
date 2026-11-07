@@ -650,6 +650,17 @@ class MemoryStore:
             })
         return out
 
+    def close_thread(self, mem_id: int) -> bool:
+        """手动结束一条 open L3；不删除。"""
+        now = time.time()
+        cur = self.conn.execute(
+            "UPDATE memory SET thread_status='closed', thread_closed_at=?, updated_at=? "
+            "WHERE id=? AND tier='L3' AND thread_status='open'",
+            (now, now, int(mem_id)),
+        )
+        self.conn.commit()
+        return bool(cur.rowcount)
+
     def update_thread(self, mem_id: int, summary: str, status: str,
                       source_ids: Sequence[int] | None = None,
                       last_seen_at: float | None = None) -> bool:

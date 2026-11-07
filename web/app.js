@@ -81,7 +81,17 @@ function renderMem(){
   }
   const box=document.getElementById('memlist'); if(box) box.innerHTML=h||'<div class="mut">没有匹配的记忆</div>';
 }
-let lexFilter='all';
+async function closeThread(id){
+  if(!id) return;
+  if(!confirm('把这件事标成已结束？')) return;
+  try{
+    const r=await fetch('/api/threads/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+    const d=await r.json();
+    if(!d.ok){ alert(d.error||'结束失败'); return; }
+    await load();
+  }catch(e){ alert('结束失败：'+e); }
+}
+
 const LEX_KIND={slang:'群黑话',meme:'网络梗',buzzword:'热门词',fandom:'角色/IP',abbreviation:'缩写',emoji:'表情用法',event:'事件'};
 const LEX_STATUS={fresh:'新词',hot:'热门',stable:'稳定',archived:'过气'};
 function renderLex(){
@@ -314,7 +324,7 @@ async function load(){
       for(const t of threads.slice(0,8)){
         const ts=Number(t.last_seen_at||0);
         const day=ts?new Date(ts*1000).toLocaleDateString('zh-CN'):'';
-        h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:6px"><span class="badge ok">${esc(statusCn[t.status]||t.status||'')}</span> <b>${esc(t.title||'')}</b> <span class="mut">${esc(day)}</span></div>`;
+        h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:6px"><span class="badge ok">${esc(statusCn[t.status]||t.status||'')}</span> <b>${esc(t.title||'')}</b> <span class="mut">${esc(day)}</span> <button style="float:right" onclick="closeThread(${Number(t.id)||0})">结束</button></div>`;
       }
       h+='</div>';
     }

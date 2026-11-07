@@ -233,6 +233,14 @@ last_seen_at
 日记
 ```
 
+“还没完的事”每条右侧有「结束」按钮：
+
+```text
+POST /threads/close {id}
+→ thread_status = closed
+→ 只结束，不删除
+```
+
 ## 6.1 待观察
 
 ```text

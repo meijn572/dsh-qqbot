@@ -53,6 +53,7 @@ POST_ROUTES = {
     "/episode": "_episode",
     "/batch/run": "_batch_run",
     "/core/review": "_core_review",
+    "/threads/close": "_close_thread",
 }
 
 

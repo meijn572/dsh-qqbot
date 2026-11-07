@@ -562,13 +562,35 @@ def guests_payload() -> dict:
 
 
 def notebook_payload() -> dict:
-    threads = cmem_get("/threads/open") or {}
+    # 小本子需要 id 才能点“结束”，不带 id 的 /threads/open 留给模型工具
+    data = cmem_get("/memories?tier=L3&limit=200") or {}
+    open_threads = []
+    for item in data.get("items") or []:
+        if str(item.get("thread_status") or "") != "open":
+            continue
+        open_threads.append({
+            "id": item.get("id"),
+            "title": str(item.get("thread_title") or ""),
+            "status": "open",
+            "last_seen_at": item.get("thread_last_seen_at") or item.get("ts") or 0,
+        })
+    open_threads.sort(key=lambda x: float(x.get("last_seen_at") or 0), reverse=True)
     return {
         "notes": cmem_get("/notes") or [],
         "tasks": cmem_get("/tasks") or [],
         "diary": cmem_get("/diary") or [],
-        "open_threads": threads.get("items") or [],
+        "open_threads": open_threads[:8],
     }
+
+
+def close_thread(thread_id) -> dict:
+    try:
+        mid = int(thread_id)
+    except Exception:
+        return {"ok": False, "error": "invalid id"}
+    if mid <= 0:
+        return {"ok": False, "error": "invalid id"}
+    return cmem_post("/threads/close", {"id": mid})
 
 
 def persona_payload() -> dict:
