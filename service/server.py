@@ -2753,7 +2753,7 @@ class Handler(BaseHTTPRequestHandler):
         memory_text = "\n".join(memory_lines)
         line = extractor.evolve(user_text, assistant_text, persona=persona_text, memories=memory_text)
         if not line:
-            self._json(503, {"ok": False, "error": "llm unavailable"})
+            self._json(200, {"ok": True, "skipped": "no-change"})
             return
         cur = store.get_persona()["self_model"] or ""
         new = add_self_change(cur, line)

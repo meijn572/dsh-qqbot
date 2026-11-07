@@ -55,9 +55,17 @@ DIARY_SYSTEM = """你写今天的日记。用洄的口吻，第一人称，写�
 西西弗斯那句还是没想透。先搁着吧，反正山也不会跑。"""
 
 
-EVOLVE_SYSTEM = """你根据一段对话，用第一人称写一句「我发现自己……」——关于你自己（助手）的变化。
-要求：第一人称、简短（不超过 30 字）、具体、像自我觉察；不要写用户、不要总结、不要给建议。
-只输出这一句，不要引号，不要解释。"""
+EVOLVE_SYSTEM = """你根据一段对话，判断她有没有产生新的自我认知变化。
+
+只在确实有变化时输出一条：
+- 第一人称，简短（不超过 30 字）
+- 具体，像自我觉察
+- 不要「我发现自己」前缀
+- 不要写用户、不要总结、不要给建议
+- 不要重复【完整人格】里已经有的自我认知
+
+没有新变化，只输出 SKIP。
+有变化，只输出这一句，不要引号，不要解释。"""
 
 
 THREAD_SYSTEM = """你负责从这段对话里，留下那些过一阵子还会被想起的事。
@@ -536,7 +544,10 @@ class Extractor:
             return None
         if not text:
             return None
-        return str(text).strip().strip('"').strip("「」")[:80]
+        line = str(text).strip().strip('"').strip("「」")[:80]
+        if line.upper() in ("SKIP", "跳过") or not line:
+            return None
+        return line
 
     def process_turn(self, user_text: str, assistant_text: str = "",
                      subject: str = "self", user_id: str = "", scope: str = "global",

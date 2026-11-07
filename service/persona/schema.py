@@ -95,7 +95,13 @@ def add_self_change(text: str, line: str) -> str:
     item = str(line or "").strip()
     if not item:
         return text
-    changes["changes"] = (changes.get("changes") or [])[-3:] + [item]
+    old = []
+    for value in changes.get("changes") or []:
+        if value and value not in old:
+            old.append(value)
+    if item in old:
+        return render_self_sections(changes)
+    changes["changes"] = old[-3:] + [item]
     return render_self_sections(changes)
 
 

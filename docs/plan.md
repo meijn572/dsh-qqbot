@@ -24,6 +24,8 @@ L3：标题支持模糊匹配
 旧 L3：16 条旧流水账 archived，拆成 41 条事件线程
 旧 L1：保留 legacy，不重算 source_ids
 旧提示词审计：L1 抽取只产 L1；上下文标签自然语言；batch 不再带 L4
+人格旧提示词：EVOLVE 不再写「我发现自己」；无变化输出 SKIP
+自我认知：去重；set_emotion 工具提示改成 valence/arousal
 旧 episode 链路：插件默认关闭
 便签旧作者：已统一为「洄」
 UPDATE：合并 source_ids
