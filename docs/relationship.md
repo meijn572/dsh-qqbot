@@ -233,9 +233,25 @@ tension    每天最多 +6
 ### 衰减
 
 ```text
-3 天没互动：closeness 每天 -0.5
-14 天没互动：trust 每天 -0.1
+14 天没互动：closeness 每天 -0.2
+30 天没互动：trust 每天 -0.05
 tension 每天 -0.1（只淡化，不等于修复）
+```
+
+研究里有一个很值得注意的点：
+
+```text
+关系稳定后，互动频率可能下降
+但关系本身仍然有价值
+```
+
+所以不能把“最近没怎么聊”直接当成关系变差。
+
+建议：
+
+```text
+低阶段衰减快一点
+亲密/相知阶段设下限，不无限掉
 ```
 
 `tension` 的时间衰减很慢：
@@ -386,10 +402,40 @@ stage 由三维派生
 ## 14. 开放问题
 
 ```text
-tension 每天 -0.1 的衰减速度是否合适
+closeness 14 天开始衰减是否合适
+亲密/相知阶段的下限设多少
 历史抽样窗口和 12 条是否够
 修复每天最多 -8 是否合适
 高阶段递减的具体曲线
+```
+
+## 15. 参考
+
+- Skjuve et al., *My Chatbot Companion - a Study of Human-Chatbot Relationships* (2021)：用 Social Penetration Theory 访谈 18 位 Replika 用户，关系从表层好奇进入情感探索、信任与自我暴露，稳定后互动频率下降但关系仍有价值。DOI: https://doi.org/10.1016/j.ijhcs.2021.102601
+- Gottman Institute, *Repair is the Secret Weapon of Emotionally Connected Couples*：冲突后的修复尝试比“不吵架”更关键。https://www.gottman.com/blog/repair-secret-weapon-emotionally-connected-couples/
+- Rusbult et al., *The Investment Model Scale* (1998)：承诺不只来自满意，还和投入、替代选择有关。DOI: https://doi.org/10.1111/j.1475-6811.1998.tb00177.x
+- Dede et al., *Interview with the AI: a quantitative analysis of AI companions' relationship formation features* (2026)：用关系形成阶段模型观察 20 个 AI 伴侣，friendbot 和 assistantbot 的关系路径不同。DOI: https://doi.org/10.1007/s00146-026-03368-0
+
+对我们的启示：
+
+```text
+关系由自我暴露、信任、被接住推动
+不是由消息条数推动
+
+稳定后可以聊得少
+不代表关系变差
+
+冲突后的修复很重要
+
+不同关系角色不该套同一条阶段梯子
+```
+
+不照搬：
+
+```text
+不照搬 Replika 的恋爱等级/付费解锁
+不把“黏人”当最高阶段
+不把互动频率当关系质量
 ```
 
 先定阶段词和三维，再写代码。
