@@ -571,7 +571,7 @@ window.__ModuleLoader__.load({
           ),
 
           h("div", { style: S.card },
-            h("div", { style: S.label }, "她给老大派的任务"),
+            h("div", { style: S.label }, "她给主人派的任务"),
             taskList.length === 0
               ? h("div", { style: S.muted }, "还没有任务——她说派的时候会出现在这里。")
               : h("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
@@ -2628,7 +2628,7 @@ window.__ModuleLoader__.load({
                   : null,
                 pending.length > 0
                   ? h("div", null,
-                      h("div", { style: { ...S.muted, fontSize: 11, marginBottom: 6 } }, "说够 6 次了还不知道意思（该去问老大）"),
+                      h("div", { style: { ...S.muted, fontSize: 11, marginBottom: 6 } }, "说够 6 次了还不知道意思（该去问主人）"),
                       h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, pending.map((s) => chip(s, true))),
                     )
                   : null,
@@ -3542,7 +3542,7 @@ const [data, setData] = React.useState(null);
                 "这些都在描述【用户是谁】——不是描述她。她每轮开头都会看到：他是谁、干什么、喜欢什么、别碰什么。比记忆抽取更稳（这是硬事实，不靠她记）。"),
               h("div", { style: { ...S.muted, fontSize: 11, marginBottom: 4 } }, "关系（点一下选中，会自动写进画像；后面的可以自己加）"),
               h("div", { style: { display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 6 } },
-                ["老大", "主人", "老板", "朋友", "搭子"].map((tag) =>
+                ["主人", "老板", "朋友", "搭子"].map((tag) =>
                   h("button", {
                     key: tag,
                     onClick: () => setRelations(relations.includes(tag) ? relations.filter((x) => x !== tag) : [...relations, tag]),
@@ -3555,9 +3555,9 @@ const [data, setData] = React.useState(null);
                   }, tag),
                 ),
               ),
-              relations.filter((x) => !["老大", "主人", "老板", "朋友", "搭子"].includes(x)).length
+              relations.filter((x) => !["主人", "老板", "朋友", "搭子"].includes(x)).length
                 ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 6 } },
-                    relations.filter((x) => !["老大", "主人", "老板", "朋友", "搭子"].includes(x)).map((tag) =>
+                    relations.filter((x) => !["主人", "老板", "朋友", "搭子"].includes(x)).map((tag) =>
                       h("span", {
                         key: tag,
                         style: {
@@ -3601,7 +3601,7 @@ const [data, setData] = React.useState(null);
               h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 } },
                 h("div", {},
                   h("div", { style: { ...S.muted, fontSize: 11 } }, "他的称呼"),
-                  h("input", { style: S.input, placeholder: "老大（他让我这么叫）", value: profileFields.name, onChange: (ev) => setPf("name", ev.target.value) }),
+                  h("input", { style: S.input, placeholder: "主人（他让我这么叫）", value: profileFields.name, onChange: (ev) => setPf("name", ev.target.value) }),
                 ),
                 h("div", {},
                   h("div", { style: { ...S.muted, fontSize: 11 } }, "他的职业"),
@@ -3684,8 +3684,8 @@ const [data, setData] = React.useState(null);
                   ),
                 ),
                 h("div", { style: { display: "flex", flexDirection: "column", gap: 4 } },
-                  h("span", { style: { ...S.muted, fontSize: 12 } }, "怎么叫老大"),
-                  h("input", { style: S.input, value: idFields.user_call, placeholder: "例：老大", onChange: (ev) => setId("user_call", ev.target.value) }),
+                  h("span", { style: { ...S.muted, fontSize: 12 } }, "怎么叫主人"),
+                  h("input", { style: S.input, value: idFields.user_call, placeholder: "例：主人", onChange: (ev) => setId("user_call", ev.target.value) }),
                 ),
                 h("div", { style: { display: "flex", flexDirection: "column", gap: 4 } },
                   h("span", { style: { ...S.muted, fontSize: 12 } }, "脾气"),

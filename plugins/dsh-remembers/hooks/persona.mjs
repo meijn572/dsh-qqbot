@@ -33,7 +33,7 @@ export function renderPersona(data, maxChars, proactive, opts = {}) {
 
   const lines = ['<dsh-remembers source="persona">'];
   if (userProfile) {
-    lines.push(opts.profileHeader || "以下是老大是谁（他的画像，你该知道的基本信息）：");
+    lines.push(opts.profileHeader || "以下是主人是谁（他的画像，你该知道的基本信息）：");
     lines.push("");
     lines.push(userProfile);
     lines.push("");
@@ -93,7 +93,7 @@ export function renderOtherProfile(p, opts = {}) {
   const who = name ? `${name}（QQ ${uid}）` : `QQ ${uid}`;
   const lines = [`正在跟你说话的是 ${who}${cnt > 1 ? `，这是你们第 ${cnt} 次说话` : ""}。`];
   if (opts.notOwner) {
-    lines.push("这个人不是老大。别把他当成老大，也别把老大说过的事安到他头上。");
+    lines.push("这个人不是主人。别把他当成主人，也别把主人说过的事安到他头上。");
   }
   if (prof) {
     lines.push("你对他的印象：");
@@ -115,7 +115,7 @@ export function renderOwnerProfile(p, ownerProfile) {
   if (!uid) return "";
   const name = String(p?.name || "").trim();
   const who = name ? `${name}（QQ ${uid}）` : `QQ ${uid}`;
-  const lines = [`正在跟你说话的是 ${who} —— 这是你的老大。`];
+  const lines = [`正在跟你说话的是 ${who} —— 这是你的主人。`];
   const prof = String(ownerProfile || "").trim();
   if (prof) {
     lines.push("他的基本情况：");

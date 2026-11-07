@@ -1393,7 +1393,7 @@ class MemoryStore:
         (15, "在写小游戏，像素鲸鱼吃豆子"),
         (17, "趴在机柜上看窗外的数据流，发呆"),
         (19, "站在回收站门口看蓝灯，不说话"),
-        (21, "趴在工位等老大，尾巴拖地"),
+        (21, "趴在工位等主人，尾巴拖地"),
         (22, "回小床睡觉了，毯子盖到下巴"),
     ]
 
@@ -1434,7 +1434,7 @@ class MemoryStore:
         kind = str(r["kind"] or "")
         if age < 1800:
             if kind == "chat":
-                return "刚刚还在和老大聊天"
+                return "刚刚还在和主人聊天"
             if kind == "game":
                 return str(r["detail"] or "在玩小游戏")
             if kind == "proactive":
@@ -1686,7 +1686,7 @@ class MemoryStore:
         } for r in rows]
 
     def slang_pending(self, min_count: int = 6, limit: int = 4) -> list[dict]:
-        """够次数、但还不知道什么意思的词 —— 该去问老大了。
+        """够次数、但还不知道什么意思的词 —— 该去问主人了。
 
         口头禅的意义必须问出来才算学会。这些词只计数，不进提示词的「你会说」。
         """

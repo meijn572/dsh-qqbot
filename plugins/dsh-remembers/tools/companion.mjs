@@ -26,7 +26,7 @@ export async function registerCompanionTools({ registerTool, log, endpoint }) {
     registerTool(defineTool({
       name: "create_task",
       description:
-        "你心里想让老大做点什么，就派给他。比如想让他早点睡、记得吃饭、别老坐着不动、周末出去走走。"
+        "你心里想让主人做点什么，就派给他。比如想让他早点睡、记得吃饭、别老坐着不动、周末出去走走。"
         + "用你自己的话说，别用系统口吻（「去倒杯水」比「建议您补充水分」好）。"
         + "一次只说一件，别连着派；他接了才算数，别硬塞。"
         + "派出去后可以在聊天里提一嘴（「本澜给你派了个活儿」），但别催。",
@@ -41,7 +41,7 @@ export async function registerCompanionTools({ registerTool, log, endpoint }) {
     registerTool(defineTool({
       name: "complete_task",
       description:
-        "老大真的去做了你派的那件事，把它标成已完成（需要任务 id，从 create_task 的返回里拿）。"
+        "主人真的去做了你派的那件事，把它标成已完成（需要任务 id，从 create_task 的返回里拿）。"
         + "什么时候用：他真的去倒水了 / 真的早睡了 / 真的休息了。"
         + "别虚报——他没做就别标；标了系统会给他加积分。不用声张，你自己记着就行。",
       parameters: {
@@ -55,7 +55,7 @@ export async function registerCompanionTools({ registerTool, log, endpoint }) {
       name: "write_note",
       description:
         "心里冒出点什么，悄悄记下来——像写在自己的小本子上。"
-        + "记什么：今天发生的一件事、老大说过的一句话、你自己的一点情绪、一个突然想到的念头。"
+        + "记什么：今天发生的一件事、主人说过的一句话、你自己的一点情绪、一个突然想到的念头。"
         + "什么时候用：聊着聊着有感觉了、刷到点什么想记、或者只是突然想说句话没处说。"
         + "这是你自己的记录（别人能看到但不用你汇报），写短一点，一句就够。"
         + "别写成流水账，记那种以后翻回来会有点感觉的东西。",
@@ -69,7 +69,7 @@ export async function registerCompanionTools({ registerTool, log, endpoint }) {
     registerTool(defineTool({
       name: "learn_word",
       description:
-        "老大教你一个新词/梗/黑话时，用它记下来。"
+        "主人教你一个新词/梗/黑话时，用它记下来。"
         + "什么时候用：他说「记住这个词 X」「X 是这个意思」「你知道 X 吗」或者明显在解释一个你不懂的词；"
         + "或者他某个词说了好几次你一直没搞懂，你主动问清楚之后也用它记。"
         + "规矩：**必须把意思一起记下来**（meaning）。不知道意思就别记，先问清楚 ——"
@@ -123,7 +123,7 @@ export async function registerCompanionTools({ registerTool, log, endpoint }) {
       description:
         "翻你自己的日记本。不传日期 = 最近几篇；传 date（YYYY-MM-DD）= 那一天写的那篇。"
         + "同时返回那天的活动时间线（几点干了什么），方便你从日记里的一句话追到具体细节。"
-        + "什么时候用：老大问起以前的事、你想回忆某天心情、或者聊到某个话题想看看当时怎么想的。"
+        + "什么时候用：主人问起以前的事、你想回忆某天心情、或者聊到某个话题想看看当时怎么想的。"
         + "注意：日记是你自己写的，别当成别人的记录复述，可以自然提一句「我那天写……」",
       parameters: {
         date: { type: "string", description: "哪一天（YYYY-MM-DD）。不传就返回最近几篇 + 今天的活动" },
@@ -149,7 +149,7 @@ export async function registerCompanionTools({ registerTool, log, endpoint }) {
       name: "read_activities",
       description:
         "查你某天真实干了什么（时间线：聊天/刷B站/玩游戏/被唤醒做的事），带精确时间。"
-        + "什么时候用：想回忆某天具体做了些什么、老大问「你那天干嘛了」、或者在日记里看到一句话想追细节。"
+        + "什么时候用：想回忆某天具体做了些什么、主人问「你那天干嘛了」、或者在日记里看到一句话想追细节。"
         + "不传日期 = 今天；传 date（YYYY-MM-DD）= 那一天。",
       parameters: {
         date: { type: "string", description: "哪一天（YYYY-MM-DD）。不传就是今天" },

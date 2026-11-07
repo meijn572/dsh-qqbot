@@ -174,7 +174,7 @@ class Scheduler:
         if silent:
             msg = f"（你自己待着，现在是 {hour} 点。{pick}。这只是你自己的时间，不用回消息。）"
         else:
-            msg = f"（系统提醒：你醒着，现在是 {hour} 点。{pick}。看看老大在不在，想找他就发一句；不想也行。）"
+            msg = f"（系统提醒：你醒着，现在是 {hour} 点。{pick}。看看主人在不在，想找他就发一句；不想也行。）"
 
         self._inject(msg, silent=silent)
         self._log_activity("proactive", f"被叫醒（{hour}点，{'静默' if silent else '可发言'}）：{action}")
@@ -260,7 +260,7 @@ class Scheduler:
         # 和唤醒一样的机制，但动作固定为「刷 B 站」
         hints = []
         if cfg.get("biliShareToOwner", True):
-            hints.append("看到有意思的，把链接和你的想法发给老大")
+            hints.append("看到有意思的，把链接和你的想法发给主人")
         if cfg.get("biliShareToGroup", False):
             hints.append("也可以分享到群里")
         if cfg.get("biliComment", True):
@@ -301,7 +301,7 @@ class Scheduler:
             if kinds.get("bili"):
                 parts.append(f"刷了 {len(kinds['bili'])} 次 B 站：" + "、".join(kinds["bili"][-3:]))
             if kinds.get("chat"):
-                parts.append(f"跟老大聊了 {len(kinds['chat'])} 次")
+                parts.append(f"跟主人聊了 {len(kinds['chat'])} 次")
             if kinds.get("proactive"):
                 parts.append(f"被叫醒 {len(kinds['proactive'])} 次")
             if kinds.get("game"):
@@ -434,11 +434,11 @@ class Scheduler:
                 "time": int(time.time()),
                 "self_id": 0,
                 "silent": silent,
-                # synthetic：这条是系统自己醒的，不是老大发的。onebot 会据此把
+                # synthetic：这条是系统自己醒的，不是主人发的。onebot 会据此把
                 # source.kind 标成 system:nudge，dsh-remembers 就不会当成用户原话。
                 "synthetic": True,
                 # 昵称留空：写「系统」会被 _touch_profile 存进 profiles.name，
-                # 把老大真实的画像名字覆盖掉（2026-10-27 线上实测踩过）。
+                # 把主人真实的画像名字覆盖掉（2026-10-27 线上实测踩过）。
                 "sender": {"user_id": uid, "nickname": ""},
             }
             with open(path, "a", encoding="utf-8") as f:

@@ -377,7 +377,7 @@ tension    不自动衰减
 只注入自然语言：
 
 ```text
-和老大是「亲近」阶段。
+和主人是「亲近」阶段。
 你在他面前比较放松，但还没到什么都敢说。
 ```
 
@@ -648,7 +648,46 @@ L3 prompt 能不能稳定判断三维方向
 
 等 L3 新建时带上 scope，再把聚合法收紧到主人私聊。
 
-## 16. 参考
+## 17. 目前用到哪里
+
+现在真正用到关系值的地方：
+
+```text
+1. 面板显示
+   亲近 / 信任 / 张力 / 阶段 / 互动轮数
+
+2. 模型看到一句阶段提示
+   和主人是「亲密」阶段。敢说难受的事，冲突后能修复。
+   只注入阶段名和 hint，不注入数字
+
+3. L3 的 delta 聚合
+   L3.closeness_delta / trust_delta / tension_delta
+   只用于算阶段，不参与聊天决策
+```
+
+还没用到：
+
+```text
+主动消息频率
+记忆检索排序
+回复长度
+称呼选择
+冲突修复策略
+画像生成
+L3 是否创建
+```
+
+`interaction_count` 只统计私聊轮数，也不影响行为。
+
+所以现在是：
+
+```text
+亲密度 = 面板展示 + 一句阶段提示
+```
+
+不是行为开关。
+
+## 18. 参考
 
 - Skjuve et al., *My Chatbot Companion - a Study of Human-Chatbot Relationships* (2021)：用 Social Penetration Theory 访谈 18 位 Replika 用户，关系从表层好奇进入情感探索、信任与自我暴露，稳定后互动频率下降但关系仍有价值。DOI: https://doi.org/10.1016/j.ijhcs.2021.102601
 - Gottman Institute, *Repair is the Secret Weapon of Emotionally Connected Couples*：冲突后的修复尝试比“不吵架”更关键。https://www.gottman.com/blog/repair-secret-weapon-emotionally-connected-couples/

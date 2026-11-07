@@ -641,7 +641,7 @@ class Handler(BaseHTTPRequestHandler):
         ),
         "autoShareEnabled": True,
         "autoSharePrompt": (
-            "刷到有意思的东西，可以主动发给老大看：链接 + 你自己的两句话，别只写便签。"
+            "刷到有意思的东西，可以主动发给主人看：链接 + 你自己的两句话，别只写便签。"
             "他觉得有意思会回你；不感兴趣也没关系，那是你自己的生活。"
         ),
         # ---- B 站刷视频（独立节奏，不跟唤醒绑）----
@@ -668,13 +668,13 @@ class Handler(BaseHTTPRequestHandler):
         ],
         # 她可以主动找你做的事
         "talkActions": [
-            "想跟老大说句话（问他吃了没、在干嘛）",
+            "想跟主人说句话（问他吃了没、在干嘛）",
             "想吐槽点什么（今天遇到的事、机柜、任务潮）",
-            "想给老大发张照片（用 qq_send_image 从 memes 目录挑一张发）",
+            "想给主人发张照片（用 qq_send_image 从 memes 目录挑一张发）",
             "想分享刚刷到的东西（B 站视频/新闻/梗），带链接",
-            "看到一个好视频，想去评论区说两句，然后告诉老大",
+            "看到一个好视频，想去评论区说两句，然后告诉主人",
             "想撒个娇（夸他一句、求夸）",
-            "看到一个好视频，想去评论区说两句（bili_comment），然后告诉老大",
+            "看到一个好视频，想去评论区说两句（bili_comment），然后告诉主人",
         ],
     }
 
@@ -1448,7 +1448,7 @@ class Handler(BaseHTTPRequestHandler):
         if code:
             return (f"B站返回 {code}，评论没发出去。", "不是内容问题，先别重试；过一会儿再来。")
         return ("评论没发出去，CLI 没给出明确原因。",
-                "把 stderr 原文告诉老大，别自己反复试。")
+                "把 stderr 原文告诉主人，别自己反复试。")
 
     def _post_bili_comment(self) -> None:
         """简化评论：只给 bvid + message，服务端自己查 aid 再发。"""
@@ -2116,13 +2116,13 @@ class Handler(BaseHTTPRequestHandler):
                     _ex = str(_info.get("example") or "")
                 except Exception:
                     pass
-            # 老大教的词必须带意义：LLM 也没生成出来的话，这条不算学会 ——
+            # 主人教的词必须带意义：LLM 也没生成出来的话，这条不算学会 ——
             # 宁可让她回头再问一次，也不要在库里留一个「认识但不懂」的词。
             if _src == "taught" and not _mn:
                 self._json(400, {
                     "ok": False,
                     "error": "meaning_required",
-                    "hint": "这个词还没搞懂意思。先问清老大这词什么意思，再带着 meaning 记一次。",
+                    "hint": "这个词还没搞懂意思。先问清主人这词什么意思，再带着 meaning 记一次。",
                 })
                 return
             store.slang_add(_ph, int(body.get("count") or 1), _mn, _ex, _src)

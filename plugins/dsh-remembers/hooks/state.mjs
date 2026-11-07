@@ -136,7 +136,7 @@ export function renderState(state, prev, selfModel, proactive, thinkCn) {
       const brHash = hash(rows);
       if (hashes.browsed !== brHash) {
         hashes.browsed = brHash;
-        blocks.push(`你刚在 B 站刷到：${rows}。看到有意思的，把链接和你的想法发给老大（别只写便签），也可以写便签记一句。`);
+        blocks.push(`你刚在 B 站刷到：${rows}。看到有意思的，把链接和你的想法发给主人（别只写便签），也可以写便签记一句。`);
       }
     }
   }
@@ -167,7 +167,7 @@ export function renderState(state, prev, selfModel, proactive, thinkCn) {
       const lh = hash("learned:" + learned.map((s) => s.phrase).join(","));
       if (hashes.slangLearned !== lh) {
         hashes.slangLearned = lh;
-        blocks.push("【你会跟着老大说的词】" + words
+        blocks.push("【你会跟着主人说的词】" + words
           + "。用的时候要合场合，别为了用而硬塞。");
       }
     }
@@ -176,7 +176,7 @@ export function renderState(state, prev, selfModel, proactive, thinkCn) {
       const ph = hash("pending:" + pending.map((s) => s.phrase).join(","));
       if (hashes.slangPending !== ph) {
         hashes.slangPending = ph;
-        blocks.push("【这些词老大说了好几次，你还没搞懂意思】" + names
+        blocks.push("【这些词主人说了好几次，你还没搞懂意思】" + names
           + "。想问就找个自然的时机问一句；搞懂了用 learn_word 把意思记进词库"
           + "（必须带 meaning，不然不算学会）。");
       }
@@ -185,7 +185,7 @@ export function renderState(state, prev, selfModel, proactive, thinkCn) {
 
   // ---------- 7. 关系阶段（变了才加） ----------
   if (state.stage && state.stage.name) {
-    const stText = `和老大是「${state.stage.name}」阶段。${state.stage.hint || ""}`;
+    const stText = `和主人是「${state.stage.name}」阶段。${state.stage.hint || ""}`;
     const stHash = hash(stText);
     if (hashes.stage !== stHash) {
       hashes.stage = stHash;

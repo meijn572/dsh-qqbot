@@ -131,7 +131,7 @@ async function logActivity(kind, detail) {
 }
 
 /** 人设演化：让服务端从这段对话生一句「我发现自己……」（fire-and-forget）。 */
-/** 情绪传染：老大情绪影响她的 valence/arousal（fire-and-forget）。 */
+/** 情绪传染：主人情绪影响她的 valence/arousal（fire-and-forget）。 */
 async function bumpEmotion(dv, da) {
   try {
     await fetch(config.endpoint + "/state", {
@@ -422,12 +422,12 @@ const soft = (key) => {
         let block = "";
         if (inGroup) {
           // 群里发言人一直在换，系统提示词固定写的是主人 —— 必须逐轮说明是谁在说话，
-          // 否则她会把每个群友都当成老大。
+          // 否则她会把每个群友都当成主人。
           block = owner
-            ? renderSpeakerNote(p, "这是你的老大")
+            ? renderSpeakerNote(p, "这是你的主人")
             : renderOtherProfile(p, { nickname: nick, notOwner: true });
         } else if (!owner) {
-          // 私聊别人：系统提示词里有主人画像打底，这里必须说清他不是老大
+          // 私聊别人：系统提示词里有主人画像打底，这里必须说清他不是主人
           block = renderOtherProfile(p, { nickname: nick, notOwner: true });
         }
         // 私聊主人：系统提示词已经带全了，跳过
@@ -784,7 +784,7 @@ const soft = (key) => {
    * 等于每几轮就把这个会话的 prompt cache 全打穿，所以它只走 person 消息块。
    *
    *   私聊别人  -> 那个人的手编画像
-   *   其余情况  -> 主人画像（群聊也出，老大要求的：主人画像百分百在场）
+   *   其余情况  -> 主人画像（群聊也出，主人要求的：主人画像百分百在场）
    */
   function buildPersonaText(context) {
     const data = persona.data;
@@ -810,21 +810,21 @@ const soft = (key) => {
       log("persona_pick", { session: sid, group: isGroup, userId });
     }
 
-    // 私聊别人：主人画像照样在（老大要求百分百在场），但必须说清「对面不是老大」。
+    // 私聊别人：主人画像照样在（主人要求百分百在场），但必须说清「对面不是主人」。
     // 之前这里的条件是 `&& other.manual`：陌生人没有手编画像时就掉到下面，
-    // 系统提示词里只剩主人画像 —— 她会把陌生人直接认成老大（线上真的发生了）。
+    // 系统提示词里只剩主人画像 —— 她会把陌生人直接认成主人（线上真的发生了）。
     if (!isGroup && userId) {
       const other = persona.manualByUser[userId];
       if (other && !other.is_owner) {
         const who = other.name ? `${other.name}，QQ ${userId}` : `QQ ${userId}`;
-        const notOwnerNote = `注意：现在跟你说话的是 ${who}，**不是老大**。老大是另一个人。`
-          + "别把他当成老大，也别把老大的事、老大的偏好安到他头上。";
+        const notOwnerNote = `注意：现在跟你说话的是 ${who}，**不是主人**。主人是另一个人。`
+          + "别把他当成主人，也别把主人的事、主人的偏好安到他头上。";
         return renderPersona(data, maxChars, proactive, {
           // 有手编画像就用他的，没有就给主人画像当参考，但下面那句一定带上
           profileText: other.manual || persona.ownerManual,
           profileHeader: other.manual
             ? `以下是正在跟你说话的人（${who}）的画像：`
-            : "以下是老大是谁（他的画像，你该知道的基本信息）：",
+            : "以下是主人是谁（他的画像，你该知道的基本信息）：",
           footer: notOwnerNote,
         });
       }
@@ -832,7 +832,7 @@ const soft = (key) => {
 
     return renderPersona(data, maxChars, proactive, {
       profileText: persona.ownerManual,
-      profileHeader: "以下是老大是谁（他的画像，你该知道的基本信息）：",
+      profileHeader: "以下是主人是谁（他的画像，你该知道的基本信息）：",
     });
   }
 
