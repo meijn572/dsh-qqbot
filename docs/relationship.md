@@ -399,7 +399,208 @@ stage 由三维派生
 
 不删除旧数据。
 
-## 14. 开放问题
+## 14. 落地到当前项目
+
+### 14.1 先止血
+
+现在插件里的：
+
+```text
+flushTurn()
+→ bumpIntimacy(1.0)
+```
+
+要先改掉。
+
+```text
+只有主人私聊 / 主人在场且主动对话
+→ 才涨 interaction_count
+```
+
+群聊：
+
+```text
+只涨群友 affinity
+不碰 relationship
+```
+
+### 14.2 新表
+
+不继续往 `state` 里塞。
+
+新增：
+
+```sql
+relationship_state(
+  id              INTEGER PRIMARY KEY CHECK (id = 1),
+  closeness       REAL NOT NULL DEFAULT 0,
+  trust           REAL NOT NULL DEFAULT 0,
+  tension         REAL NOT NULL DEFAULT 0,
+  stage           TEXT NOT NULL DEFAULT '陌生',
+  interaction_count REAL NOT NULL DEFAULT 0,
+  bootstrapped_at REAL NOT NULL DEFAULT 0,
+  updated_at      REAL NOT NULL DEFAULT 0
+)
+```
+
+```sql
+relationship_events(
+  id              INTEGER PRIMARY KEY,
+  ts              REAL NOT NULL,
+  kind            TEXT NOT NULL,
+  closeness       REAL NOT NULL DEFAULT 0,
+  trust           REAL NOT NULL DEFAULT 0,
+  tension         REAL NOT NULL DEFAULT 0,
+  reason          TEXT NOT NULL DEFAULT '',
+  source_ids      TEXT NOT NULL DEFAULT '[]'
+)
+```
+
+旧的 `state.intimacy`：
+
+```text
+保留字段，不再作为关系值
+迁移时把 461 写进 interaction_count
+```
+
+### 14.3 状态接口
+
+`/state` 增加：
+
+```json
+{
+  "relationship": {
+    "closeness": 45,
+    "trust": 55,
+    "tension": 5,
+    "stage": "亲近",
+    "hint": "放松，开始暴露真实状态",
+    "interaction_count": 461
+  }
+}
+```
+
+旧的 `intimacy` 只作为派生展示值，不再参与阶段判断。
+
+### 14.4 每天 07:00 跑一次
+
+和现有复盘一起：
+
+```text
+07:00
+→ 取最近 24 小时 L0 / L1 / L3
+→ 当前 relationship_state
+→ 模型输出 0–3 个关系事件
+→ 代码应用每日上限和衰减
+→ 重算 stage
+```
+
+不按轮数跑。
+
+### 14.5 模型输出
+
+```json
+{
+  "events": [
+    {
+      "kind": "self_disclosure",
+      "closeness": 2.0,
+      "trust": 1.0,
+      "tension": 0,
+      "reason": "他讲了最近很难受的事",
+      "source_refs": [1, 2]
+    }
+  ]
+}
+```
+
+修复：
+
+```json
+{
+  "kind": "repair",
+  "closeness": 0,
+  "trust": 1.0,
+  "tension": -2.5,
+  "reason": "他解释了当时为什么没回",
+  "source_refs": [3]
+}
+```
+
+模型只提事件，不直接写总分。
+
+### 14.6 代码负责
+
+```text
+每天每维上限
+阶段递减
+tension 修复上限
+14 / 30 天衰减
+阶段下限
+写 relationship_events
+重算 stage
+```
+
+### 14.7 历史初始化
+
+只跑一次：
+
+```text
+最近 7 天 L1 / L3
++ 更早 L3 按月抽样，最多 12 条
++ L4 核心记忆 2 条
++ 当前人格
+```
+
+写入：
+
+```text
+closeness
+trust
+tension
+stage
+bootstrapped_at
+```
+
+不跑全量 L1/L3。
+
+### 14.8 模型看到什么
+
+`state.mjs` 只注入自然语言：
+
+```text
+和老大是「亲近」阶段。
+你在他面前比较放松，但还没到什么都敢说。
+```
+
+不注入数字。
+
+### 14.9 面板
+
+心情 · 关系页：
+
+```text
+亲近  ███████░░░  45
+信任  ████████░░  55
+张力  █░░░░░░░░░   5
+阶段：亲近
+互动轮数：461
+```
+
+再加最近几条关系事件。
+
+### 14.10 先做哪一步
+
+```text
+1. 停群聊涨 intimacy
+2. 建 relationship_state / events
+3. 旧 461 迁到 interaction_count
+4. 手工或抽样初始化三维
+5. 07:00 关系复盘
+6. 面板三条进度
+```
+
+## 15. 开放问题
 
 ```text
 closeness 14 天开始衰减是否合适
@@ -409,7 +610,7 @@ closeness 14 天开始衰减是否合适
 高阶段递减的具体曲线
 ```
 
-## 15. 参考
+## 16. 参考
 
 - Skjuve et al., *My Chatbot Companion - a Study of Human-Chatbot Relationships* (2021)：用 Social Penetration Theory 访谈 18 位 Replika 用户，关系从表层好奇进入情感探索、信任与自我暴露，稳定后互动频率下降但关系仍有价值。DOI: https://doi.org/10.1016/j.ijhcs.2021.102601
 - Gottman Institute, *Repair is the Secret Weapon of Emotionally Connected Couples*：冲突后的修复尝试比“不吵架”更关键。https://www.gottman.com/blog/repair-secret-weapon-emotionally-connected-couples/
