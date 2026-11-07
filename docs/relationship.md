@@ -233,9 +233,9 @@ tension    每天最多 +6
 ### 衰减
 
 ```text
-14 天没互动：closeness 每天 -0.2
-30 天没互动：trust 每天 -0.05
-tension 每天 -0.1（只淡化，不等于修复）
+closeness  不自动衰减
+trust      不自动衰减
+tension    聚合时按 60 天半衰期淡化
 ```
 
 研究里有一个很值得注意的点：
@@ -247,12 +247,7 @@ tension 每天 -0.1（只淡化，不等于修复）
 
 所以不能把“最近没怎么聊”直接当成关系变差。
 
-建议：
-
-```text
-低阶段衰减快一点
-亲密/相知阶段设下限，不无限掉
-```
+第一版不做 closeness/trust 衰减。
 
 `tension` 的时间衰减很慢：
 
@@ -424,46 +419,162 @@ flushTurn()
 不碰 relationship
 ```
 
-### 14.2 新表
+### 14.2 三维直接放进记忆
 
-不继续往 `state` 里塞。
+不建 `relationship_events` 表。
 
-新增：
-
-```sql
-relationship_state(
-  id              INTEGER PRIMARY KEY CHECK (id = 1),
-  closeness       REAL NOT NULL DEFAULT 0,
-  trust           REAL NOT NULL DEFAULT 0,
-  tension         REAL NOT NULL DEFAULT 0,
-  stage           TEXT NOT NULL DEFAULT '陌生',
-  interaction_count REAL NOT NULL DEFAULT 0,
-  bootstrapped_at REAL NOT NULL DEFAULT 0,
-  updated_at      REAL NOT NULL DEFAULT 0
-)
-```
+只给 `L3` 加三个字段：
 
 ```sql
-relationship_events(
-  id              INTEGER PRIMARY KEY,
-  ts              REAL NOT NULL,
-  kind            TEXT NOT NULL,
-  closeness       REAL NOT NULL DEFAULT 0,
-  trust           REAL NOT NULL DEFAULT 0,
-  tension         REAL NOT NULL DEFAULT 0,
-  reason          TEXT NOT NULL DEFAULT '',
-  source_ids      TEXT NOT NULL DEFAULT '[]'
-)
+memory.closeness_delta REAL NOT NULL DEFAULT 0
+memory.trust_delta     REAL NOT NULL DEFAULT 0
+memory.tension_delta   REAL NOT NULL DEFAULT 0
 ```
 
-旧的 `state.intimacy`：
+只给 L3：
 
 ```text
-保留字段，不再作为关系值
-迁移时把 461 写进 interaction_count
+L1 是会话段总结，太密，会重复计数
+L4 是从 L3 提升的，再记一次会重复
 ```
 
-### 14.3 状态接口
+L1 和 L4 不带关系增量。
+
+`state` 里加：
+
+```sql
+state.interaction_count REAL NOT NULL DEFAULT 0
+state.base_closeness    REAL NOT NULL DEFAULT 0
+state.base_trust        REAL NOT NULL DEFAULT 0
+state.base_tension      REAL NOT NULL DEFAULT 0
+```
+
+### 14.3 聚合
+
+```text
+closeness = base_closeness + SUM(L3.closeness_delta)
+trust     = base_trust     + SUM(L3.trust_delta)
+tension   = base_tension   + SUM(effective_tension_delta)
+```
+
+`closeness` / `trust` / `tension` 都 clamp 到 0–100。
+
+`tension` 的时间衰减在聚合时做：
+
+```text
+effective_tension_delta = tension_delta * 0.5 ** (age_days / 60)
+```
+
+只淡化，不等于修复。
+
+`closeness` / `trust` 不自动衰减：
+
+```text
+稳定关系可以聊得少
+不因为一段时间没互动就掉
+```
+
+派生：
+
+```text
+score = closeness * 0.6 + trust * 0.4 - tension * 0.5
+intimacy = clamp(score, 0, 100) * 10
+```
+
+阶段按 `intimacy`：
+
+```text
+0–99     陌生
+100–299  熟悉
+300–599  亲近
+600–799  亲密
+800–1000 相知
+```
+
+### 14.4 模型输出
+
+L3 提取时，除了 title/summary/status，还给三个增量：
+
+```json
+{
+  "title": "那次没回消息",
+  "summary": "他当时没回，我有点在意，后来没再提",
+  "status": "open",
+  "closeness_delta": -1.0,
+  "trust_delta": -1.5,
+  "tension_delta": 4.0,
+  "source_refs": [1, 2]
+}
+```
+
+修复时更新同一条 L3：
+
+```json
+{
+  "title": "那次没回消息",
+  "summary": "后来他解释了，是当时在忙",
+  "status": "closed",
+  "closeness_delta": 0,
+  "trust_delta": 1.0,
+  "tension_delta": 0,
+  "source_refs": [3]
+}
+```
+
+不是再建一条新事件。
+
+### 14.5 更新和删除
+
+更新 L3 时：
+
+```text
+新 delta 替换旧 delta
+不是 +=
+```
+
+最稳：
+
+```text
+任何 L3 新增 / 更新 / 删除
+→ 重新 SUM 所有 L3 的 delta
+→ 再加 baseline
+```
+
+不要：
+
+```text
+state.intimacy += new_delta
+```
+
+否则修复一次会重复算。
+
+### 14.6 当前 461 怎么处理
+
+不直接换算。
+
+```text
+interaction_count = 461
+```
+
+三维给一个初始 baseline，例如：
+
+```text
+base_closeness = 45
+base_trust     = 50
+base_tension   = 3
+```
+
+得到：
+
+```text
+score ≈ 45.5
+intimacy ≈ 455
+stage = 亲近/亲密边界
+```
+
+如果觉得不够准，再做一次有界初始化，替换 baseline。
+
+### 14.7 状态和面板
 
 `/state` 增加：
 
@@ -471,143 +582,45 @@ relationship_events(
 {
   "relationship": {
     "closeness": 45,
-    "trust": 55,
-    "tension": 5,
+    "trust": 50,
+    "tension": 3,
     "stage": "亲近",
-    "hint": "放松，开始暴露真实状态",
     "interaction_count": 461
   }
 }
 ```
 
-旧的 `intimacy` 只作为派生展示值，不再参与阶段判断。
-
-### 14.4 每天 07:00 跑一次
-
-和现有复盘一起：
-
-```text
-07:00
-→ 取最近 24 小时 L0 / L1 / L3
-→ 当前 relationship_state
-→ 模型输出 0–3 个关系事件
-→ 代码应用每日上限和衰减
-→ 重算 stage
-```
-
-不按轮数跑。
-
-### 14.5 模型输出
-
-```json
-{
-  "events": [
-    {
-      "kind": "self_disclosure",
-      "closeness": 2.0,
-      "trust": 1.0,
-      "tension": 0,
-      "reason": "他讲了最近很难受的事",
-      "source_refs": [1, 2]
-    }
-  ]
-}
-```
-
-修复：
-
-```json
-{
-  "kind": "repair",
-  "closeness": 0,
-  "trust": 1.0,
-  "tension": -2.5,
-  "reason": "他解释了当时为什么没回",
-  "source_refs": [3]
-}
-```
-
-模型只提事件，不直接写总分。
-
-### 14.6 代码负责
-
-```text
-每天每维上限
-阶段递减
-tension 修复上限
-14 / 30 天衰减
-阶段下限
-写 relationship_events
-重算 stage
-```
-
-### 14.7 历史初始化
-
-只跑一次：
-
-```text
-最近 7 天 L1 / L3
-+ 更早 L3 按月抽样，最多 12 条
-+ L4 核心记忆 2 条
-+ 当前人格
-```
-
-写入：
-
-```text
-closeness
-trust
-tension
-stage
-bootstrapped_at
-```
-
-不跑全量 L1/L3。
-
-### 14.8 模型看到什么
-
-`state.mjs` 只注入自然语言：
-
-```text
-和老大是「亲近」阶段。
-你在他面前比较放松，但还没到什么都敢说。
-```
-
-不注入数字。
-
-### 14.9 面板
-
-心情 · 关系页：
+面板：
 
 ```text
 亲近  ███████░░░  45
-信任  ████████░░  55
-张力  █░░░░░░░░░   5
+信任  ████████░░  50
+张力  █░░░░░░░░░   3
 阶段：亲近
 互动轮数：461
 ```
 
-再加最近几条关系事件。
+`interaction_count` 只做统计。
 
-### 14.10 先做哪一步
+### 14.8 先做哪一步
 
 ```text
 1. 停群聊涨 intimacy
-2. 建 relationship_state / events
-3. 旧 461 迁到 interaction_count
-4. 手工或抽样初始化三维
-5. 07:00 关系复盘
+2. L3 加三个 delta 字段
+3. state 加 baseline + interaction_count
+4. 聚合函数
+5. L3 prompt 输出 delta
 6. 面板三条进度
 ```
 
 ## 15. 开放问题
 
 ```text
-closeness 14 天开始衰减是否合适
-亲密/相知阶段的下限设多少
-历史抽样窗口和 12 条是否够
-修复每天最多 -8 是否合适
-高阶段递减的具体曲线
+L3 单条 delta 的合理范围（-10..+10？）
+每天 delta 总和上限
+tension 60 天半衰期是否合适
+baseline 45/50/3 是否合适
+L3 prompt 能不能稳定判断三维方向
 ```
 
 ## 16. 参考
