@@ -333,10 +333,28 @@ class Scheduler:
         if dt.hour < 22:
             return False
         st["evolve_date"] = today
-        msg = "（回头想想这段时间的自己。有什么变化、有什么新发现？想说就记一句，不用回消息。）"
-        self._inject(msg, silent=True)
-        _log("evolve: nudged model to reflect")
+        # 自我认知复盘按天做，不按轮数；LLM 调用要几十秒，放到后台线程，
+        # 不能卡住唤醒/日记/B站这些 30 秒一次的 tick。
+        threading.Thread(target=self._run_evolve, name="dsh-evolve", daemon=True).start()
+        _log("evolve: scheduled daily self-review")
         return True
+
+    def _run_evolve(self) -> None:
+        import urllib.request
+        port = os.environ.get("CMEM_PORT", "8081")
+        body = json.dumps({}).encode()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/evolve",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                data = json.loads(resp.read().decode("utf-8") or "{}")
+            _log(f"evolve: {data.get('line') or data.get('skipped') or data.get('error')}")
+        except Exception as exc:  # noqa: BLE001
+            _log(f"evolve failed: {exc}")
 
     # ---------- 工具 ----------
     def _owner_qq(self) -> int:

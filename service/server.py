@@ -2725,6 +2725,9 @@ class Handler(BaseHTTPRequestHandler):
                 user_text = "\n".join(str(r["text"])[:300] for r in rows)
             except Exception:
                 user_text = ""
+            if not user_text.strip():
+                self._json(200, {"ok": True, "skipped": "no-material"})
+                return
         cfg = _load_config()
         if not bool(cfg.get("evolve_enabled", True)):
             self._json(200, {"ok": True, "skipped": "disabled"})

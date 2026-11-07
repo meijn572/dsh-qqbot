@@ -131,20 +131,6 @@ async function logActivity(kind, detail) {
 }
 
 /** 人设演化：让服务端从这段对话生一句「我发现自己……」（fire-and-forget）。 */
-async function requestEvolve(userText, assistantText) {
-  try {
-    await fetch(config.endpoint + "/evolve", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_text: userText, assistant_text: assistantText }),
-      signal: AbortSignal.timeout(30000),
-    });
-  }
-  catch {
-    /* 演化失败不影响对话 */
-  }
-}
-
 /** 情绪传染：老大情绪影响她的 valence/arousal（fire-and-forget）。 */
 async function bumpEmotion(dv, da) {
   try {
@@ -625,10 +611,7 @@ const soft = (key) => {
     state.turnUser = "";
     state.turnAssistant = "";
     console.log("[dsh-remembers-debug] flush cfg extract=" + config.extract + " captureRaw=" + config.captureRaw + " userLen=" + user.length + " asstLen=" + assistant.length);
-    // 每 20 轮让她演化一次自我认知（早期学得快一点）
-    if (state.turns % 20 === 0 && user && assistant) {
-      void requestEvolve(user, assistant);
-    }
+    // 自我认知复盘已改由服务端每天 22:00 触发，不再按 20 轮截断计数。
     // 亲密度：只有「老大真的说话」才涨（唤醒剥完就没内容了，不会走到这）
     if (keptUser && assistant) {
       void bumpIntimacy(1.0);

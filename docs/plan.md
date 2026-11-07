@@ -27,6 +27,7 @@ L3：标题支持模糊匹配
 人格旧提示词：EVOLVE 不再写「我发现自己」；无变化输出 SKIP
 自我认知：去重；set_emotion 工具提示改成 valence/arousal
 人格旧字段：self_image / identity 已从代码、面板、数据库删除
+自我认知复盘：从每 20 轮改为每天 22:00
 旧 episode 链路：插件默认关闭
 便签旧作者：已统一为「洄」
 UPDATE：合并 source_ids
