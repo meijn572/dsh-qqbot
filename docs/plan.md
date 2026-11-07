@@ -53,53 +53,126 @@ L4 复盘：每 3 天，closed / standalone L3 → 0–2 条核心记忆
 ## 2. 正在进行
 
 ```text
-L2 判断层：
-  文档已定
-  代码未接
-  L2 只装判断/假设，不装事实
-
 真会话验证：
   事件线程跨段续写
   5 分钟分段是否切得自然
   open 索引是否足够
 ```
 
-## 3. 下一步
+L2 代码未接，待做清单见下。
 
-### P1 L2 判断层（可选）
+## 3. 改动待做清单
 
-```text
-如果 L1 不吸收推测，才需要 L2
-L2 只装推断，不装主人明说的感受
-L2 从 L0 + L1 生成
-带 confidence
-带 basis（memory_links）
-默认 hypothesis
-7–30 天
-不直接当事实注入
-```
-
-不急，先看 L1 够不够用。
-
-### P2 真会话验证
+### P0 L1 严格确定
 
 ```text
-牙疼/看牙这种跨天事件
-是否续写同一条 open L3
-是否在“没事了”时 closed
+L1 只写已经确定发生的事
+不写“可能 / 也许 / 大概 / 我猜”
+推测一律去 L2
+不确定就留空，不要补
+每条的 source_refs 必须能对上原话
 ```
 
-### P3 来源
+需要改：
 
 ```text
-evidence 已改为：
-  输入 L0/L1/L2/L3 统一编号
-  模型输出 source_refs
-  代码按 ref 映射 tier/id
-  ref 无效才回退单条原话匹配
+EXTRACT_SYSTEM：明确“只写确定事实”
+L1 输出校验：含推测词的不收，或要求模型重写
+测试：确定性 + 不补人物
 ```
 
-已实现 ref 优先。
+### P1 L2 恢复
+
+```text
+新增字段：
+  confidence
+  expires_at
+  status
+  promoted_to
+  basis
+
+状态：
+  hypothesis
+  promoted
+  rejected
+  expired
+  superseded
+
+写入：
+  从 L0 + L1 生成
+  只写推断，不写明说事实
+
+召回：
+  只召回 hypothesis
+  且未过期
+  高门槛
+
+注入：
+  带“可能 / 我猜”
+  不当事实
+
+确认：
+  模型复盘输出 confirmed
+  → 同一事务创建 L1
+  → L2.status = promoted
+  → L2.promoted_to = L1.id
+  → 失败回滚，保持 hypothesis
+
+面板：
+  L2 列表 / 状态 / confidence / 过期时间
+```
+
+### P2 L3 同时吃 L1 + L2
+
+```text
+plan_threads 输入：
+  L0 原话
+  L1 确定事实
+  L2 判断
+
+L3 引用 L2 时：
+  link.role = judgment
+  不能把 L2 当事实抄进 summary
+
+L3 prompt：
+  L1 是事实
+  L2 是判断
+  只有 L2 时，L3 写成“我猜 / 可能”
+  有 L1 支撑时才写确定
+
+测试：
+  L2 参与建 L3
+  L3 的 source_refs 能指到 L2
+```
+
+### P3 其他
+
+```text
+L2 晋级要幂等：同一条 L2 不能重复生成 L1
+L1 升级后，原 L2 不再召回
+L2 过期任务：每天 07:00 扫一次
+L2 面板筛选：hypothesis / promoted / rejected / expired
+文档同步：memory-layers / persona-layers / plan
+```
+
+### 暂不做
+
+```text
+不恢复 L2 用户画像
+不单独加“短期偏好层”
+不让 L2 直接升 L4
+不让 L1 吸收推测
+```
+
+### 顺序
+
+```text
+1. L1 严格确定
+2. L2 字段 + 状态 + 召回
+3. L2 confirmed 自动升 L1
+4. L3 输入加 L2
+5. 面板 + 测试
+```
 
 ## 4. 待验证
 
