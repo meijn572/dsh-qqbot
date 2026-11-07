@@ -48,18 +48,36 @@ function badge(ok,on='在线',off='离线'){return `<span class="badge ${ok?'ok'
 let logName='bridge';
 let memTab='long';
 let memTier='';
-const MEM_TIER_LABEL={L0:'L0 原话',L1:'L1 事实',L2:'L2 已退役',L3:'L3 经历',L4:'L4 核心记忆'};
+let memStatus='';
+const MEM_TIER_LABEL={L0:'L0 原话',L1:'L1 总结',L2:'L2',L3:'L3 事件',L4:'L4 核心'};
+const MEM_STATUS_LABEL={open:'进行中',closed:'已结束',standalone:'片段',dormant:'沉睡',archived:'归档',legacy:'旧数据'};
+function memBadgeClass(status){
+  if(status==='open') return 'ok';
+  if(status==='dormant') return 'warn';
+  if(status==='closed') return 'tag';
+  return 'tag';
+}
 function renderMem(){
   const q=(document.getElementById('memq')?.value||'').trim().toLowerCase();
   const items=(window.__memItems||[]).filter(it=>{
     if(memTier && it.type!==memTier) return false;
-    if(q && !String(it.content||'').toLowerCase().includes(q)) return false;
+    if(memStatus && it.status!==memStatus) return false;
+    if(!memStatus && it.status==='archived') return false;
+    if(q){
+      const hay=(String(it.title||'')+' '+String(it.content||'')).toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
     return true;
-  });
+  }).sort((a,b)=>Number(b.last_seen||b.time||0)-Number(a.last_seen||a.time||0));
   let h='';
   for(const it of items){
-    const t=it.time?new Date(it.time*1000).toLocaleString('zh-CN',{hour12:false}):'';
-    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> <span class="mut">${esc(t)}</span><div style="margin-top:3px">${esc(it.content)}</div></div>`;
+    const ts=Number(it.last_seen||it.time||0);
+    const t=ts?new Date(ts*1000).toLocaleString('zh-CN',{hour12:false}):'';
+    const status=it.status?`<span class="badge ${memBadgeClass(it.status)}">${esc(MEM_STATUS_LABEL[it.status]||it.status)}</span>`:'';
+    const title=it.title?`<b>${esc(it.title)}</b> `:'';
+    const stale=it.stale?`<span class="badge warn">已过期</span> `:'';
+    const src=it.source_count?`<span class="mut">来源 ${it.source_count} 条</span> `:'';
+    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${status} ${stale}${title}<span class="mut">${esc(t)}</span><div style="margin-top:3px">${esc(it.content)}</div><div style="margin-top:3px">${src}</div></div>`;
   }
   const box=document.getElementById('memlist'); if(box) box.innerHTML=h||'<div class="mut">没有匹配的记忆</div>';
 }
@@ -194,9 +212,27 @@ async function load(){
   }
   if(!$('#memory').hidden){
     const m=await j('/api/memory');
+    const st=m.stats||{};
+    const tiers=st.tiers||{};
+    const l3=st.l3_status||{};
+    const stat=(label,n)=>`<div><div class="k">${label}</div><div class="v">${n||0}</div></div>`;
     let h=`<div class="card"><div class="k">记忆 · ${m.count} 条</div>
-      <div style="margin:10px 0"><input id="memq" placeholder="搜内容…" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px;width:260px" oninput="renderMem()">
-      <button onclick="memTier='' ;renderMem()">全部</button> <button onclick="memTier='L1' ;renderMem()">L1 事实</button> <button onclick="memTier='L3' ;renderMem()">L3 经历</button> <button onclick="memTier='L4' ;renderMem()">L4 核心记忆</button></div>
+      <div class="grid" style="margin-top:8px">${stat('L1 总结',tiers.L1)}${stat('L3 事件',tiers.L3)}${stat('进行中',l3.open)}${stat('已结束',l3.closed)}${stat('片段',l3.standalone)}${stat('沉睡',l3.dormant)}${stat('L4 核心',tiers.L4)}</div>
+      <div style="margin:10px 0"><input id="memq" placeholder="搜标题 / 内容…" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px;width:260px" oninput="renderMem()"></div>
+      <div style="margin:6px 0">
+        <button onclick="memTier='';memStatus='';renderMem()">全部</button>
+        <button onclick="memTier='L1';memStatus='';renderMem()">L1 总结</button>
+        <button onclick="memTier='L3';memStatus='';renderMem()">L3 事件</button>
+        <button onclick="memTier='L4';memStatus='';renderMem()">L4 核心</button>
+        <button onclick="memTier='L0';memStatus='';renderMem()">L0 原话</button>
+      </div>
+      <div style="margin:6px 0">
+        <button onclick="memTier='L3';memStatus='open';renderMem()">进行中</button>
+        <button onclick="memTier='L3';memStatus='closed';renderMem()">已结束</button>
+        <button onclick="memTier='L3';memStatus='standalone';renderMem()">片段</button>
+        <button onclick="memTier='L3';memStatus='dormant';renderMem()">沉睡</button>
+        <button onclick="memTier='L3';memStatus='archived';renderMem()">归档</button>
+      </div>
       <div id="memlist"></div></div>`;
     $('#memory').innerHTML=h;
     window.__memItems=m.items||[];

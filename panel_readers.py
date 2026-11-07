@@ -483,36 +483,53 @@ def set_proactive(body: dict) -> dict:
 
 
 def memory_payload() -> dict:
-    out = {"count": 0, "items": [], "persona_chars": 0}
+    out = {"count": 0, "items": [], "persona_chars": 0,
+           "stats": {"tiers": {}, "l3_status": {}}}
     data = cmem_get("/memories?limit=100")
     if data:
         out["count"] = int(data.get("total") or 0)
         seen = set()
-        for item in data.get("items") or []:
-            key = (str(item.get("tier") or ""), str(item.get("text") or ""), item.get("ts"))
+
+        def add(item):
+            tier = str(item.get("tier") or "")
+            key = (tier, item.get("id")) if item.get("id") else (
+                tier, str(item.get("text") or ""), item.get("ts"))
             if key in seen:
-                continue
+                return
             seen.add(key)
             out["items"].append({
-                "type": str(item.get("tier") or ""),
-                "content": str(item.get("text") or ""),
+                "id": item.get("id"),
+                "type": tier,
+                "content": str(item.get("summary") or item.get("text") or ""),
+                "title": str(item.get("thread_title") or ""),
+                "status": str(item.get("thread_status") or ""),
                 "time": item.get("ts") or "",
+                "last_seen": item.get("thread_last_seen_at") or "",
+                "stale": bool(item.get("stale_at")),
+                "source_count": len(item.get("source_ids") or []),
             })
-        # 核心记忆时间很老，可能不在最近 100 条里；单独补一次
+            out["stats"]["tiers"][tier] = out["stats"]["tiers"].get(tier, 0) + 1
+            if tier == "L3":
+                st = str(item.get("thread_status") or "legacy")
+                out["stats"]["l3_status"][st] = out["stats"]["l3_status"].get(st, 0) + 1
+
+        for item in data.get("items") or []:
+            add(item)
+        # L3 跨天、时间老，可能不在最近 100 条里；单独取全量
+        l3 = cmem_get("/memories?tier=L3&limit=200")
+        for item in (l3 or {}).get("items") or []:
+            add(item)
+        # 核心记忆时间很老，可能不在最近 100 条里
         core = cmem_get("/memories?tier=L4&limit=100")
         for item in (core or {}).get("items") or []:
-            key = (str(item.get("tier") or ""), str(item.get("text") or ""), item.get("ts"))
-            if key in seen:
-                continue
-            seen.add(key)
-            out["items"].append({
-                "type": str(item.get("tier") or ""),
-                "content": str(item.get("text") or ""),
-                "time": item.get("ts") or "",
-            })
+            add(item)
         persona = cmem_get("/persona")
         chars = persona.get("chars") or {}
         out["persona_chars"] = int(chars.get("constitution") or 0) + int(chars.get("self_model") or 0)
+        # 层级总数用服务端 counts，不用“已加载条数”
+        counts = data.get("counts") or {}
+        if counts:
+            out["stats"]["tiers"] = {str(k): int(v) for k, v in counts.items()}
         return out
     return out
 
