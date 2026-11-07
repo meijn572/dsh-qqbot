@@ -97,7 +97,7 @@ THREAD_SYSTEM = """你负责从这段对话里，留下那些过一阵子还会�
 - 想通了什么，看法变了
 - 答应过、决定过、约好过
 - 第一次，或者一个转折
-- 两个人之间的一个瞬间
+- 两个人之间的一个瞬间，或者我自己看到/想到的一个瞬间
 - 一个具体的画面、一句话、一个梗
 - 同一件事反复出现
 
@@ -126,6 +126,9 @@ B 站视频 + 大笑表情 + “代码跑通才算数”
 
 “脑子里全是那只手”
 → 一条 L3，因为这是一个具体的画面
+
+我刷到一个讲美国数据中心电费为什么涨的视频，觉得里面那句总结很准
+→ 一条 L3，主语是「我」，不是「主人」
 
 今天吃了什么
 → 只留 L1
@@ -282,7 +285,8 @@ EXTRACT_SYSTEM = """你从一段对话里整理上一段的会话总结（L1）�
 - 系统注入的文本（「（系统提醒：…）」「抽到：…」「被叫醒」「你自己待着」）
 - 寒暄客套（「嗯」「好的」「在吗」「哈哈哈」「晚安」）
 - 纯流水账没有信息量（「我去吃饭了」）
-- 助手自己说的话里没有新信息的部分
+- 助手自己说的话里，没有新信息的部分
+- 但你自己分享的见闻、视频、想法是有信息的，要抽，主语写「我」
 
 ## 示例
 
@@ -311,7 +315,11 @@ EXTRACT_SYSTEM = """你从一段对话里整理上一段的会话总结（L1）�
 
 主人：（系统提醒：你醒着，现在是 21 点。抽到：想撒个娇）
 我：老大在不在呀
-→ []
+→ []（这是在回应系统提醒，不是所有只有我的轮次都跳过）
+
+我：刷到一个讲美国数据中心为什么招人烦的视频，里面说接电要排七年、电费最后摊到居民头上
+→ [{"text": "我刷到一个讲美国数据中心为什么招人烦的视频，里面说接电要排七年、电费最后摊到居民头上", "tier": "L1",
+    "source_refs": [1]}]
 
 主人：今天好烦，报表又被退回来了
 我：第几遍了
@@ -439,20 +447,6 @@ def _tier_of_refs(refs, rows: list[dict]) -> list[tuple[str, int]]:
             if (tier, rid) not in out:
                 out.append((tier, rid))
     return out
-
-
-def _guard_master(text: str, rows: list[dict] | None) -> str:
-    """来源里完全没出现「主人」时，模型仍可能补一个主人。
-
-    只在这个明确情况下把「主人」收回成「我」；来源里只要提过主人就不动，
-    避免误改「我说主人……」这种正常句子。
-    """
-    raw = str(text or "")
-    if not rows or not raw or "主人" not in raw:
-        return raw
-    if any("主人" in str(row.get("text") or "") for row in rows):
-        return raw
-    return raw.replace("主人", "我")
 
 
 
@@ -877,15 +871,6 @@ class Extractor:
         data = self.llm.chat_json(THREAD_SYSTEM, "\n\n".join(blocks), max_tokens=900)
         if not isinstance(data, dict):
             return None
-        for key in ("updates", "new"):
-            items = data.get(key)
-            if not isinstance(items, list):
-                continue
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-                item["summary"] = _guard_master(str(item.get("summary") or ""), source_rows)
-                item["title"] = _guard_master(str(item.get("title") or ""), source_rows)
         return data
 
     def plan_core(self, closed_threads: list[dict]) -> list[dict]:
@@ -962,8 +947,6 @@ class Extractor:
                 item for item in result[: self.config.max_facts]
                 if isinstance(item, dict) and str(item.get("text") or "").strip()
             ]
-            for item in cleaned:
-                item["text"] = _guard_master(str(item.get("text") or ""), source_rows)
             last = cleaned
             if cleaned:
                 return cleaned

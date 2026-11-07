@@ -2919,7 +2919,7 @@ class Handler(BaseHTTPRequestHandler):
     def _batch_identity(self) -> str:
         persona = store.get_persona()
         parts = [
-            "主人：九歌；群友不是主人；她是大肥鱼。",
+            "你是大肥鱼；主人是九歌；群友不是主人。",
             "【核心设定】\n" + str(persona.get("constitution") or "")[:1200],
             "【自我认知】\n" + str(persona.get("self_model") or "")[:800],
             "【我眼中的主人】\n" + str(persona.get("user_profile") or "")[:500],
