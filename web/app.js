@@ -77,7 +77,11 @@ function renderMem(){
     const title=it.title?`<b>${esc(it.title)}</b> `:'';
     const stale=it.stale?`<span class="badge warn">已过期</span> `:'';
     const src=it.source_count?`<span class="mut">来源 ${it.source_count} 条</span> `:'';
-    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${status} ${stale}${title}<span class="mut">${esc(t)}</span><div style="margin-top:3px">${esc(it.content)}</div><div style="margin-top:3px">${src}</div></div>`;
+    const rd=[['亲近',Number(it.closeness_delta||0)],['信任',Number(it.trust_delta||0)],['张力',Number(it.tension_delta||0)]]
+      .filter(([,v])=>Math.abs(v)>=0.05)
+      .map(([n,v])=>`${n} ${v>0?'+':''}${v.toFixed(1)}`).join(' · ');
+    const rel=rd?`<div class="mut" style="margin-top:3px">关系：${esc(rd)}</div>`:'';
+    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${status} ${stale}${title}<span class="mut">${esc(t)}</span><div style="margin-top:3px">${esc(it.content)}</div>${rel}<div style="margin-top:3px">${src}</div></div>`;
   }
   const box=document.getElementById('memlist'); if(box) box.innerHTML=h||'<div class="mut">没有匹配的记忆</div>';
 }

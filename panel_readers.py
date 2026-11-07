@@ -516,6 +516,9 @@ def memory_payload() -> dict:
                 "last_seen": item.get("thread_last_seen_at") or "",
                 "stale": bool(item.get("stale_at")),
                 "source_count": len(item.get("source_ids") or []),
+                "closeness_delta": float(item.get("closeness_delta") or 0),
+                "trust_delta": float(item.get("trust_delta") or 0),
+                "tension_delta": float(item.get("tension_delta") or 0),
             })
             out["stats"]["tiers"][tier] = out["stats"]["tiers"].get(tier, 0) + 1
             if tier == "L3":
