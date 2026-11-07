@@ -74,11 +74,15 @@ export async function registerCompanionTools({ registerTool, log, endpoint }) {
         + "或者他某个词说了好几次你一直没搞懂，你主动问清楚之后也用它记。"
         + "规矩：**必须把意思一起记下来**（meaning）。不知道意思就别记，先问清楚 ——"
         + "库里不留「认识但不懂」的词。"
-        + "只记词本身（<=8 字），别把整句话塞进来。",
+        + "只记词本身（<=8 字），别把整句话塞进来。"
+        + "kind 可选 slang/meme/buzzword/fandom/abbreviation，默认 slang。",
       parameters: {
         phrase: { type: "string", required: true, description: "那个词/短语，尽量短" },
         meaning: { type: "string", description: "什么意思。不确定就留空，会自动查" },
         context: { type: "string", description: "当时的上下文，帮他判断词义" },
+        kind: { type: "string", description: "slang / meme / buzzword / fandom / abbreviation，默认 slang" },
+        aliases: { type: "string", description: "别名，逗号分隔，可选" },
+        status: { type: "string", description: "fresh / hot / stable / archived，默认 stable" },
       },
       output: { schema: { type: "json" }, render: (_a, v) => [{ type: "text", text: JSON.stringify(v) }] },
       execute: async (args) => {
@@ -100,8 +104,9 @@ export async function registerCompanionTools({ registerTool, log, endpoint }) {
               body: JSON.stringify({
                 term: args.phrase,
                 meaning,
-                kind: "slang",
-                status: "stable",
+                kind: String(args.kind || "slang"),
+                status: String(args.status || "stable"),
+                aliases: String(args.aliases || ""),
                 example: args.context || "",
               }),
               signal: AbortSignal.timeout(5000),

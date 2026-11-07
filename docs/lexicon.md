@@ -146,43 +146,43 @@ status=fresh/hot/stable/archived
 
 最多各 8 条。
 
-### `lexicon_meta`：新增/修改
+### `learn_word`：唯一写入工具
 
 ```json
 {
-  "term": "yyds",
+  "phrase": "yyds",
   "meaning": "永远的神",
   "kind": "buzzword",
-  "scope": "global",
+  "aliases": "永远滴神",
   "status": "hot",
-  "aliases": "永远滴神"
+  "context": "主人教的新词"
 }
 ```
 
-同一个 `term + scope` 会更新，不会重复建。
+`learn_word` 是词库唯一的写入入口。
 
-### `learn_word` 和 `lexicon_meta` 的分工
-
-`lexicon_meta` 是词库的正式写入工具。
-
-`learn_word` 是旧的「学说话」入口，之前只写服务端 `slang` 表，不写 `lexicon.json`，所以：
+带 `meaning` 时同时写：
 
 ```text
-模型一直用 learn_word
-→ slang 里有
-→ 词库页一直空
+服务端 slang
++ lexicon.json
 ```
 
-现在 `learn_word` 带 `meaning` 时会同时写一份到词库：
+默认：
 
 ```text
-term   = phrase
 kind   = slang
 scope  = global
 status = stable
 ```
 
-正式的梗 / 热词 / 角色 / 缩写，仍然优先用 `lexicon_meta`。
+`kind` 可选：
+
+```text
+slang / meme / buzzword / fandom / abbreviation
+```
+
+不再有 `lexicon_meta`，避免模型在两个写工具之间犹豫。
 
 ### 删除
 
@@ -273,7 +273,7 @@ status = stable
 | `qqbot/domains/group/lexicon.py` | 统一存储、迁移、upsert、查询 |
 | `qqbot/domains/group/slang.py` | bridge 兼容层、群日志、网络梗提示 |
 | `bridge.py` | 群黑话匹配注入、网络梗提示 |
-| `plugins/dsh-remembers/tools/memes.mjs` | `lexicon_lookup` / `lexicon_search` / `lexicon_meta` |
+| `plugins/dsh-remembers/tools/memes.mjs` | `lexicon_lookup` / `lexicon_search` |
 | `panel_readers.py` | 词库投影、增删、搜索 |
 | `panel_routes.py` | 面板 API |
 | `web/app.js` / `style.css` | 词库页面 |
