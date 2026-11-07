@@ -959,44 +959,88 @@ memory_links 可重建
 
 ```text
 source_ids：已实现
-memory_links：未实现
+memory_links：已实现
 ```
 
-所以现在能直接回查原话，但还不能查“这条 L3 由哪些 L1/L2 推出来”。
-
-### evidence
+### evidence：先用 ref，再回退到原话
 
 模型不填数据库 id。
 
-模型只给原话：
+输入每段时，给每条 L0 一个本地 ref：
+
+```text
+[1] 主人：我牙疼
+[2] 我：去看看
+[3] 主人：看完了，医生说没事
+```
+
+模型输出：
 
 ```json
 {
-  "text": "主人让她给自己取名字，她取名为「洄」",
-  "evidence": ["主人：你给自己取个名字吧"]
+  "text": "牙疼，去看了，只是牙龈发炎",
+  "source_refs": [1, 2, 3]
 }
 ```
 
-代码匹配：
+代码：
+
+```text
+ref 在 1..N 内 → 直接映射到真实 L0 id
+ref 越界/缺失 → 才尝试原话匹配
+```
+
+原话只是兜底：
 
 ```text
 精确子串
 去标点/空白/大小写
-模糊匹配，阈值 0.85
+逐条匹配
 ```
 
-匹配成功：
+不再做复杂的跨窗口模糊匹配。
+
+### 为什么用本地 ref
 
 ```text
-source_ids = 命中的 L0 id
-source_status = verified
+短：1..N，不是数据库 id
+可校验：越界直接丢弃
+模型不用记长 id
+代码不用猜
 ```
 
-匹配失败：
+数据库 id 只在存储层。
+
+### L1
+
+```json
+{
+  "text": "主人说导师还没回消息",
+  "source_refs": [2]
+}
+```
+
+### L3
+
+L3 混合来源时给多个 ref：
+
+```json
+{
+  "title": "牙疼看牙",
+  "summary": "牙疼，去看了，只是牙龈发炎",
+  "status": "closed",
+  "source_refs": [1, 2, 3]
+}
+```
+
+一个 ref 对应一条 L0，不需要拼句子。
+
+### 状态
 
 ```text
-source_ids = []
-source_status = unverified
+ref 有效 → verified
+ref 无效，原话命中 → verified（match=quote）
+都不中 → unverified
 ```
 
 历史数据：
