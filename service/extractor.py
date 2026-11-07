@@ -112,6 +112,8 @@ THREAD_SYSTEM = """你负责从这段对话里，留下那些过一阵子还会�
 
 谁做的事不能换：
 - L3 的主语要和来源一致，不要默认把「我」做的事写成「主人」做的事。
+- 来源只有「我：」时，只写我；不要补主人的话或反应。
+- 不要写来源里没有出现的人。
 - 不确定时以 source_refs 的原话为准。
 
 例子：
@@ -230,6 +232,8 @@ EXTRACT_SYSTEM = """你从一段对话里整理上一段的会话总结（L1）�
 - 关于你自己经历、答应过的事，用第一人称：「我记得…」「我答应过…」
 - 关于主人的事，主语写「主人」
 - 主人原话保持原样，不要改写
+- 来源只有「我：」时，只写我做了什么、想了什么；不要补主人的话或反应
+- 不要写来源里没有出现的人
 
 ## 说话方向不能反
 
@@ -435,6 +439,20 @@ def _tier_of_refs(refs, rows: list[dict]) -> list[tuple[str, int]]:
             if (tier, rid) not in out:
                 out.append((tier, rid))
     return out
+
+
+def _guard_master(text: str, rows: list[dict] | None) -> str:
+    """来源里完全没出现「主人」时，模型仍可能补一个主人。
+
+    只在这个明确情况下把「主人」收回成「我」；来源里只要提过主人就不动，
+    避免误改「我说主人……」这种正常句子。
+    """
+    raw = str(text or "")
+    if not rows or not raw or "主人" not in raw:
+        return raw
+    if any("主人" in str(row.get("text") or "") for row in rows):
+        return raw
+    return raw.replace("主人", "我")
 
 
 
@@ -859,6 +877,15 @@ class Extractor:
         data = self.llm.chat_json(THREAD_SYSTEM, "\n\n".join(blocks), max_tokens=900)
         if not isinstance(data, dict):
             return None
+        for key in ("updates", "new"):
+            items = data.get(key)
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                item["summary"] = _guard_master(str(item.get("summary") or ""), source_rows)
+                item["title"] = _guard_master(str(item.get("title") or ""), source_rows)
         return data
 
     def plan_core(self, closed_threads: list[dict]) -> list[dict]:
@@ -935,6 +962,8 @@ class Extractor:
                 item for item in result[: self.config.max_facts]
                 if isinstance(item, dict) and str(item.get("text") or "").strip()
             ]
+            for item in cleaned:
+                item["text"] = _guard_master(str(item.get("text") or ""), source_rows)
             last = cleaned
             if cleaned:
                 return cleaned
