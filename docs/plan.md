@@ -15,7 +15,7 @@ B 站新数据：走 activity，不再写 memory
 抽取器：只抽 L1 / L3
 L1 / L3：evidence 匹配 L0，写 source_ids
 source_status：verified / unverified / batch / legacy
-L1：只装事实；max_facts 20；半衰期 180 天
+L1：会话段总结（可多条，互动允许）；max_facts 20
 UPDATE：合并 source_ids
 去掉 keywords 里的「情绪:xxx」
 memory_links：建表，L1/L3 写依赖边
@@ -67,6 +67,7 @@ L2 从 L0 + L1 生成
 ### P3 来源跨窗口
 
 ```text
+L1 半衰期：180 天 → 30–90 天
 evidence 跨多条 L0 时
 当前逐行匹配可能失败
 需要拼接窗口匹配
