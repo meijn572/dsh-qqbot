@@ -30,6 +30,7 @@
 ### 1.4 情绪与日记
 
 - [情绪与关系指标](emotion.md)
+- [关系与亲密度](relationship.md)
 - [情绪分层](emotion-layers.md)
 - [日记](diary.md)
 
