@@ -359,6 +359,57 @@ L2：他今天大概很累（confidence 0.7）
 被否定 → 删除或标 false
 ```
 
+### 状态机
+
+```text
+hypothesis   还在猜，未证实
+promoted     已证实，已升到 L1 / L3 / 画像
+rejected     被否定
+expired      过期，没证实也没否定
+superseded   被新的判断替代
+```
+
+`confirmed` 不是留下来的状态，是一个动作。
+
+模型复盘时输出：
+
+```json
+{"status": "confirmed"}
+```
+
+后台应该在同一事务里：
+
+```text
+1. 创建对应 L1
+2. 把 L2 的证据链接到 L1
+3. L2.status = promoted
+4. L2.promoted_to = 新 L1 id
+```
+
+不是只把 L2 改成 confirmed 然后放着。
+
+### 哪些状态会被召回
+
+```text
+只召回 hypothesis
+且未过期
+```
+
+```text
+promoted     不再召回，已经被 L1 接走
+rejected     不召回
+expired      不召回
+superseded   不召回
+```
+
+保留这些行是为了审计：
+
+```text
+我曾经猜过什么
+为什么后来不信了
+哪条 L1 是从这个猜测升上来的
+```
+
 ### 注入
 
 只能带不确定性：
