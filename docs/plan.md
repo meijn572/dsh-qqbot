@@ -28,6 +28,7 @@ L3：标题支持模糊匹配
 词库：只剩 learn_word 一个写工具，同时写 slang + lexicon
 词库自动流程：群黑话 22:00 已关闭，先观察
 关系系统：L3 三维 delta + 聚合已上线；不做衰减；面板三条进度
+短时偏好：明说→L1，推断→L2，长期→画像；L2 代码未恢复
 人格旧提示词：EVOLVE 不再写「我发现自己」；无变化输出 SKIP
 自我认知：去重；set_emotion 工具提示改成 valence/arousal
 人格旧字段：self_image / identity 已从代码、面板、数据库删除
