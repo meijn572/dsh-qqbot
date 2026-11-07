@@ -9,7 +9,8 @@
 ```text
 L2 旧用户画像：备份、迁移到 persona、清空
 L4 旧规矩：备份、迁移到 persona important、清空
-L4 历史核心记忆：4 条，source_status = legacy
+L4 历史核心记忆：2 条，source_status = legacy
+L4 非核心：2 条降级为 L3 standalone
 B 站历史 L3：57 条迁到 activity_log
 B 站新数据：走 activity，不再写 memory
 抽取器：只抽 L1 / L3
@@ -29,7 +30,7 @@ L3 事件线程：thread_* 字段、open/closed/dormant
 按会话段提取：空闲 5 分钟 + 30 分钟 / 80 条安全边界
 open L3：全部进索引，最多 8 条
 open 查询工具：get_open_thread / list_open_threads
-L4 复盘：每 3 天，closed L3 → 0–2 条核心记忆
+L4 复盘：每 3 天，closed / standalone L3 → 0–2 条核心记忆
 日记：情绪事件 + L0 窗口 + L3 旧记忆
 情绪：5 分钟空闲复盘
 面板：L4 核心记忆可见，L2 按钮移除
