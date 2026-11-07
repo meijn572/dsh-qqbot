@@ -64,7 +64,7 @@ export async function registerCompanionTools({ registerTool, log, endpoint }) {
         author: { type: "string", description: "谁写的，默认你自己" },
       },
       output: { schema: { type: "json" }, render: (_a, v) => [{ type: "text", text: JSON.stringify(v) }] },
-      execute: async (args) => post("/notes", { text: args.text, author: args.author || "本澜" }),
+      execute: async (args) => post("/notes", { text: args.text, author: args.author || "洄" }),
     }));
     registerTool(defineTool({
       name: "learn_word",

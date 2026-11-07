@@ -307,7 +307,19 @@ async function load(){
   }
   if(!$('#notebook').hidden){
     const n=await j('/api/notebook');
-    let h=`<div class="card"><div class="k">她的便签（${n.notes.length}）</div>`;
+    const threads=Array.isArray(n.open_threads)?n.open_threads:[];
+    const statusCn={open:'进行中',closed:'已结束',standalone:'片段',dormant:'沉睡'};
+    let h='';
+    if(threads.length){
+      h+=`<div class="card"><div class="k">还没完的事（${threads.length}）</div>`;
+      for(const t of threads.slice(0,8)){
+        const ts=Number(t.last_seen_at||0);
+        const day=ts?new Date(ts*1000).toLocaleDateString('zh-CN'):'';
+        h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:6px"><span class="badge ok">${esc(statusCn[t.status]||t.status||'')}</span> <b>${esc(t.title||'')}</b> <span class="mut">${esc(day)}</span></div>`;
+      }
+      h+='</div>';
+    }
+    h+=`<div class="card"><div class="k">她的便签（${n.notes.length}）</div>`;
     if(!n.notes.length) h+='<div class="mut">还没有便签</div>';
     for(const note of n.notes) h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:6px"><span class="mut">${esc(note.date||'')}</span> ${esc(note.text||'')}</div>`;
     h+='</div>';

@@ -101,6 +101,13 @@ export function renderState(state, prev, selfModel, proactive, thinkCn) {
     blocks.push("【还没完的事】\n" + threadLines.join("\n"));
   }
 
+  // ---------- 3.6 小本子：每天轻轻提一句 ----------
+  const noteHint = `notebook-${dateStr.slice(0, 10)}`;
+  if (hashes.notebookHint !== noteHint) {
+    hashes.notebookHint = noteHint;
+    blocks.push("有想记下来的，就写一句便签。");
+  }
+
   // ---------- 4. 在干嘛（变了才加） ----------
   const act = String(state.activity || "").trim();
   if (act) {

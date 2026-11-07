@@ -562,10 +562,12 @@ def guests_payload() -> dict:
 
 
 def notebook_payload() -> dict:
+    threads = cmem_get("/threads/open") or {}
     return {
         "notes": cmem_get("/notes") or [],
         "tasks": cmem_get("/tasks") or [],
         "diary": cmem_get("/diary") or [],
+        "open_threads": threads.get("items") or [],
     }
 
 
