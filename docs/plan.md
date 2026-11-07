@@ -25,6 +25,7 @@ L3：标题支持模糊匹配
 旧 L1：保留 legacy，不重算 source_ids
 旧提示词审计：L1 抽取只产 L1；上下文标签自然语言；batch 不再带 L4
 说话方向：L1 prompt 明确「主人问我 / 我问主人」；蛋家军已修正
+词库：lexicon_meta 加入工具速查；learn_word 同步写词库
 人格旧提示词：EVOLVE 不再写「我发现自己」；无变化输出 SKIP
 自我认知：去重；set_emotion 工具提示改成 valence/arousal
 人格旧字段：self_image / identity 已从代码、面板、数据库删除

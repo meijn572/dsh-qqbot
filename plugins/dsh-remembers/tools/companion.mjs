@@ -81,13 +81,37 @@ export async function registerCompanionTools({ registerTool, log, endpoint }) {
         context: { type: "string", description: "当时的上下文，帮他判断词义" },
       },
       output: { schema: { type: "json" }, render: (_a, v) => [{ type: "text", text: JSON.stringify(v) }] },
-      execute: async (args) => post("/slang", {
-        phrase: args.phrase,
-        meaning: args.meaning || "",
-        context: args.context || "",
-        source: "taught",
-        count: 2,
-      }),
+      execute: async (args) => {
+        const result = await post("/slang", {
+          phrase: args.phrase,
+          meaning: args.meaning || "",
+          context: args.context || "",
+          source: "taught",
+          count: 2,
+        });
+        // 同时写进面板词库，不然「学到的词」只在 slang 表里，词库页一直是空的
+        const meaning = String(args.meaning || "").trim();
+        if (meaning) {
+          try {
+            const base = String(process.env.CMEM_PANEL_URL || "http://127.0.0.1:6080").replace(/\/$/, "");
+            await fetch(base + "/api/lexicon/add", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                term: args.phrase,
+                meaning,
+                kind: "slang",
+                status: "stable",
+                example: args.context || "",
+              }),
+              signal: AbortSignal.timeout(5000),
+            });
+          } catch {
+            /* 词库写入失败不影响学词本身 */
+          }
+        }
+        return result;
+      },
     }));
     registerTool(defineTool({
       name: "read_diary",

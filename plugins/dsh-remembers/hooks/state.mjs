@@ -177,7 +177,7 @@ export function renderState(state, prev, selfModel, proactive, thinkCn) {
       if (hashes.slangPending !== ph) {
         hashes.slangPending = ph;
         blocks.push("【这些词老大说了好几次，你还没搞懂意思】" + names
-          + "。想问就找个自然的时机问一句；搞懂了立刻用 learn_word 把意思记下来"
+          + "。想问就找个自然的时机问一句；搞懂了用 learn_word 或 lexicon_meta 把意思记进词库"
           + "（必须带 meaning，不然不算学会）。");
       }
     }

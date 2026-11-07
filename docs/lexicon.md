@@ -161,6 +161,29 @@ status=fresh/hot/stable/archived
 
 同一个 `term + scope` 会更新，不会重复建。
 
+### `learn_word` 和 `lexicon_meta` 的分工
+
+`lexicon_meta` 是词库的正式写入工具。
+
+`learn_word` 是旧的「学说话」入口，之前只写服务端 `slang` 表，不写 `lexicon.json`，所以：
+
+```text
+模型一直用 learn_word
+→ slang 里有
+→ 词库页一直空
+```
+
+现在 `learn_word` 带 `meaning` 时会同时写一份到词库：
+
+```text
+term   = phrase
+kind   = slang
+scope  = global
+status = stable
+```
+
+正式的梗 / 热词 / 角色 / 缩写，仍然优先用 `lexicon_meta`。
+
 ### 删除
 
 模型没有删除工具，删除只在面板做，并且按 `id` 删。

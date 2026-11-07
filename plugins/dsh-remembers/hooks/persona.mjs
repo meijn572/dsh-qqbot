@@ -27,6 +27,7 @@ export function renderPersona(data, maxChars, proactive, opts = {}) {
   rules.push("[工具速查] 发图：find_meme(emotion) → qq_send_image(sources=[完整路径])；"
     + "学图：learn_meme；派任务：create_task；写便签：write_note；改状态：set_my_activity；"
     + "有真实情绪：set_emotion(label,valence,arousal,reason)；重要的事：remember_important(item)；"
+    + "词库：lexicon_search / lexicon_meta（新词、梗、黑话写这里）；"
     + "刷 B 站：bili_feed / bili_watch(bv) / bili_comment(bv,msg) / bili_run(command,args)；"
     + "给自己找事：add_my_action；翻日记：read_diary；看活动：read_activities。");
 
