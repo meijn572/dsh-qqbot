@@ -26,9 +26,7 @@ CREATE TABLE IF NOT EXISTS memory (
   thread_last_seen_at REAL DEFAULT NULL,
   thread_closed_at REAL DEFAULT NULL,
   stale_at       REAL DEFAULT NULL,          -- L1 过期标记，不删除
-  closeness_delta REAL NOT NULL DEFAULT 0,   -- L3 对亲近度的增量
-  trust_delta     REAL NOT NULL DEFAULT 0,   -- L3 对信任的增量
-  tension_delta   REAL NOT NULL DEFAULT 0,   -- L3 对张力的增量
+  relationship_impact TEXT DEFAULT '',       -- L3 对关系的影响，一句人话
   confidence     REAL DEFAULT NULL,          -- L2 置信度
   expires_at     REAL DEFAULT NULL,          -- L2 过期时间
   l2_status      TEXT DEFAULT '',            -- L2: hypothesis/promoted/rejected/expired/superseded
@@ -143,7 +141,6 @@ CREATE TABLE IF NOT EXISTS state (
   id               INTEGER PRIMARY KEY CHECK (id = 1),
   mood             TEXT NOT NULL DEFAULT 'normal',
   mood_updated     REAL NOT NULL DEFAULT 0,
-  intimacy         REAL NOT NULL DEFAULT 0,
   last_interaction REAL NOT NULL DEFAULT 0,
   diary            TEXT NOT NULL DEFAULT '',
   diary_date       TEXT NOT NULL DEFAULT '',
@@ -158,12 +155,19 @@ CREATE TABLE IF NOT EXISTS state (
   game_score       INTEGER NOT NULL DEFAULT 0,
   game_plays       INTEGER NOT NULL DEFAULT 0,
   chat_since_wake  INTEGER NOT NULL DEFAULT 0,
-  interaction_count REAL NOT NULL DEFAULT 0,
-  base_closeness    REAL NOT NULL DEFAULT 0,
-  base_trust        REAL NOT NULL DEFAULT 0,
-  base_tension      REAL NOT NULL DEFAULT 0
+  interaction_count REAL NOT NULL DEFAULT 0
 );
 INSERT OR IGNORE INTO state(id) VALUES (1);
+
+-- 关系状态：由模型复盘后写入，不做数值聚合
+CREATE TABLE IF NOT EXISTS relationship_state (
+  id           INTEGER PRIMARY KEY CHECK (id = 1),
+  stage        TEXT NOT NULL DEFAULT '陌生',
+  summary      TEXT NOT NULL DEFAULT '',
+  evidence_ids TEXT NOT NULL DEFAULT '[]',
+  updated_at   REAL NOT NULL DEFAULT 0
+);
+INSERT OR IGNORE INTO relationship_state(id) VALUES (1);
 
 -- ---------------------------------------------------------------------------
 -- 日记本：每天一篇（按日期唯一）

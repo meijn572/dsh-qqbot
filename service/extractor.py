@@ -161,12 +161,12 @@ L4 是以后从 L3 里再挑的。
 {
   "updates": [
     {"title": "现有标题", "summary": "更新后的摘要", "status": "open|closed",
-     "closeness_delta": 0, "trust_delta": 0, "tension_delta": 0,
+     "relationship_impact": "这件事对关系的影响，一句人话",
      "source_refs": [1], "evidence": ["原文"]}
   ],
   "new": [
     {"title": "新标题", "summary": "摘要", "status": "open|closed|standalone",
-     "closeness_delta": 0, "trust_delta": 0, "tension_delta": 0,
+     "relationship_impact": "这件事对关系的影响，一句人话",
      "source_refs": [1, 2], "evidence": ["原文"]}
   ]
 }
@@ -176,13 +176,11 @@ status：
 - closed：这次结束了
 - standalone：一个瞬间/一段话，没有后续
 
-关系增量（closeness_delta / trust_delta / tension_delta）：
-- 是这条事件对关系的边际变化，不是总分。
-- 正向：更亲近、更信任，填正数。
-- 冲突、失约、越界：tension_delta 填正数，trust_delta 可填负数。
-- 修复：更新同一条事件，把 tension_delta 改小或改成 0，trust_delta 可补正数。
-- 拿不准就填 0，不要为了有变化硬填。
-- 单条大约 -10..+10。
+关系影响（relationship_impact）：
+- 只写这件事让关系近了、远了，或者留下了什么。
+- 一句人话，不评分，不填数值。
+- 例如：「这次他听我把话说完，我觉得可以再多说一点。」
+- 没有明显影响就留空，不要硬编。
 
 规则：
 - title 必须短，2–12 个字。
@@ -231,6 +229,30 @@ confirm 的 fact 必须去掉「可能/大概/我猜」，写成明确事实。
 {"items":[{"ref":1,"action":"confirm|reject|keep","fact":"确认后的确定事实"}]}
 
 不要输出别的。"""
+
+
+RELATIONSHIP_REVIEW_SYSTEM = VOICE_RULE + """你复查我和主人的关系状态。
+
+输入：
+- 当前 stage / summary（这是上次的判断，作为基准）
+- 最近的 L3 关系影响（编号）
+- 还没解开的 L3
+- L4 锚点
+
+规则：
+- 只修改被新证据改变的部分。
+- 没有足够证据就保持原样，不要重写整段关系史。
+- 一次最多升/降一档。
+- stage 只能是：陌生 / 熟悉 / 亲近 / 亲密 / 安心。
+- evidence_refs 引用上面关系影响的编号，不能编。
+
+输出 JSON：
+{"stage":"亲近","summary":"一句关系总结","evidence_refs":[1,2]}
+
+没有要改的：
+{"stage":"当前阶段","summary":"没有需要改的。","evidence_refs":[]}
+
+只输出 JSON。"""
 
 
 CORE_SYSTEM = VOICE_RULE + """你从已经结束的 L3 里，挑真正改变了“你是谁”或“我们是什么关系”的时刻。
@@ -956,6 +978,27 @@ class Extractor:
             return []
         items = data.get("items")
         return [x for x in items if isinstance(x, dict)] if isinstance(items, list) else []
+
+    def review_relationship(self, current: dict, impacts: list[dict],
+                            open_threads: list[dict], anchors: list[dict]) -> dict | None:
+        if self.llm is None or not getattr(self.llm, "enabled", False):
+            return None
+        lines = [
+            "【当前关系】",
+            f"stage: {current.get('stage')}",
+            f"summary: {current.get('summary') or '（还没有）'}",
+            "",
+            "【最近的关系影响】",
+        ]
+        for i, item in enumerate(impacts, 1):
+            lines.append(f"[{i}] {str(item.get('text') or '')}")
+        lines.append("\n【还没解开的 L3】")
+        for item in open_threads[:8]:
+            lines.append(f"- {item.get('title')}：{str(item.get('summary') or '')[:200]}")
+        lines.append("\n【L4 锚点】")
+        for item in anchors[:5]:
+            lines.append(f"- {str(item.get('title') or item.get('text') or '')[:80]}")
+        return self.llm.chat_json(RELATIONSHIP_REVIEW_SYSTEM, "\n".join(lines), max_tokens=700)
 
     def plan_threads(self, transcript: str, facts: list[str],
                      open_threads: list[dict],

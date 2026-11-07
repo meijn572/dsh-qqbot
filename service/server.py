@@ -497,8 +497,6 @@ class Handler(BaseHTTPRequestHandler):
         if "bump_interaction" in body or "bump" in body:
             with _lock:
                 store.bump_interaction(float(body.get("bump_interaction") or body.get("bump") or 0))
-        elif "intimacy" in body:
-            kwargs["intimacy"] = float(body.get("intimacy") or 0)
         if "diary" in body:
             kwargs["diary"] = str(body.get("diary") or "")
         if "diary_date" in body:
@@ -3029,11 +3027,8 @@ class Handler(BaseHTTPRequestHandler):
 
         now = time.time()
 
-        def _delta(v) -> float:
-            try:
-                return max(-10.0, min(10.0, float(v or 0)))
-            except Exception:
-                return 0.0
+        def _impact(item) -> str:
+            return str(item.get("relationship_impact") or "").strip()[:1000]
 
         updates = plan.get("updates") if isinstance(plan.get("updates"), list) else []
         for item in updates[:8]:
@@ -3056,9 +3051,7 @@ class Handler(BaseHTTPRequestHandler):
                 continue
             store.update_thread(
                 int(target["id"]), summary, status, source_ids=l0_ids, last_seen_at=now,
-                closeness_delta=_delta(item.get("closeness_delta")),
-                trust_delta=_delta(item.get("trust_delta")),
-                tension_delta=_delta(item.get("tension_delta")),
+                relationship_impact=_impact(item),
             )
             if not ref_pairs:
                 ref_pairs = [("L1", x) for x in l1_ids] + [("L0", x) for x in l0_ids]
@@ -3098,15 +3091,69 @@ class Handler(BaseHTTPRequestHandler):
                 thread_opened_at=now,
                 thread_last_seen_at=now,
                 thread_closed_at=now if status == "closed" else None,
-                closeness_delta=_delta(item.get("closeness_delta")),
-                trust_delta=_delta(item.get("trust_delta")),
-                tension_delta=_delta(item.get("tension_delta")),
+                relationship_impact=_impact(item),
             ))
             for tier, rid in ref_pairs:
                 store.link(mid, rid, "derived_from", role_for.get(tier, "evidence"))
             stats["l3"] += 1
 
         self._json(200, stats)
+
+    def _relationship_review(self) -> None:
+        """关系复盘：模型读文本影响，自己更新 stage/summary。"""
+        current = store.get_relationship()
+        since = float(current.get("updated_at") or 0)
+        rows = store.conn.execute(
+            "SELECT id,text,thread_title,relationship_impact,ts FROM memory "
+            "WHERE tier='L3' AND relationship_impact!='' AND ts>? "
+            "ORDER BY ts ASC LIMIT 20",
+            (since,),
+        ).fetchall()
+        impacts = [{
+            "id": int(r["id"]),
+            "text": str(r["relationship_impact"] or r["text"] or ""),
+            "title": str(r["thread_title"] or ""),
+            "ts": float(r["ts"] or 0),
+        } for r in rows]
+        if not impacts:
+            self._json(200, {"ok": True, "skipped": "no-impact"})
+            return
+        open_threads = store.open_threads(8)
+        anchors = [dict(r) for r in store.conn.execute(
+            "SELECT id,text,thread_title FROM memory WHERE tier='L4' ORDER BY ts DESC LIMIT 5"
+        ).fetchall()]
+        result = extractor.review_relationship(current, impacts, open_threads, anchors)
+        if not isinstance(result, dict):
+            self._json(200, {"ok": True, "skipped": "no-result"})
+            return
+        new_stage = str(result.get("stage") or current.get("stage") or "陌生").strip()
+        names = [s[0] for s in store.STAGES]
+        if new_stage not in names:
+            self._json(200, {"ok": False, "error": "invalid-stage"})
+            return
+        old_idx = names.index(str(current.get("stage") or "陌生")) if str(current.get("stage") or "陌生") in names else 0
+        new_idx = names.index(new_stage)
+        if abs(new_idx - old_idx) > 1:
+            self._json(200, {"ok": False, "error": "stage-jump"})
+            return
+        refs = result.get("evidence_refs") or []
+        evidence_ids = []
+        for ref in refs if isinstance(refs, list) else []:
+            try:
+                idx = int(ref) - 1
+            except Exception:
+                continue
+            if 0 <= idx < len(impacts):
+                evidence_ids.append(int(impacts[idx]["id"]))
+        summary = str(result.get("summary") or "").strip()[:5000]
+        if new_stage != current.get("stage") and not evidence_ids:
+            self._json(200, {"ok": False, "error": "evidence-required"})
+            return
+        if summary and summary not in ("没有需要改的。", "没有需要改的"):
+            store.set_relationship(new_stage, summary, evidence_ids)
+        else:
+            store.set_relationship(new_stage, str(current.get("summary") or ""), evidence_ids)
+        self._json(200, {"ok": True, "stage": new_stage, "changed": new_stage != current.get("stage")})
 
     def _l2_review(self) -> None:
         """复查短期判断：confirmed 的自动升 L1，并保留 L2 作为来源。"""

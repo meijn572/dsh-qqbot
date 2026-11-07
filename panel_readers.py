@@ -267,7 +267,6 @@ def mood_payload() -> dict:
     state = cmem_get("/state")
     valence = float(state.get("valence") or 0)
     arousal = float(state.get("arousal") or 0.5)
-    intimacy = float(state.get("intimacy") or 0)
     rel = state.get("relationship") or {}
     if not isinstance(rel, dict):
         rel = {}
@@ -283,13 +282,6 @@ def mood_payload() -> dict:
                 continue
     dims.setdefault("心情值", round((valence + 1) * 50))
     dims.setdefault("唤醒", round(arousal * 100))
-    rel_dims = {}
-    if rel:
-        rel_dims = {
-            "亲近": round(float(rel.get("closeness") or 0)),
-            "信任": round(float(rel.get("trust") or 0)),
-            "张力": round(float(rel.get("tension") or 0)),
-        }
     timeline = []
     for item in (state.get("emotion_recent") or [])[-12:]:
         if isinstance(item, dict):
@@ -310,14 +302,12 @@ def mood_payload() -> dict:
         "per_day": 0,
         "mood": round((valence + 1) * 50),
         "dims": dims,
-        "relationship_dims": rel_dims,
         "reason": str(last_emotion.get("reason") or state.get("activity") or ""),
         "emotion_label": str(last_emotion.get("mood") or ""),
         "confidence": 50,
         "updated_at": state.get("last_interaction") or 0,
         "timeline": timeline,
         "active": state.get("mood") or "",
-        "intimacy": intimacy,
         "stage": (state.get("stage") or {}).get("name", ""),
         "relationship": rel,
         "activity": state.get("activity", ""),
@@ -523,9 +513,7 @@ def memory_payload() -> dict:
                 "last_seen": item.get("thread_last_seen_at") or "",
                 "stale": bool(item.get("stale_at")),
                 "source_count": len(item.get("source_ids") or []),
-                "closeness_delta": float(item.get("closeness_delta") or 0),
-                "trust_delta": float(item.get("trust_delta") or 0),
-                "tension_delta": float(item.get("tension_delta") or 0),
+                "relationship_impact": str(item.get("relationship_impact") or ""),
             })
             out["stats"]["tiers"][tier] = out["stats"]["tiers"].get(tier, 0) + 1
             if tier == "L3":
@@ -925,7 +913,6 @@ def status_payload() -> dict:
         "bindings": bindings,
         "mood": mood.get("mood"),
         "mood_reason": mood.get("reason", ""),
-        "intimacy": mood.get("intimacy", 0),
         "stage": mood.get("stage", ""),
         "activity": mood.get("activity", ""),
         "proactive": (proactive_payload() or {}).get("enabled", False),

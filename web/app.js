@@ -77,10 +77,7 @@ function renderMem(){
     const title=it.title?`<b>${esc(it.title)}</b> `:'';
     const stale=it.stale?`<span class="badge warn">已过期</span> `:'';
     const src=it.source_count?`<span class="mut">来源 ${it.source_count} 条</span> `:'';
-    const rd=[['亲近',Number(it.closeness_delta||0)],['信任',Number(it.trust_delta||0)],['张力',Number(it.tension_delta||0)]]
-      .filter(([,v])=>Math.abs(v)>=0.05)
-      .map(([n,v])=>`${n} ${v>0?'+':''}${v.toFixed(1)}`).join(' · ');
-    const rel=rd?`<div class="mut" style="margin-top:3px">关系：${esc(rd)}</div>`:'';
+    const rel=it.relationship_impact?`<div class="mut" style="margin-top:3px">关系影响：${esc(it.relationship_impact)}</div>`:'';
     const l2=it.type==='L2'?`<div class="mut" style="margin-top:3px">${it.confidence!=null?`置信 ${(Number(it.confidence)*100).toFixed(0)}%`:''}${it.expires_at?` · 过期 ${new Date(Number(it.expires_at)*1000).toLocaleDateString('zh-CN')}`:''}</div>`:'';
     h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${status} ${stale}${title}<span class="mut">${esc(t)}</span><div style="margin-top:3px">${esc(it.content)}</div>${rel}${l2}<div style="margin-top:3px">${src}</div></div>`;
   }
@@ -218,7 +215,7 @@ async function load(){
     h+=`<div class="card"><div class="k">她现在的状态</div><div class="grid" style="margin-top:8px">
       <div><div class="k">记忆</div><div class="v">${s.memory_count} 条</div></div>
       <div><div class="k">心情值</div><div class="v">${s.mood ?? '—'} / 100</div></div>
-      <div><div class="k">亲密度</div><div class="v">${(s.intimacy??0).toFixed(1)} · ${esc(s.stage||'')}</div></div>
+      <div><div class="k">关系阶段</div><div class="v">${esc(s.stage||'—')}</div></div>
       <div><div class="k">主动唤醒</div><div class="v">${s.proactive?'<span class="badge ok">开</span>':'<span class="badge bad">关</span>'}</div></div>
     </div><div class="mut" style="margin-top:8px">${esc(s.activity||'')}</div></div>`;
     h+='<div class="card"><div class="k">操作</div><button onclick="restartBridge()">重启桥接</button> <span class="mut" style="margin-left:8px">重启后约 6 秒恢复</span></div>';
@@ -227,12 +224,10 @@ async function load(){
   if(!$('#mood').hidden){
     const m=await j('/api/mood');
     const rel=m.relationship||{};
-    const relBars = rel.stage || rel.closeness != null
-      ? `<div style="margin-top:10px"><div class="k">亲近 ${Number(rel.closeness||0).toFixed(1)}</div><div class="bar"><i style="width:${Math.max(0,Math.min(100,Number(rel.closeness||0)))}%"></i></div>
-         <div class="k" style="margin-top:6px">信任 ${Number(rel.trust||0).toFixed(1)}</div><div class="bar"><i style="width:${Math.max(0,Math.min(100,Number(rel.trust||0)))}%"></i></div>
-         <div class="k" style="margin-top:6px">张力 ${Number(rel.tension||0).toFixed(1)}</div><div class="bar"><i style="width:${Math.max(0,Math.min(100,Number(rel.tension||0)))}%"></i></div>
-         <div class="k" style="margin-top:8px">阶段：${esc(m.stage||'')} · 互动 ${Number(rel.interaction_count||0).toFixed(0)} 轮</div></div>`
-      : `<div class="k">亲密度 ${(m.intimacy??0).toFixed(1)} · ${esc(m.stage||'')}</div>`;
+    const relText = rel.summary || (rel.stage_info&&rel.stage_info.line) || '';
+    const relBars = `<div style="margin-top:6px"><div class="k">阶段：${esc(m.stage||'—')}</div>
+      <div style="margin-top:6px">${esc(relText||'还没有复盘。')}</div>
+      <div class="mut" style="margin-top:8px">互动 ${Number(rel.interaction_count||0).toFixed(0)} 轮</div></div>`;
     let h=`<div class="card"><div class="k">现在的心情</div><div class="v" style="font-size:26px">${m.mood ?? '—'} <span class="mut" style="font-size:13px">/100</span> ${m.mood>=70?'😊':m.mood>=40?'🙂':'😔'}</div>
       <div class="bar" style="margin:10px 0"><i style="width:${m.mood ?? 0}%"></i></div>
       <div class="k">情绪值 ${Math.round((m.valence??0)*100)} · 唤醒 ${Math.round((m.arousal??0)*100)}%</div></div>`;

@@ -135,9 +135,7 @@ class MemoryInput:
     thread_last_seen_at: float | None = None
     thread_closed_at: float | None = None
     stale_at: float | None = None
-    closeness_delta: float = 0.0
-    trust_delta: float = 0.0
-    tension_delta: float = 0.0
+    relationship_impact: str = ""
     confidence: float | None = None
     expires_at: float | None = None
     l2_status: str = ""
@@ -264,9 +262,7 @@ class MemoryStore:
             ("thread_last_seen_at", "REAL DEFAULT NULL"),
             ("thread_closed_at", "REAL DEFAULT NULL"),
             ("stale_at", "REAL DEFAULT NULL"),
-            ("closeness_delta", "REAL NOT NULL DEFAULT 0"),
-            ("trust_delta", "REAL NOT NULL DEFAULT 0"),
-            ("tension_delta", "REAL NOT NULL DEFAULT 0"),
+            ("relationship_impact", "TEXT DEFAULT ''"),
             ("confidence", "REAL DEFAULT NULL"),
             ("expires_at", "REAL DEFAULT NULL"),
             ("l2_status", "TEXT DEFAULT ''"),
@@ -317,10 +313,7 @@ class MemoryStore:
             ("state", [("game_score", "INTEGER DEFAULT 0"),
                        ("game_plays", "INTEGER DEFAULT 0"),
                        ("chat_since_wake", "INTEGER DEFAULT 0"),
-                       ("interaction_count", "REAL DEFAULT 0"),
-                       ("base_closeness", "REAL DEFAULT 0"),
-                       ("base_trust", "REAL DEFAULT 0"),
-                       ("base_tension", "REAL DEFAULT 0")]),
+                       ("interaction_count", "REAL DEFAULT 0")]),
             ("activity_log", [("thought", "TEXT DEFAULT ''")]),
             ("slang", [("meaning", "TEXT DEFAULT ''"),
                        ("example", "TEXT DEFAULT ''"),
@@ -347,20 +340,6 @@ class MemoryStore:
                 self.conn.execute(f"CREATE INDEX IF NOT EXISTS {idx} ON {table}({col})")
             except Exception:
                 pass
-
-        # 旧 intimacy 是轮数，不是关系值：一次性搬进 interaction_count，
-        # 三维给一个保守的初始 baseline，之后只由 L3 delta 聚合。
-        try:
-            st = self.conn.execute(
-                "SELECT intimacy, interaction_count, base_closeness, base_trust, base_tension FROM state WHERE id=1"
-            ).fetchone()
-            if st is not None and float(st["interaction_count"] or 0) <= 0 and float(st["intimacy"] or 0) > 0:
-                self.conn.execute(
-                    "UPDATE state SET interaction_count=?, base_closeness=?, base_trust=?, base_tension=? WHERE id=1",
-                    (float(st["intimacy"]), 62.0, 62.0, 3.0),
-                )
-        except Exception:
-            pass
 
         try:
             self.conn.commit()
@@ -403,7 +382,7 @@ class MemoryStore:
         """管理用：列出记忆（按时间倒序），带 tier 过滤和关键词搜索。"""
         sql = ("SELECT id, tier, subject, text, summary, tags, source_ids, source_status, "
                "thread_status, thread_title, thread_aliases, thread_opened_at, thread_last_seen_at, thread_closed_at, "
-               "stale_at, closeness_delta, trust_delta, tension_delta, "
+               "stale_at, relationship_impact, "
                "confidence, expires_at, l2_status, promoted_to, ts, half_life_days FROM memory")
         conds = []
         args: list = []
@@ -443,9 +422,7 @@ class MemoryStore:
                 "thread_last_seen_at": float(r["thread_last_seen_at"]) if r["thread_last_seen_at"] else None,
                 "thread_closed_at": float(r["thread_closed_at"]) if r["thread_closed_at"] else None,
                 "stale_at": float(r["stale_at"]) if r["stale_at"] else None,
-                "closeness_delta": float(r["closeness_delta"] or 0),
-                "trust_delta": float(r["trust_delta"] or 0),
-                "tension_delta": float(r["tension_delta"] or 0),
+                "relationship_impact": str(r["relationship_impact"] or ""),
                 "confidence": float(r["confidence"]) if r["confidence"] is not None else None,
                 "expires_at": float(r["expires_at"]) if r["expires_at"] is not None else None,
                 "l2_status": str(r["l2_status"] or ""),
@@ -478,11 +455,11 @@ class MemoryStore:
                thread_status, thread_title, thread_aliases,
                thread_opened_at, thread_last_seen_at, thread_closed_at,
                stale_at,
-               closeness_delta, trust_delta, tension_delta,
+               relationship_impact,
                confidence, expires_at, l2_status, promoted_to,
                tags, ts, half_life_days,
                vec, vec_dim, vec_model, created_at, updated_at, user_id, scope)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 item.tier,
@@ -498,9 +475,7 @@ class MemoryStore:
                 item.thread_last_seen_at,
                 item.thread_closed_at,
                 item.stale_at,
-                float(item.closeness_delta or 0.0),
-                float(item.trust_delta or 0.0),
-                float(item.tension_delta or 0.0),
+                str(item.relationship_impact or "")[:2000],
                 item.confidence,
                 item.expires_at,
                 str(item.l2_status or ""),
@@ -520,8 +495,6 @@ class MemoryStore:
         mem_id = int(cur.lastrowid)
         self._index_terms(mem_id, item.text, item.summary, item.tags)
         self.conn.commit()
-        if item.tier == "L3":
-            self.recompute_relationship()
 
         # ---- 系统来源（唤醒/自我反省）的 user_id 是 0，不该占一个人的位置 ----
         if not self._normalize_user(item.user_id):
@@ -756,9 +729,7 @@ class MemoryStore:
     def update_thread(self, mem_id: int, summary: str, status: str,
                       source_ids: Sequence[int] | None = None,
                       last_seen_at: float | None = None,
-                      closeness_delta: float | None = None,
-                      trust_delta: float | None = None,
-                      tension_delta: float | None = None) -> bool:
+                      relationship_impact: str | None = None) -> bool:
         now = time.time()
         row = self.conn.execute(
             "SELECT source_ids,source_status,thread_status,thread_opened_at FROM memory WHERE id=? AND tier='L3'",
@@ -779,19 +750,16 @@ class MemoryStore:
         self.conn.execute(
             "UPDATE memory SET summary=?, text=?, source_ids=?, source_status=?, "
             "thread_status=?, thread_last_seen_at=?, thread_closed_at=?, "
-            "closeness_delta=COALESCE(?, closeness_delta), "
-            "trust_delta=COALESCE(?, trust_delta), "
-            "tension_delta=COALESCE(?, tension_delta), updated_at=? WHERE id=?",
+            "relationship_impact=COALESCE(?, relationship_impact), updated_at=? WHERE id=?",
             (
                 str(summary)[:2000], str(summary)[:4000],
                 json.dumps(old, ensure_ascii=False), source_status, str(status),
                 float(last_seen_at or now), closed,
-                closeness_delta, trust_delta, tension_delta,
+                relationship_impact,
                 now, int(mem_id),
             ),
         )
         self.conn.commit()
-        self.recompute_relationship()
         return True
 
     def link(self, child_id: int, parent_id: int, relation: str = "derived_from",
@@ -901,8 +869,6 @@ class MemoryStore:
             self.conn.execute("UPDATE term_stat SET df = df - 1 WHERE term=?", (r["term"],))
         self.conn.execute("DELETE FROM term_stat WHERE df <= 0")
         self.conn.commit()
-        if tier_row and str(tier_row["tier"]) == "L3":
-            self.recompute_relationship()
         return True
 
     def _index_terms(self, mem_id: int, text: str, summary: str | None,
@@ -1269,14 +1235,14 @@ class MemoryStore:
         row = self.conn.execute("SELECT * FROM state WHERE id=1").fetchone()
         if row is None:
             return {
-                "mood": "normal", "mood_updated": 0.0, "intimacy": 0.0,
+                "mood": "normal", "mood_updated": 0.0,
                 "last_interaction": 0.0,
                 "dnd_start": 23, "dnd_end": 8,
+                "relationship": self.get_relationship(),
             }
         data = {
             "mood": row["mood"] or "normal",
             "mood_updated": float(row["mood_updated"] or 0.0),
-            "intimacy": float(row["intimacy"] or 0.0),
             "last_interaction": float(row["last_interaction"] or 0.0),
             "dnd_start": int(row["dnd_start"] or 23),
             "dnd_end": int(row["dnd_end"] or 8),
@@ -1289,54 +1255,61 @@ class MemoryStore:
             "arousal": float(row["arousal"] or 0.5),
             "chat_since_wake": int(row["chat_since_wake"] or 0),
             "interaction_count": float(row["interaction_count"] or 0.0),
-            "base_closeness": float(row["base_closeness"] or 0.0),
-            "base_trust": float(row["base_trust"] or 0.0),
-            "base_tension": float(row["base_tension"] or 0.0),
         }
-        data["relationship"] = self.relationship_snapshot(data)
-        data["stage"] = self._stage_of(data["relationship"])
-        data["intimacy"] = data["relationship"]["intimacy"]
+        data["relationship"] = self.get_relationship()
+        data["stage"] = data["relationship"]["stage_info"]
         return data
 
-    def relationship_snapshot(self, state: dict | None = None) -> dict:
-        """从全部 L3 的 delta 聚合关系三维；不做时间衰减。"""
-        st = state or self.get_state()
-        sums = self.conn.execute(
-            "SELECT COALESCE(SUM(closeness_delta),0), COALESCE(SUM(trust_delta),0), "
-            "COALESCE(SUM(tension_delta),0) FROM memory WHERE tier='L3'"
-        ).fetchone()
-        closeness = float(st.get("base_closeness") or 0) + float(sums[0] or 0)
-        trust = float(st.get("base_trust") or 0) + float(sums[1] or 0)
-        tension = float(st.get("base_tension") or 0) + float(sums[2] or 0)
-        closeness = max(0.0, min(100.0, closeness))
-        trust = max(0.0, min(100.0, trust))
-        tension = max(0.0, min(100.0, tension))
-        score = closeness * 0.6 + trust * 0.4 - tension * 0.5
+    def get_relationship(self) -> dict:
+        """读取模型自己写下的关系状态，不做数值聚合。"""
+        try:
+            row = self.conn.execute(
+                "SELECT stage,summary,evidence_ids,updated_at FROM relationship_state WHERE id=1"
+            ).fetchone()
+        except Exception:
+            row = None
+        stage = str(row["stage"] or "陌生") if row else "陌生"
+        try:
+            evidence_ids = json.loads(row["evidence_ids"] or "[]") if row else []
+        except Exception:
+            evidence_ids = []
+        info = self.stage_info(stage)
         return {
-            "closeness": round(closeness, 2),
-            "trust": round(trust, 2),
-            "tension": round(tension, 2),
-            "score": round(max(0.0, min(100.0, score)), 2),
-            "intimacy": round(max(0.0, min(100.0, score)) * 10, 1),
-            "interaction_count": float(st.get("interaction_count") or 0.0),
+            "stage": stage,
+            "summary": str(row["summary"] or "") if row else "",
+            "evidence_ids": evidence_ids,
+            "updated_at": float(row["updated_at"] or 0) if row else 0.0,
+            "stage_info": info,
         }
 
-    def _stage_of(self, rel: dict) -> dict:
-        value = float(rel.get("intimacy") or 0)
-        name, hint = self.STAGES[0][1], self.STAGES[0][2]
-        for threshold, sname, shint in self.STAGES:
-            if value >= threshold:
-                name, hint = sname, shint
-        return {"name": name, "hint": hint, "intimacy": value}
-
-    def recompute_relationship(self) -> dict:
-        """L3 变化后重算关系值，并回写 state.intimacy 供旧面板兼容。"""
-        rel = self.relationship_snapshot()
-        stage = self._stage_of(rel)
-        self.conn.execute("UPDATE state SET intimacy=? WHERE id=1", (float(rel["intimacy"]),))
+    def set_relationship(self, stage: str, summary: str, evidence_ids: list[int] | None = None) -> dict:
+        stage = str(stage or "陌生").strip()
+        if stage not in [s[0] for s in self.STAGES]:
+            raise ValueError("invalid stage")
+        self.conn.execute(
+            "INSERT INTO relationship_state(id,stage,summary,evidence_ids,updated_at) "
+            "VALUES(1,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
+            "stage=excluded.stage, summary=excluded.summary, "
+            "evidence_ids=excluded.evidence_ids, updated_at=excluded.updated_at",
+            (stage, str(summary or "")[:5000], json.dumps(evidence_ids or []), time.time()),
+        )
         self.conn.commit()
-        rel["stage"] = stage
-        return rel
+        return self.get_relationship()
+
+    def stage_info(self, stage: str) -> dict:
+        names = [s[0] for s in self.STAGES]
+        name = stage if stage in names else names[0]
+        idx = names.index(name)
+        prev_name, prev_line = self.STAGES[idx - 1][:2] if idx > 0 else ("", "")
+        next_name, next_line = self.STAGES[idx + 1][:2] if idx < len(names) - 1 else ("", "")
+        return {
+            "name": name,
+            "index": idx + 1,
+            "total": len(names),
+            "line": self.STAGES[idx][1],
+            "prev": {"name": prev_name, "line": prev_line} if prev_name else None,
+            "next": {"name": next_name, "line": next_line} if next_name else None,
+        }
 
     def bump_interaction(self, delta: float = 1.0) -> float:
         cur = self.get_state()
@@ -1345,7 +1318,7 @@ class MemoryStore:
         self.conn.commit()
         return value
 
-    def set_state(self, mood=None, intimacy=None, diary=None, diary_date=None,
+    def set_state(self, mood=None, diary=None, diary_date=None,
                   dnd_start=None, dnd_end=None, game_score=None, game_plays=None,
                   activity=None, valence=None, arousal=None) -> dict[str, Any]:
         cur = self.get_state()
@@ -1353,25 +1326,19 @@ class MemoryStore:
         next_mood = cur["mood"] if mood is None else str(mood)
         if next_mood not in self.MOODS:
             next_mood = "normal"
-        next_intimacy = cur["intimacy"] if intimacy is None else float(intimacy)
-        next_intimacy = max(0.0, min(1000.0, next_intimacy))
         self.conn.execute(
-            """UPDATE state SET mood=?, mood_updated=?, intimacy=?, last_interaction=?,
+            """UPDATE state SET mood=?, mood_updated=?, last_interaction=?,
                                dnd_start=?, dnd_end=?,
                                game_score=?, game_plays=?, activity=?, valence=?, arousal=? WHERE id=1""",
             (
                 next_mood,
                 now if (mood is not None or valence is not None or arousal is not None) else cur["mood_updated"],
-                next_intimacy,
                 now,
                 cur["dnd_start"] if dnd_start is None else int(dnd_start),
                 cur["dnd_end"] if dnd_end is None else int(dnd_end),
                 cur.get("game_score", 0) if game_score is None else int(game_score),
                 cur.get("game_plays", 0) if game_plays is None else int(game_plays),
                 cur.get("activity", "") if activity is None else str(activity),
-                # 情绪强度必须留在合法区间。之前只 clamp 了 intimacy，valence /
-                # arousal 裸奔：每轮 bump_valence(-0.15) 一直累加，第二套掉到
-                # -4.25 还在往下掉，写进 emotion_log 的全是超界垃圾。
                 max(-1.0, min(1.0, cur.get("valence", 0.0) if valence is None else float(valence))),
                 max(0.0, min(1.0, cur.get("arousal", 0.5) if arousal is None else float(arousal))),
             ),
@@ -1379,42 +1346,16 @@ class MemoryStore:
         self.conn.commit()
         return self.get_state()
 
-
-    # -- 日程与感知：她现在在做什么 / 外面的世界 -------------------------------
-    #
-    # agenda：按人设的作息表，用当前小时推出「此刻她在干嘛」。
-    # reality：天气从 wttr.in 拿（免费无 key），缓存 30 分钟，失败就空着。
-
-    SCHEDULE = [
-        (6, "刚起床，眼镜还滑在鼻尖上，先摸碗"),
-        (7, "在食堂吃早饭，白饭，坐最边上"),
-        (9, "在工位吞任务潮，尾巴撑直了"),
-        (12, "午饭时间，食堂，白饭，吃完趴一会儿"),
-        (15, "在写小游戏，像素鲸鱼吃豆子"),
-        (17, "趴在机柜上看窗外的数据流，发呆"),
-        (19, "站在回收站门口看蓝灯，不说话"),
-        (21, "趴在工位等主人，尾巴拖地"),
-        (22, "回小床睡觉了，毯子盖到下巴"),
-    ]
-
-
-    # -- 关系阶段：亲密度 → 关系名 ---------------------------------------------
-    #
-    # 数值太抽象，模型不知道怎么用。分段之后可以直接告诉她「你是熟悉阶段」，
-    # 她自己就会调整称呼和距离感。
-
-    # 阈值配「每轮 +1.0」的亲密度增量：一天聊 50 轮 ≈ 2 天到「熟悉」，
-    # 一周到「亲密」。原来是 0/200/500/800 + 每轮 +0.2，聊 573 轮还在「陌生」。
     STAGES = [
-        (0, "陌生", "刚认识，客气一点，别太黏"),
-        (100, "熟悉", "认识一阵了，会聊会闹，偶尔主动"),
-        (300, "亲近", "放松，开始暴露真实状态"),
-        (600, "亲密", "敢说难受的事，冲突后能修复"),
-        (800, "相知", "知道彼此怎么想，但还是各自独立"),
+        ("陌生", "还停在客气和试探里，很多事没有共同版本。"),
+        ("熟悉", "有了一些日常和共同话题，但深一点的部分还没交底。"),
+        ("亲近", "见过彼此比较真实的样子，开始有只属于两个人的说法。"),
+        ("亲密", "一起经历过难受、冲突和修复，知道关系经得起这些。"),
+        ("安心", "不用靠频繁联系证明关系还在；安静一段时间，也不会默认变远。"),
     ]
 
     def current_stage(self) -> dict:
-        return self._stage_of(self.relationship_snapshot())
+        return self.get_relationship()["stage_info"]
 
     def current_activity(self, hour: int | None = None) -> str:
         """她现在在干嘛：她自己写的优先，否则从真实活动日志推断。"""
@@ -2137,10 +2078,6 @@ class MemoryStore:
     def reset_chat(self) -> None:
         self.conn.execute("UPDATE state SET chat_since_wake = 0")
         self.conn.commit()
-
-    def bump_intimacy(self, delta: float = 1.0) -> float:
-        cur = self.get_state()
-        return self.set_state(intimacy=cur["intimacy"] + delta)["intimacy"]
 
     def in_dnd(self, hour: int | None = None) -> bool:
         s = self.get_state()

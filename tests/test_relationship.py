@@ -1,58 +1,62 @@
-"""关系三维聚合：L3 delta 直接求和，更新/删除后重算。"""
-from __future__ import annotations
-
+"""关系状态：模型写 stage/summary，L3 只存一句关系影响。"""
 import os
-import sys
+import tempfile
 import time
 import unittest
 
-from service import memory_core as mc  # noqa: E402
+from service import memory_core as mc
 
 
 class RelationshipTest(unittest.TestCase):
     def setUp(self):
-        import tempfile
         self.tmp = tempfile.TemporaryDirectory()
         self.store = mc.MemoryStore(os.path.join(self.tmp.name, "m.db"))
-        self.store.set_state(intimacy=0)
 
     def tearDown(self):
         self.store.close()
         self.tmp.cleanup()
 
-    def _add(self, title, **kw):
-        return self.store.add(mc.MemoryInput(
-            text=title, tier="L3", summary=title, thread_status=kw.pop("status", "standalone"),
-            thread_title=title, thread_last_seen_at=time.time(), **kw,
+    def test_stage_and_summary(self):
+        self.store.set_relationship("亲近", "最近更放松了。", [1, 2])
+        rel = self.store.get_relationship()
+        self.assertEqual(rel["stage"], "亲近")
+        self.assertEqual(rel["summary"], "最近更放松了。")
+        self.assertEqual(rel["stage_info"]["index"], 3)
+
+    def test_invalid_stage(self):
+        with self.assertRaises(ValueError):
+            self.store.set_relationship("很熟", "x")
+
+    def test_impact_roundtrip(self):
+        mid = self.store.add(mc.MemoryInput(
+            text="那次没回消息",
+            tier="L3",
+            summary="那次没回消息",
+            thread_status="open",
+            thread_title="那次没回消息",
+            thread_last_seen_at=time.time(),
+            relationship_impact="等很久没回，我有点往下掉。",
         ))
+        row = self.store.conn.execute(
+            "SELECT relationship_impact FROM memory WHERE id=?", (mid,)
+        ).fetchone()
+        self.assertIn("往下掉", row["relationship_impact"])
 
-    def test_sum_and_stage(self):
-        self._add("第一次被接住", closeness_delta=5, trust_delta=3)
-        rel = self.store.relationship_snapshot()
-        self.assertAlmostEqual(rel["closeness"], 5.0)
-        self.assertAlmostEqual(rel["trust"], 3.0)
-        self.assertAlmostEqual(rel["tension"], 0.0)
-        self.assertEqual(self.store.current_stage()["name"], "陌生")
-
-    def test_update_replaces_not_adds(self):
-        mid = self._add("那次没回消息", status="open", tension_delta=4, trust_delta=-1)
-        self.assertAlmostEqual(self.store.relationship_snapshot()["tension"], 4.0)
-        self.store.update_thread(mid, "后来解释了", "closed", tension_delta=0, trust_delta=1)
-        rel = self.store.relationship_snapshot()
-        self.assertAlmostEqual(rel["tension"], 0.0)
-        self.assertAlmostEqual(rel["trust"], 1.0)
-
-    def test_delete_removes_delta(self):
-        mid = self._add("临时事件", closeness_delta=7)
-        self.assertAlmostEqual(self.store.relationship_snapshot()["closeness"], 7.0)
-        self.store.forget(mid)
-        self.assertAlmostEqual(self.store.relationship_snapshot()["closeness"], 0.0)
-
-    def test_interaction_count_separate(self):
-        self.store.bump_interaction(3)
-        state = self.store.get_state()
-        self.assertEqual(state["interaction_count"], 3.0)
-        self.assertEqual(state["relationship"]["closeness"], 0.0)
+    def test_update_impact(self):
+        mid = self.store.add(mc.MemoryInput(
+            text="那次没回消息", tier="L3", summary="那次没回消息",
+            thread_status="open", thread_title="那次没回消息",
+            relationship_impact="有点往下掉。",
+        ))
+        self.store.update_thread(
+            mid, "后来解释了", "closed",
+            relationship_impact="后来他解释了，心里稳一点。",
+        )
+        row = self.store.conn.execute(
+            "SELECT relationship_impact,thread_status FROM memory WHERE id=?", (mid,)
+        ).fetchone()
+        self.assertIn("稳一点", row["relationship_impact"])
+        self.assertEqual(row["thread_status"], "closed")
 
 
 if __name__ == "__main__":

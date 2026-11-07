@@ -185,7 +185,13 @@ export function renderState(state, prev, selfModel, proactive, thinkCn) {
 
   // ---------- 7. 关系阶段（变了才加） ----------
   if (state.stage && state.stage.name) {
-    const stText = `和主人是「${state.stage.name}」阶段。${state.stage.hint || ""}`;
+    const st = state.stage;
+    const rel = state.relationship || {};
+    const parts = [`关系阶段：${st.name}（${st.index || 1}/${st.total || 5}）`];
+    if (st.prev && st.prev.name) parts.push(`已经过了：${st.prev.name}，${st.prev.line || ""}`);
+    if (st.next && st.next.name) parts.push(`还没到：${st.next.name}，${st.next.line || ""}`);
+    parts.push(rel.summary ? `我对我们关系的判断：${rel.summary}` : (st.line || ""));
+    const stText = parts.join("\n");
     const stHash = hash(stText);
     if (hashes.stage !== stHash) {
       hashes.stage = stHash;
