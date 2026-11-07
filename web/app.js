@@ -49,8 +49,8 @@ let logName='bridge';
 let memTab='long';
 let memTier='';
 let memStatus='';
-const MEM_TIER_LABEL={L0:'L0 原话',L1:'L1 总结',L2:'L2',L3:'L3 事件',L4:'L4 核心'};
-const MEM_STATUS_LABEL={open:'进行中',closed:'已结束',standalone:'片段',dormant:'沉睡',archived:'归档',legacy:'旧数据'};
+const MEM_TIER_LABEL={L0:'L0 原话',L1:'L1 总结',L2:'L2 判断',L3:'L3 事件',L4:'L4 核心'};
+const MEM_STATUS_LABEL={open:'进行中',closed:'已结束',standalone:'片段',dormant:'沉睡',archived:'归档',legacy:'旧数据',hypothesis:'待验证',promoted:'已升 L1',rejected:'已否定',expired:'已过期',superseded:'被替代'};
 function memBadgeClass(status){
   if(status==='open') return 'ok';
   if(status==='dormant') return 'warn';
@@ -81,7 +81,8 @@ function renderMem(){
       .filter(([,v])=>Math.abs(v)>=0.05)
       .map(([n,v])=>`${n} ${v>0?'+':''}${v.toFixed(1)}`).join(' · ');
     const rel=rd?`<div class="mut" style="margin-top:3px">关系：${esc(rd)}</div>`:'';
-    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${status} ${stale}${title}<span class="mut">${esc(t)}</span><div style="margin-top:3px">${esc(it.content)}</div>${rel}<div style="margin-top:3px">${src}</div></div>`;
+    const l2=it.type==='L2'?`<div class="mut" style="margin-top:3px">${it.confidence!=null?`置信 ${(Number(it.confidence)*100).toFixed(0)}%`:''}${it.expires_at?` · 过期 ${new Date(Number(it.expires_at)*1000).toLocaleDateString('zh-CN')}`:''}</div>`:'';
+    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${status} ${stale}${title}<span class="mut">${esc(t)}</span><div style="margin-top:3px">${esc(it.content)}</div>${rel}${l2}<div style="margin-top:3px">${src}</div></div>`;
   }
   const box=document.getElementById('memlist'); if(box) box.innerHTML=h||'<div class="mut">没有匹配的记忆</div>';
 }

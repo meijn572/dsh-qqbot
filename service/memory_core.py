@@ -138,6 +138,10 @@ class MemoryInput:
     closeness_delta: float = 0.0
     trust_delta: float = 0.0
     tension_delta: float = 0.0
+    confidence: float | None = None
+    expires_at: float | None = None
+    l2_status: str = ""
+    promoted_to: int | None = None
     tags: Sequence[str] | None = None
     ts: float | None = None
     half_life_days: float | None = field(default=None)
@@ -263,6 +267,10 @@ class MemoryStore:
             ("closeness_delta", "REAL NOT NULL DEFAULT 0"),
             ("trust_delta", "REAL NOT NULL DEFAULT 0"),
             ("tension_delta", "REAL NOT NULL DEFAULT 0"),
+            ("confidence", "REAL DEFAULT NULL"),
+            ("expires_at", "REAL DEFAULT NULL"),
+            ("l2_status", "TEXT DEFAULT ''"),
+            ("promoted_to", "INTEGER DEFAULT NULL"),
         ):
             if col not in mem_cols:
                 try:
@@ -395,7 +403,8 @@ class MemoryStore:
         """管理用：列出记忆（按时间倒序），带 tier 过滤和关键词搜索。"""
         sql = ("SELECT id, tier, subject, text, summary, tags, source_ids, source_status, "
                "thread_status, thread_title, thread_aliases, thread_opened_at, thread_last_seen_at, thread_closed_at, "
-               "stale_at, closeness_delta, trust_delta, tension_delta, ts, half_life_days FROM memory")
+               "stale_at, closeness_delta, trust_delta, tension_delta, "
+               "confidence, expires_at, l2_status, promoted_to, ts, half_life_days FROM memory")
         conds = []
         args: list = []
         if tier and tier != "all":
@@ -437,6 +446,10 @@ class MemoryStore:
                 "closeness_delta": float(r["closeness_delta"] or 0),
                 "trust_delta": float(r["trust_delta"] or 0),
                 "tension_delta": float(r["tension_delta"] or 0),
+                "confidence": float(r["confidence"]) if r["confidence"] is not None else None,
+                "expires_at": float(r["expires_at"]) if r["expires_at"] is not None else None,
+                "l2_status": str(r["l2_status"] or ""),
+                "promoted_to": int(r["promoted_to"]) if r["promoted_to"] else None,
                 "ts": float(r["ts"] or 0),
                 "half_life_days": r["half_life_days"],
             })
@@ -466,9 +479,10 @@ class MemoryStore:
                thread_opened_at, thread_last_seen_at, thread_closed_at,
                stale_at,
                closeness_delta, trust_delta, tension_delta,
+               confidence, expires_at, l2_status, promoted_to,
                tags, ts, half_life_days,
                vec, vec_dim, vec_model, created_at, updated_at, user_id, scope)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 item.tier,
@@ -487,6 +501,10 @@ class MemoryStore:
                 float(item.closeness_delta or 0.0),
                 float(item.trust_delta or 0.0),
                 float(item.tension_delta or 0.0),
+                item.confidence,
+                item.expires_at,
+                str(item.l2_status or ""),
+                item.promoted_to,
                 json.dumps(list(item.tags or []), ensure_ascii=False),
                 ts,
                 half,
@@ -611,6 +629,47 @@ class MemoryStore:
         if stale or dormant:
             self._invalidate_caches()
         return {"stale": stale, "dormant": dormant}
+
+    def l2_active(self, limit: int = 12) -> list[dict]:
+        now = time.time()
+        rows = self.conn.execute(
+            "SELECT id,text,confidence,expires_at,source_ids,ts FROM memory "
+            "WHERE tier='L2' AND l2_status='hypothesis' "
+            "AND (expires_at IS NULL OR expires_at > ?) "
+            "ORDER BY ts DESC LIMIT ?",
+            (now, max(1, min(int(limit), 30))),
+        ).fetchall()
+        return [{
+            "id": int(r["id"]),
+            "text": str(r["text"] or ""),
+            "confidence": float(r["confidence"] or 0.0),
+            "expires_at": float(r["expires_at"] or 0.0),
+            "source_ids": json.loads(r["source_ids"] or "[]"),
+            "ts": float(r["ts"] or 0.0),
+        } for r in rows]
+
+    def l2_expire(self) -> int:
+        cur = self.conn.execute(
+            "UPDATE memory SET l2_status='expired' "
+            "WHERE tier='L2' AND l2_status='hypothesis' "
+            "AND expires_at IS NOT NULL AND expires_at <= ?",
+            (time.time(),),
+        )
+        self.conn.commit()
+        return int(cur.rowcount or 0)
+
+    def l2_set_status(self, mem_id: int, status: str, promoted_to: int | None = None) -> bool:
+        allowed = {"hypothesis", "promoted", "rejected", "expired", "superseded"}
+        status = str(status or "").strip()
+        if status not in allowed:
+            return False
+        cur = self.conn.execute(
+            "UPDATE memory SET l2_status=?, promoted_to=?, updated_at=? "
+            "WHERE id=? AND tier='L2'",
+            (status, promoted_to, time.time(), int(mem_id)),
+        )
+        self.conn.commit()
+        return bool(cur.rowcount)
 
     def open_threads(self, limit: int = 8) -> list[dict]:
         rows = self.conn.execute(

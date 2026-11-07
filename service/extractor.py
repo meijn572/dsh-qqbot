@@ -124,6 +124,8 @@ THREAD_SYSTEM = VOICE_RULE + """你负责从这段对话里，留下那些过一
 - 来源只有「我：」时，只写我；不要补主人的话或反应。
 - 不要写来源里没有出现的人。
 - 不确定时以 source_refs 的原话为准。
+- 来源里的 L2 是判断，不是事实；引用 L2 时 L3 要写「我猜 / 可能」。
+- 只有 L1 / L0 明确支撑时才写确定。
 
 例子：
 
@@ -191,6 +193,45 @@ status：
 - 没有要更新的就 "updates": []
 - 没有新事件就 "new": []
 - 只输出 JSON，不要解释。"""
+
+L2_SYSTEM = VOICE_RULE + """你从这段对话和 L1 事实里，找「没有明说、但可以推断」的短期判断。
+
+只写推断，不写事实：
+- 主人说「最近吃辣胃不舒服」→ L1
+- 他最近可能不太想吃辣 → L2
+
+规则：
+- 最多 3 条，宁可少。
+- 只写最近会变化的事：状态、短期偏好、心情、打算。
+- 不写长期性格，不写身份，不写「主人一直……」。
+- 每条带 confidence（0–1）、expires_in_days（1–30）、source_refs。
+- 没有依据就不写。
+
+输出 JSON 数组：
+[{"text":"他最近可能不太想吃辣","confidence":0.6,"expires_in_days":7,"source_refs":[1]}]
+
+没有就输出 []。"""
+
+
+L2_REVIEW_SYSTEM = VOICE_RULE + """你复查当前的短期判断（L2）。
+
+输入：
+- 编号的 L2：可能、大概、我猜出来的短期判断
+- 最近对话 / L1 事实
+
+对每条 L2 选：
+- confirm：已经被最近证据证实，给一句确定的 fact
+- reject：被否定
+- keep：还说不准，继续挂着
+
+confirm 的 fact 必须去掉「可能/大概/我猜」，写成明确事实。
+没有证据就 keep，不要硬 confirm。
+
+输出 JSON：
+{"items":[{"ref":1,"action":"confirm|reject|keep","fact":"确认后的确定事实"}]}
+
+不要输出别的。"""
+
 
 CORE_SYSTEM = VOICE_RULE + """你从已经结束的 L3 里，挑真正改变了“你是谁”或“我们是什么关系”的时刻。
 
@@ -278,6 +319,13 @@ EXTRACT_SYSTEM = VOICE_RULE + """你从一段对话里整理上一段的会话�
 ```text
 主人问我是不是也想入蛋家军
 ```
+
+## 只写确定
+
+- 只写输入里明确发生、明确说过的事。
+- 不写「可能 / 也许 / 大概 / 似乎 / 估计 / 我猜 / 我觉得」这类推测。
+- 不确定就不写，宁可少一条。
+- 没有 source_refs 能对上的，不写。
 
 ## 写什么
 
@@ -410,6 +458,11 @@ evidence 要求：
 - 从对话原文里逐字抄，不要改写、不要拼接
 - 选能支撑这条事件记录的 1–3 句
 - 只输出 JSON，不要代码块，不要额外说明"""
+
+
+def _is_speculation(text: str) -> bool:
+    """L1 只收确定事实；明显的推断词不要。"""
+    return bool(re.search(r"(可能|也许|似乎|估计|说不定|我猜|我觉得|应该是)", str(text or "")))
 
 
 def _ref_label(tier: str) -> str:
@@ -854,6 +907,56 @@ class Extractor:
             self.store.link(mid, int(sid), "derived_from", "evidence")
         return {"ok": True, "id": mid, "text": text, "chars": len(text), "turns": len(turns)}
 
+    def extract_l2(self, transcript: str, facts: list[str],
+                   source_rows: list[dict] | None = None) -> list[dict]:
+        """从 L0 + L1 里抽短期推断；只写 hypothesis。"""
+        if self.llm is None or not getattr(self.llm, "enabled", False):
+            return []
+        blocks = []
+        if source_rows:
+            blocks.append("【来源（按对话顺序）】\n" + _render_refs(source_rows))
+            blocks.append("每条结果请给 source_refs（引用上面的编号）。")
+        if facts:
+            blocks.append("【L1 事实】\n" + "\n".join(f"- {x}" for x in facts[:20]))
+        if not source_rows and transcript:
+            blocks.append("【当前对话】\n" + str(transcript)[:6000])
+        if len(blocks) == 0:
+            return []
+        data = self.llm.chat_json(L2_SYSTEM, "\n\n".join(blocks), max_tokens=500)
+        if isinstance(data, dict):
+            data = data.get("items")
+        if not isinstance(data, list):
+            return []
+        out = []
+        for item in data[:3]:
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("text") or "").strip()
+            if not text:
+                continue
+            out.append(item)
+        return out
+
+    def review_l2(self, active: list[dict], evidence: list[dict]) -> list[dict]:
+        """复查 hypothesis，返回 confirm/reject/keep。"""
+        if self.llm is None or not getattr(self.llm, "enabled", False):
+            return []
+        if not active:
+            return []
+        lines = []
+        for i, item in enumerate(active, 1):
+            exp = time.strftime("%m-%d %H:%M", time.localtime(float(item.get("expires_at") or 0)))
+            lines.append(
+                f"[{i}] {item.get('text')}（confidence {item.get('confidence', 0):.2f}，过期 {exp}）"
+            )
+        ev_lines = [f"[{i}] {str(x.get('text') or '')}" for i, x in enumerate(evidence, 1)]
+        payload = "【待复查 L2】\n" + "\n".join(lines) + "\n\n【最近证据】\n" + "\n".join(ev_lines)
+        data = self.llm.chat_json(L2_REVIEW_SYSTEM, payload, max_tokens=500)
+        if not isinstance(data, dict):
+            return []
+        items = data.get("items")
+        return [x for x in items if isinstance(x, dict)] if isinstance(items, list) else []
+
     def plan_threads(self, transcript: str, facts: list[str],
                      open_threads: list[dict],
                      source_rows: list[dict] | None = None) -> dict | None:
@@ -954,7 +1057,9 @@ class Extractor:
                 result = nested
             cleaned = [
                 item for item in result[: self.config.max_facts]
-                if isinstance(item, dict) and str(item.get("text") or "").strip()
+                if isinstance(item, dict)
+                and str(item.get("text") or "").strip()
+                and not _is_speculation(str(item.get("text") or ""))
             ]
             last = cleaned
             if cleaned:

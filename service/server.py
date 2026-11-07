@@ -2933,7 +2933,7 @@ class Handler(BaseHTTPRequestHandler):
         max_minutes = float(cfg.get("segment_max_minutes", 30))
         max_messages = int(cfg.get("segment_max_messages", 80))
         lifecycle = store.mark_lifecycle(30.0, 14.0)
-        stats = {"ok": True, "l1": 0, "l3": 0, "waiting": "",
+        stats = {"ok": True, "l1": 0, "l2": 0, "l3": 0, "waiting": "",
                  "stale": lifecycle.get("stale", 0), "dormant": lifecycle.get("dormant", 0)}
 
         last_l0 = int(self._meta_get("batch_l0_last", "0") or 0)
@@ -2983,6 +2983,44 @@ class Handler(BaseHTTPRequestHandler):
                 facts.append(str(row["text"]))
 
         ref_rows = source_rows + l1_rows
+        role_for = {"L0": "evidence", "L1": "fact", "L2": "judgment", "L3": "core"}
+        l2_items = extractor.extract_l2(text, facts, source_rows=ref_rows)
+        l2_rows = []
+        for item in l2_items[:3]:
+            if not isinstance(item, dict):
+                continue
+            l2_text = str(item.get("text") or "").strip()[:1000]
+            if not l2_text:
+                continue
+            ref_pairs = _tier_of_refs(item.get("source_refs"), ref_rows)
+            l0_ids = [rid for tier, rid in ref_pairs if tier == "L0"]
+            if not l0_ids:
+                l0_ids = source_ids[:3]
+            try:
+                confidence = max(0.0, min(1.0, float(item.get("confidence") or 0.5)))
+            except Exception:
+                confidence = 0.5
+            try:
+                days = max(1, min(30, int(item.get("expires_in_days") or 14)))
+            except Exception:
+                days = 14
+            l2_id = store.add(MemoryInput(
+                text=l2_text,
+                tier="L2",
+                subject="owner",
+                source_ids=l0_ids or None,
+                source_status="verified" if l0_ids else "batch",
+                confidence=confidence,
+                expires_at=time.time() + days * 86400,
+                l2_status="hypothesis",
+                tags=["l2", "hypothesis"],
+            ))
+            l2_rows.append({"id": int(l2_id), "tier": "L2", "text": l2_text})
+            for tier, rid in ref_pairs:
+                store.link(l2_id, rid, "derived_from", role_for.get(tier, "evidence"))
+            stats["l2"] = stats.get("l2", 0) + 1
+
+        ref_rows = source_rows + l1_rows + l2_rows
         open_threads = store.open_threads(8)
         plan = extractor.plan_threads(text, facts, open_threads, source_rows=ref_rows)
         if not isinstance(plan, dict):
@@ -2990,7 +3028,6 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         now = time.time()
-        role_for = {"L0": "evidence", "L1": "fact", "L2": "judgment", "L3": "core"}
 
         def _delta(v) -> float:
             try:
@@ -3069,6 +3106,53 @@ class Handler(BaseHTTPRequestHandler):
                 store.link(mid, rid, "derived_from", role_for.get(tier, "evidence"))
             stats["l3"] += 1
 
+        self._json(200, stats)
+
+    def _l2_review(self) -> None:
+        """复查短期判断：confirmed 的自动升 L1，并保留 L2 作为来源。"""
+        store.l2_expire()
+        active = store.l2_active(12)
+        if not active:
+            self._json(200, {"ok": True, "skipped": "no-active"})
+            return
+        since = time.time() - 86400
+        ev_rows = store.conn.execute(
+            "SELECT id,text FROM memory WHERE tier IN ('L0','L1') AND ts >= ? "
+            "ORDER BY ts DESC LIMIT 20",
+            (since,),
+        ).fetchall()
+        evidence = [{"id": int(r["id"]), "text": str(r["text"] or "")} for r in ev_rows]
+        decisions = extractor.review_l2(active, evidence)
+        stats = {"ok": True, "confirmed": 0, "rejected": 0, "kept": 0, "expired": 0}
+        for item in decisions[:12]:
+            try:
+                idx = int(item.get("ref") or 0) - 1
+            except Exception:
+                continue
+            if idx < 0 or idx >= len(active):
+                continue
+            target = active[idx]
+            action = str(item.get("action") or "keep").lower()
+            if action == "reject":
+                store.l2_set_status(int(target["id"]), "rejected")
+                stats["rejected"] += 1
+            elif action == "confirm":
+                fact = str(item.get("fact") or "").strip()[:1000]
+                if not fact:
+                    continue
+                mid = store.add(MemoryInput(
+                    text=fact,
+                    tier="L1",
+                    subject="owner",
+                    source_ids=target.get("source_ids") or None,
+                    source_status="verified" if target.get("source_ids") else "batch",
+                    tags=["l2-promoted"],
+                ))
+                store.link(mid, int(target["id"]), "derived_from", "judgment")
+                store.l2_set_status(int(target["id"]), "promoted", mid)
+                stats["confirmed"] += 1
+            else:
+                stats["kept"] += 1
         self._json(200, stats)
 
     def _close_thread(self) -> None:

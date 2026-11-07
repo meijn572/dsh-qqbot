@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS memory (
   closeness_delta REAL NOT NULL DEFAULT 0,   -- L3 对亲近度的增量
   trust_delta     REAL NOT NULL DEFAULT 0,   -- L3 对信任的增量
   tension_delta   REAL NOT NULL DEFAULT 0,   -- L3 对张力的增量
+  confidence     REAL DEFAULT NULL,          -- L2 置信度
+  expires_at     REAL DEFAULT NULL,          -- L2 过期时间
+  l2_status      TEXT DEFAULT '',            -- L2: hypothesis/promoted/rejected/expired/superseded
+  promoted_to    INTEGER DEFAULT NULL,       -- L2 晋级后的 L1 id
   tags           TEXT,                       -- JSON 数组，精确筛选用
   ts             REAL    NOT NULL,           -- 事件发生时间（unix 秒）
   half_life_days REAL,                       -- NULL = 不衰减

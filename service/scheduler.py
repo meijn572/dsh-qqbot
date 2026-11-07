@@ -96,6 +96,8 @@ class Scheduler:
             changed = True
         if self._tick_evolve(st, now):
             changed = True
+        if self._tick_l2(st, now):
+            changed = True
 
         if changed:
             self._save_state(st)
@@ -355,6 +357,33 @@ class Scheduler:
             _log(f"evolve: {data.get('line') or data.get('skipped') or data.get('error')}")
         except Exception as exc:  # noqa: BLE001
             _log(f"evolve failed: {exc}")
+
+    def _tick_l2(self, st: dict, now: float) -> bool:
+        today = datetime.date.today().isoformat()
+        if st.get("l2_review_date") == today:
+            return False
+        if datetime.datetime.now().hour < 7:
+            return False
+        st["l2_review_date"] = today
+        threading.Thread(target=self._run_l2_review, name="dsh-l2-review", daemon=True).start()
+        _log("l2: scheduled daily review")
+        return True
+
+    def _run_l2_review(self) -> None:
+        import urllib.request
+        port = os.environ.get("CMEM_PORT", "8081")
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/l2/review",
+            data=json.dumps({}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                data = json.loads(resp.read().decode("utf-8") or "{}")
+            _log(f"l2: {data}")
+        except Exception as exc:  # noqa: BLE001
+            _log(f"l2 review failed: {exc}")
 
     # ---------- 工具 ----------
     def _owner_qq(self) -> int:
