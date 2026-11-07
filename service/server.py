@@ -3025,7 +3025,7 @@ class Handler(BaseHTTPRequestHandler):
             if not title or not summary:
                 continue
             status = str(item.get("status") or "open").lower()
-            if status not in ("open", "closed"):
+            if status not in ("open", "closed", "standalone"):
                 status = "open"
             ev_ids, ev_status = match_evidence(item.get("evidence") or [], source_rows)
             mid = store.add(MemoryInput(
@@ -3060,7 +3060,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True, "skipped": "not-due"})
             return
         rows = store.conn.execute(
-            "SELECT m.* FROM memory m WHERE m.tier='L3' AND m.thread_status='closed' "
+            "SELECT m.* FROM memory m WHERE m.tier='L3' AND m.thread_status IN ('closed','standalone') "
             "AND NOT EXISTS (SELECT 1 FROM memory_links l WHERE l.parent_id=m.id AND l.relation='core') "
             "ORDER BY m.thread_closed_at DESC, m.id DESC LIMIT 20"
         ).fetchall()
@@ -3070,7 +3070,7 @@ class Handler(BaseHTTPRequestHandler):
                 "id": int(r["id"]),
                 "title": r["thread_title"] or (str(r["text"]).splitlines()[0][:60] if r["text"] else ""),
                 "summary": r["summary"] or r["text"],
-                "closed_at": float(r["thread_closed_at"] or 0),
+                "closed_at": float(r["thread_closed_at"] or r["thread_last_seen_at"] or 0),
                 "source_ids": json.loads(r["source_ids"] or "[]"),
                 "source_status": r["source_status"],
             })

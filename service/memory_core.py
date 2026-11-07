@@ -566,7 +566,7 @@ class MemoryStore:
         rows = self.conn.execute(
             "SELECT id,text,summary,thread_title,thread_aliases,thread_status,"
             "thread_last_seen_at,source_ids FROM memory "
-            "WHERE tier='L3' AND thread_status IN ('open','closed') "
+            "WHERE tier='L3' AND thread_status IN ('open','closed','standalone') "
             "AND (thread_title LIKE ? OR thread_aliases LIKE ? OR summary LIKE ?) "
             "ORDER BY CASE thread_status WHEN 'open' THEN 0 ELSE 1 END, "
             "thread_last_seen_at DESC LIMIT ?",
