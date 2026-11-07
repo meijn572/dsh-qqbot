@@ -303,16 +303,31 @@ memory_links 和 source_ids 不一致时如何修复
 
 ```text
 L1：128 条 legacy
-L3：16 条 batch，thread_status = legacy
+L3：16 条旧流水账已迁移，thread_status = archived
+     新拆出 41 条事件线程
 L4：4 条 legacy，source_ids 空
 ```
 
-需要决定：
+已定：
 
 ```text
-旧 L1 是否重算 source_ids
-旧 L3 是否补 thread_title / status
-旧 L4 是否补 evidence
+旧 L1 不重算 source_ids
+  没有原话依据，硬补没意义
+  保留 source_status = legacy
+
+旧 L3 不再作为事件线程使用
+  已 archived
+  新拆出的 L3 有 source_ids / thread_title / status
+
+旧 L4 不硬补 evidence
+  保持 legacy
+```
+
+还需要决定：
+
+```text
+旧 L1 是否要在面板里默认隐藏
+旧 L4 是否要人工确认一遍
 ```
 
 ## 8. 检索与注入

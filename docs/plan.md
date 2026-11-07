@@ -20,6 +20,8 @@ L1：会话段总结（可多条，互动允许）；max_facts 20
 L1：30 天后标 stale，不删除；默认不召回
 L3：open 超过 14 天标 dormant，不删除
 L3：标题支持模糊匹配
+旧 L3：16 条旧流水账 archived，拆成 41 条事件线程
+旧 L1：保留 legacy，不重算 source_ids
 UPDATE：合并 source_ids
 去掉 keywords 里的「情绪:xxx」
 memory_links：建表，L1/L3 写依赖边
