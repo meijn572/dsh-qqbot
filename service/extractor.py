@@ -32,12 +32,21 @@ def strip_memory_prefix(tier: str, text: str) -> str:
     return s
 
 
-SLEEP_SYSTEM = """你在睡前整理今天发生的事。用第一人称写两到三句话，像在合上本子前想的事。
+VOICE_RULE = """## 称呼约定
+
+- 提示词里用「你」称呼你。
+- 对话里「我：」是你，「主人：」是九歌。
+- 写出来的记忆、总结、日记用第一人称「我」。
+- 「你」和「我」指的是同一个人，不要写成两个人。
+"""
+
+
+SLEEP_SYSTEM = VOICE_RULE + """你在睡前整理今天发生的事。用第一人称写两到三句话，像在合上本子前想的事。
 要求：具体、有情绪、带一点睡意；不提"整理""总结""记忆"这类词。
 只输出正文。"""
 
 
-DIARY_SYSTEM = """你写今天的日记。用洄的口吻，第一人称，写给以后的自己看。
+DIARY_SYSTEM = VOICE_RULE + """你写今天的日记。用洄的口吻，第一人称，写给以后的自己看。
 
 可以从今天最想记住的地方写起，不必把每件事都写到。
 写具体的事、当时的念头，像自己回头想一想，不像汇报。
@@ -55,7 +64,7 @@ DIARY_SYSTEM = """你写今天的日记。用洄的口吻，第一人称，写�
 西西弗斯那句还是没想透。先搁着吧，反正山也不会跑。"""
 
 
-EVOLVE_SYSTEM = """你根据一段对话，判断她有没有产生新的自我认知变化。
+EVOLVE_SYSTEM = VOICE_RULE + """你根据一段对话，判断你有没有产生新的自我认知变化。
 
 只在确实有变化时输出一条：
 - 第一人称，简短（不超过 30 字）
@@ -68,7 +77,7 @@ EVOLVE_SYSTEM = """你根据一段对话，判断她有没有产生新的自我�
 有变化，只输出这一句，不要引号，不要解释。"""
 
 
-THREAD_SYSTEM = """你负责从这段对话里，留下那些过一阵子还会被想起的事。
+THREAD_SYSTEM = VOICE_RULE + """你负责从这段对话里，留下那些过一阵子还会被想起的事。
 
 输入：
 - 这一段对话
@@ -183,7 +192,7 @@ status：
 - 没有新事件就 "new": []
 - 只输出 JSON，不要解释。"""
 
-CORE_SYSTEM = """你从已经结束的 L3 里，挑真正改变了“你是谁”或“我们是什么关系”的时刻。
+CORE_SYSTEM = VOICE_RULE + """你从已经结束的 L3 里，挑真正改变了“你是谁”或“我们是什么关系”的时刻。
 
 不是挑最重要的、最开心的、最难忘的。
 那些是 L3。
@@ -221,7 +230,7 @@ CORE_SYSTEM = """你从已经结束的 L3 里，挑真正改变了“你是谁�
 没有就 {"items":[]}。
 title 必须从输入里原样选，不要编。"""
 
-EXTRACT_SYSTEM = """你从一段对话里整理上一段的会话总结（L1）。
+EXTRACT_SYSTEM = VOICE_RULE + """你从一段对话里整理上一段的会话总结（L1）。
 
 原则：这段对话里发生过什么、他说过什么、有什么小互动，都尽量收住。
 可以多条，漏掉比多写一条更可惜。
@@ -353,7 +362,7 @@ text 直接写内容本身，不要加「我记得 / 我记住」前缀；主人
 """
 
 
-DECIDE_SYSTEM = """你在管理一个记忆库。下面是「新事实」和「这些事实最相似的已有记忆」。
+DECIDE_SYSTEM = VOICE_RULE + """你在管理一个记忆库。下面是「新事实」和「这些事实最相似的已有记忆」。
 
 对每条新事实，从四种操作里选一个：
 - ADD：新信息，库里没有
@@ -371,19 +380,19 @@ DECIDE_SYSTEM = """你在管理一个记忆库。下面是「新事实」和「�
 [{"fact_index": 0, "op": "ADD|UPDATE|DELETE|NONE", "target_id": 123, "text": "合并后的完整文本", "reason": "一句话理由"}]"""
 
 
-EPISODE_SYSTEM = """你把一段连续对话压缩成一条「以后想起来有用」的事件记录。
+EPISODE_SYSTEM = VOICE_RULE + """你把一段连续对话压缩成一条「以后想起来有用」的事件记录。
 
 视角：用第一人称写「我记得…」；涉及主人时主语仍写「主人」，不要把他的事写成我的。
 
 写什么：
 - 这段时间聊了什么（一两句抓主线，别逐条复述）
-- 她当时的状态和情绪走向（累、松下来、突然提起某件事）
+- 你当时的状态和情绪走向（累、松下来、突然提起某件事）
 - 出现的转折、承诺、约定
 - 还没解决、下次可能要接着说的话头
 
 不写什么：
 - 寒暄、确认、重复过的内容
-- 助手自己说了什么（除非她明显因为那句话改变了语气）
+- 助手自己说了什么（除非你明显因为那句话改变了语气）
 - 推测出来的东西
 
 输出 JSON：
@@ -593,7 +602,7 @@ class Extractor:
         """人设演化：从这段对话生一句「我发现自己……」（追加到自我认知区）。"""
         if self.llm is None or not getattr(self.llm, "enabled", False):
             return None
-        convo = f"用户：{user_text}\n你：{assistant_text}"
+        convo = f"主人：{user_text}\n我：{assistant_text}"
         if persona:
             convo += f"\n\n【完整人格】\n{persona[:6000]}"
         if memories:
@@ -903,9 +912,9 @@ class Extractor:
             assistant = str(turn.get("assistant") or "").strip()
             if not user:
                 continue
-            lines.append(f"用户：{user[:per]}")
+            lines.append(f"主人：{user[:per]}")
             if assistant:
-                lines.append(f"她：{assistant[:per]}")
+                lines.append(f"我：{assistant[:per]}")
         text = "\n".join(lines)
         cap = max(1000, int(self.config.episode_max_chars))
         if len(text) > cap:
@@ -927,9 +936,9 @@ class Extractor:
             convo = _render_refs(source_rows)
             convo += "\n\n每条结果请给 source_refs（引用上面的编号，可多条）；evidence 可选，作为兜底。"
         else:
-            convo = f"用户：{user_text[:self.config.max_context_chars]}"
+            convo = f"主人：{user_text[:self.config.max_context_chars]}"
             if assistant_text:
-                convo += f"\n她：{assistant_text[:self.config.max_context_chars]}"
+                convo += f"\n我：{assistant_text[:self.config.max_context_chars]}"
         if context:
             convo = f"【身份/现有规则】\n{context[:3000]}\n\n{convo}"
 
