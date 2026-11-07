@@ -1257,59 +1257,36 @@ class MemoryStore:
             "interaction_count": float(row["interaction_count"] or 0.0),
         }
         data["relationship"] = self.get_relationship()
-        data["stage"] = data["relationship"]["stage_info"]
         return data
 
     def get_relationship(self) -> dict:
-        """读取模型自己写下的关系状态，不做数值聚合。"""
+        """读取模型自己写下的关系状态，不做数值聚合，也不套固定阶段。"""
         try:
             row = self.conn.execute(
-                "SELECT stage,summary,evidence_ids,updated_at FROM relationship_state WHERE id=1"
+                "SELECT summary,evidence_ids,updated_at FROM relationship_state WHERE id=1"
             ).fetchone()
         except Exception:
             row = None
-        stage = str(row["stage"] or "陌生") if row else "陌生"
         try:
             evidence_ids = json.loads(row["evidence_ids"] or "[]") if row else []
         except Exception:
             evidence_ids = []
-        info = self.stage_info(stage)
         return {
-            "stage": stage,
             "summary": str(row["summary"] or "") if row else "",
             "evidence_ids": evidence_ids,
             "updated_at": float(row["updated_at"] or 0) if row else 0.0,
-            "stage_info": info,
         }
 
-    def set_relationship(self, stage: str, summary: str, evidence_ids: list[int] | None = None) -> dict:
-        stage = str(stage or "陌生").strip()
-        if stage not in [s[0] for s in self.STAGES]:
-            raise ValueError("invalid stage")
+    def set_relationship(self, summary: str, evidence_ids: list[int] | None = None) -> dict:
         self.conn.execute(
-            "INSERT INTO relationship_state(id,stage,summary,evidence_ids,updated_at) "
-            "VALUES(1,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
-            "stage=excluded.stage, summary=excluded.summary, "
-            "evidence_ids=excluded.evidence_ids, updated_at=excluded.updated_at",
-            (stage, str(summary or "")[:5000], json.dumps(evidence_ids or []), time.time()),
+            "INSERT INTO relationship_state(id,summary,evidence_ids,updated_at) "
+            "VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET "
+            "summary=excluded.summary, evidence_ids=excluded.evidence_ids, "
+            "updated_at=excluded.updated_at",
+            (str(summary or "")[:5000], json.dumps(evidence_ids or []), time.time()),
         )
         self.conn.commit()
         return self.get_relationship()
-
-    def stage_info(self, stage: str) -> dict:
-        names = [s[0] for s in self.STAGES]
-        name = stage if stage in names else names[0]
-        idx = names.index(name)
-        prev_name, prev_line = self.STAGES[idx - 1][:2] if idx > 0 else ("", "")
-        next_name, next_line = self.STAGES[idx + 1][:2] if idx < len(names) - 1 else ("", "")
-        return {
-            "name": name,
-            "index": idx + 1,
-            "total": len(names),
-            "line": self.STAGES[idx][1],
-            "prev": {"name": prev_name, "line": prev_line} if prev_name else None,
-            "next": {"name": next_name, "line": next_line} if next_name else None,
-        }
 
     def bump_interaction(self, delta: float = 1.0) -> float:
         cur = self.get_state()
@@ -1345,17 +1322,6 @@ class MemoryStore:
         )
         self.conn.commit()
         return self.get_state()
-
-    STAGES = [
-        ("陌生", "还停在客气和试探里，很多事没有共同版本。"),
-        ("熟悉", "有了一些日常和共同话题，但深一点的部分还没交底。"),
-        ("亲近", "见过彼此比较真实的样子，开始有只属于两个人的说法。"),
-        ("亲密", "一起经历过难受、冲突和修复，知道关系经得起这些。"),
-        ("安心", "不用靠频繁联系证明关系还在；安静一段时间，也不会默认变远。"),
-    ]
-
-    def current_stage(self) -> dict:
-        return self.get_relationship()["stage_info"]
 
     def current_activity(self, hour: int | None = None) -> str:
         """她现在在干嘛：她自己写的优先，否则从真实活动日志推断。"""

@@ -16,16 +16,15 @@ class RelationshipTest(unittest.TestCase):
         self.store.close()
         self.tmp.cleanup()
 
-    def test_stage_and_summary(self):
-        self.store.set_relationship("亲近", "最近更放松了。", [1, 2])
+    def test_summary(self):
+        self.store.set_relationship("最近更放松了，会主动说自己的状态。", [1, 2])
         rel = self.store.get_relationship()
-        self.assertEqual(rel["stage"], "亲近")
-        self.assertEqual(rel["summary"], "最近更放松了。")
-        self.assertEqual(rel["stage_info"]["index"], 3)
+        self.assertIn("更放松", rel["summary"])
+        self.assertEqual(rel["evidence_ids"], [1, 2])
 
-    def test_invalid_stage(self):
-        with self.assertRaises(ValueError):
-            self.store.set_relationship("很熟", "x")
+    def test_no_stage_field(self):
+        rel = self.store.get_relationship()
+        self.assertNotIn("stage", rel)
 
     def test_impact_roundtrip(self):
         mid = self.store.add(mc.MemoryInput(

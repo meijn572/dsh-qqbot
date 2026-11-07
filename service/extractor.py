@@ -234,7 +234,7 @@ confirm 的 fact 必须去掉「可能/大概/我猜」，写成明确事实。
 RELATIONSHIP_REVIEW_SYSTEM = VOICE_RULE + """你复查我和主人的关系状态。
 
 输入：
-- 当前 stage / summary（这是上次的判断，作为基准）
+- 当前 summary（这是上次的判断，作为基准）
 - 最近的 L3 关系影响（编号）
 - 还没解开的 L3
 - L4 锚点
@@ -242,15 +242,15 @@ RELATIONSHIP_REVIEW_SYSTEM = VOICE_RULE + """你复查我和主人的关系状�
 规则：
 - 只修改被新证据改变的部分。
 - 没有足够证据就保持原样，不要重写整段关系史。
-- 一次最多升/降一档。
-- stage 只能是：陌生 / 熟悉 / 亲近 / 亲密 / 安心。
+- 不用套固定阶段，用 1–3 句人话写现在的关系。
+- 写关系站位，不写“你该怎么说话”。
 - evidence_refs 引用上面关系影响的编号，不能编。
 
 输出 JSON：
-{"stage":"亲近","summary":"一句关系总结","evidence_refs":[1,2]}
+{"summary":"一句或几句关系总结","evidence_refs":[1,2]}
 
 没有要改的：
-{"stage":"当前阶段","summary":"没有需要改的。","evidence_refs":[]}
+{"summary":"没有需要改的。","evidence_refs":[]}
 
 只输出 JSON。"""
 
@@ -986,7 +986,6 @@ class Extractor:
             return None
         lines = [
             "【当前关系】",
-            f"stage: {current.get('stage')}",
             f"summary: {current.get('summary') or '（还没有）'}",
         ]
         if persona:

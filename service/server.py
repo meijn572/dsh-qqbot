@@ -3100,7 +3100,7 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, stats)
 
     def _relationship_review(self) -> None:
-        """关系复盘：模型读文本影响，自己更新 stage/summary。"""
+        """关系复盘：模型读文本影响，自由更新 summary。"""
         current = store.get_relationship()
         since = float(current.get("updated_at") or 0)
         rows = store.conn.execute(
@@ -3129,16 +3129,6 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(result, dict):
             self._json(200, {"ok": True, "skipped": "no-result"})
             return
-        new_stage = str(result.get("stage") or current.get("stage") or "陌生").strip()
-        names = [s[0] for s in store.STAGES]
-        if new_stage not in names:
-            self._json(200, {"ok": False, "error": "invalid-stage"})
-            return
-        old_idx = names.index(str(current.get("stage") or "陌生")) if str(current.get("stage") or "陌生") in names else 0
-        new_idx = names.index(new_stage)
-        if abs(new_idx - old_idx) > 1:
-            self._json(200, {"ok": False, "error": "stage-jump"})
-            return
         refs = result.get("evidence_refs") or []
         evidence_ids = []
         for ref in refs if isinstance(refs, list) else []:
@@ -3149,14 +3139,15 @@ class Handler(BaseHTTPRequestHandler):
             if 0 <= idx < len(impacts):
                 evidence_ids.append(int(impacts[idx]["id"]))
         summary = str(result.get("summary") or "").strip()[:5000]
-        if new_stage != current.get("stage") and not evidence_ids:
+        old_summary = str(current.get("summary") or "")
+        if not summary or summary in ("没有需要改的。", "没有需要改的"):
+            self._json(200, {"ok": True, "changed": False, "skipped": "no-change"})
+            return
+        if summary != old_summary and not evidence_ids:
             self._json(200, {"ok": False, "error": "evidence-required"})
             return
-        if summary and summary not in ("没有需要改的。", "没有需要改的"):
-            store.set_relationship(new_stage, summary, evidence_ids)
-        else:
-            store.set_relationship(new_stage, str(current.get("summary") or ""), evidence_ids)
-        self._json(200, {"ok": True, "stage": new_stage, "changed": new_stage != current.get("stage")})
+        store.set_relationship(summary, evidence_ids)
+        self._json(200, {"ok": True, "changed": summary != old_summary, "summary": summary})
 
     def _l2_review(self) -> None:
         """复查短期判断：confirmed 的自动升 L1，并保留 L2 作为来源。"""

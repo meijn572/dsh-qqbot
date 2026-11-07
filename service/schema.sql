@@ -159,10 +159,9 @@ CREATE TABLE IF NOT EXISTS state (
 );
 INSERT OR IGNORE INTO state(id) VALUES (1);
 
--- 关系状态：由模型复盘后写入，不做数值聚合
+-- 关系状态：由模型复盘后自由书写，不做数值聚合，也不套固定阶段
 CREATE TABLE IF NOT EXISTS relationship_state (
   id           INTEGER PRIMARY KEY CHECK (id = 1),
-  stage        TEXT NOT NULL DEFAULT '陌生',
   summary      TEXT NOT NULL DEFAULT '',
   evidence_ids TEXT NOT NULL DEFAULT '[]',
   updated_at   REAL NOT NULL DEFAULT 0
