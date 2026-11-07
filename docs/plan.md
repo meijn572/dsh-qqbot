@@ -17,6 +17,9 @@ L1 / L3：evidence 匹配 L0，写 source_ids
 evidence：ref 优先，原话兜底
 source_status：verified / unverified / batch / legacy
 L1：会话段总结（可多条，互动允许）；max_facts 20
+L1：30 天后标 stale，不删除；默认不召回
+L3：open 超过 14 天标 dormant，不删除
+L3：标题支持模糊匹配
 UPDATE：合并 source_ids
 去掉 keywords 里的「情绪:xxx」
 memory_links：建表，L1/L3 写依赖边
@@ -69,11 +72,9 @@ L2 从 L0 + L1 生成
 是否在“没事了”时 closed
 ```
 
-### P3 来源与寿命
+### P3 来源
 
 ```text
-L1 半衰期：180 天 → 30–90 天
-
 evidence 已改为：
   输入 L0/L1/L2/L3 统一编号
   模型输出 source_refs

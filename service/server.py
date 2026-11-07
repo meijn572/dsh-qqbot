@@ -2937,7 +2937,9 @@ class Handler(BaseHTTPRequestHandler):
         idle_seconds = float(cfg.get("segment_idle_seconds", 300))
         max_minutes = float(cfg.get("segment_max_minutes", 30))
         max_messages = int(cfg.get("segment_max_messages", 80))
-        stats = {"ok": True, "l1": 0, "l3": 0, "waiting": ""}
+        lifecycle = store.mark_lifecycle(30.0, 14.0)
+        stats = {"ok": True, "l1": 0, "l3": 0, "waiting": "",
+                 "stale": lifecycle.get("stale", 0), "dormant": lifecycle.get("dormant", 0)}
 
         last_l0 = int(self._meta_get("batch_l0_last", "0") or 0)
         if last_l0 <= 0:
@@ -2999,12 +3001,7 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(item, dict):
                 continue
             title = str(item.get("title") or "").strip()
-            target = None
-            for thread in open_threads:
-                names = [str(thread.get("title") or "")] + [str(a) for a in (thread.get("aliases") or [])]
-                if title and title in names:
-                    target = thread
-                    break
+            target = store.resolve_thread(title, open_threads)
             if target is None:
                 continue
             summary = str(item.get("summary") or "").strip()[:2000]

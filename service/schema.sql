@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS memory (
   thread_opened_at REAL DEFAULT NULL,
   thread_last_seen_at REAL DEFAULT NULL,
   thread_closed_at REAL DEFAULT NULL,
+  stale_at       REAL DEFAULT NULL,          -- L1 过期标记，不删除
   tags           TEXT,                       -- JSON 数组，精确筛选用
   ts             REAL    NOT NULL,           -- 事件发生时间（unix 秒）
   half_life_days REAL,                       -- NULL = 不衰减

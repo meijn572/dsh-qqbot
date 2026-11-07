@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import base64
+import difflib
 import hashlib
 import json
 import math
@@ -51,7 +52,7 @@ TIER_HALF_LIFE: dict[str, float | None] = {
     "L4": None,    # 核心记忆：忘不掉的事件
     "L3": 90.0,    # 普通经历
     "L2": None,    # 退役：不再写新数据
-    "L1": 180.0,   # 原子事实
+    "L1": 30.0,    # 会话段总结：30 天后标 stale，不删除
     "L0": None,    # 原话（不参与衰减，主表只做检索源）
 }
 
@@ -133,6 +134,7 @@ class MemoryInput:
     thread_opened_at: float | None = None
     thread_last_seen_at: float | None = None
     thread_closed_at: float | None = None
+    stale_at: float | None = None
     tags: Sequence[str] | None = None
     ts: float | None = None
     half_life_days: float | None = field(default=None)
@@ -181,6 +183,22 @@ class Hit:
 
 # 注入事件 / 系统消息用的假昵称，一律不当作真人昵称入库。
 _NON_PERSON_NICKS = {"", "系统", "系统消息", "System", "system", "SYSTEM"}
+
+
+def _norm_title(text: str) -> str:
+    s = str(text or "").lower().strip()
+    return re.sub(r"[\s\W_]+", "", s, flags=re.UNICODE)
+
+
+def _title_score(query: str, title: str) -> float:
+    q, t = _norm_title(query), _norm_title(title)
+    if not q or not t:
+        return 0.0
+    if q == t:
+        return 1.0
+    if q in t or t in q:
+        return 0.9
+    return float(difflib.SequenceMatcher(None, q, t).ratio())
 
 
 class MemoryStore:
@@ -238,6 +256,7 @@ class MemoryStore:
             ("thread_opened_at", "REAL DEFAULT NULL"),
             ("thread_last_seen_at", "REAL DEFAULT NULL"),
             ("thread_closed_at", "REAL DEFAULT NULL"),
+            ("stale_at", "REAL DEFAULT NULL"),
         ):
             if col not in mem_cols:
                 try:
@@ -355,7 +374,7 @@ class MemoryStore:
         """管理用：列出记忆（按时间倒序），带 tier 过滤和关键词搜索。"""
         sql = ("SELECT id, tier, subject, text, summary, tags, source_ids, source_status, "
                "thread_status, thread_title, thread_aliases, thread_opened_at, thread_last_seen_at, thread_closed_at, "
-               "ts, half_life_days FROM memory")
+               "stale_at, ts, half_life_days FROM memory")
         conds = []
         args: list = []
         if tier and tier != "all":
@@ -393,6 +412,7 @@ class MemoryStore:
                 "thread_opened_at": float(r["thread_opened_at"]) if r["thread_opened_at"] else None,
                 "thread_last_seen_at": float(r["thread_last_seen_at"]) if r["thread_last_seen_at"] else None,
                 "thread_closed_at": float(r["thread_closed_at"]) if r["thread_closed_at"] else None,
+                "stale_at": float(r["stale_at"]) if r["stale_at"] else None,
                 "ts": float(r["ts"] or 0),
                 "half_life_days": r["half_life_days"],
             })
@@ -420,9 +440,10 @@ class MemoryStore:
               (tier, subject, text, summary, source_ids, source_status,
                thread_status, thread_title, thread_aliases,
                thread_opened_at, thread_last_seen_at, thread_closed_at,
+               stale_at,
                tags, ts, half_life_days,
                vec, vec_dim, vec_model, created_at, updated_at, user_id, scope)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 item.tier,
@@ -437,6 +458,7 @@ class MemoryStore:
                 item.thread_opened_at,
                 item.thread_last_seen_at,
                 item.thread_closed_at,
+                item.stale_at,
                 json.dumps(list(item.tags or []), ensure_ascii=False),
                 ts,
                 half,
@@ -534,6 +556,32 @@ class MemoryStore:
         )
         self.conn.commit()
 
+    def mark_lifecycle(self, l1_days: float = 30.0, thread_days: float = 14.0) -> dict:
+        """只打标记，不删除。
+
+        L1：超过 l1_days 标 stale_at，默认检索不再召回。
+        L3：open 超过 thread_days 没续写，标 dormant。
+        """
+        now = time.time()
+        l1_cut = now - max(1.0, float(l1_days)) * 86400
+        thread_cut = now - max(1.0, float(thread_days)) * 86400
+        cur = self.conn.execute(
+            "UPDATE memory SET stale_at=? WHERE tier='L1' AND stale_at IS NULL AND ts < ?",
+            (now, l1_cut),
+        )
+        stale = int(cur.rowcount or 0)
+        cur = self.conn.execute(
+            "UPDATE memory SET thread_status='dormant' "
+            "WHERE tier='L3' AND thread_status='open' "
+            "AND thread_last_seen_at IS NOT NULL AND thread_last_seen_at < ?",
+            (thread_cut,),
+        )
+        dormant = int(cur.rowcount or 0)
+        self.conn.commit()
+        if stale or dormant:
+            self._invalidate_caches()
+        return {"stale": stale, "dormant": dormant}
+
     def open_threads(self, limit: int = 8) -> list[dict]:
         rows = self.conn.execute(
             "SELECT id,tier,text,summary,thread_title,thread_aliases,thread_status,"
@@ -558,22 +606,44 @@ class MemoryStore:
             })
         return out
 
+    def resolve_thread(self, query: str, threads: list[dict] | None = None) -> dict | None:
+        q = str(query or "").strip()
+        if not q:
+            return None
+        items = threads if threads is not None else self.open_threads(8)
+        best, best_score = None, 0.0
+        for item in items:
+            names = [str(item.get("title") or "")] + [str(a) for a in (item.get("aliases") or [])]
+            score = max((_title_score(q, name) for name in names), default=0.0)
+            if score > best_score:
+                best, best_score = item, score
+        return best if best_score >= 0.6 else None
+
     def find_threads(self, query: str, limit: int = 8) -> list[dict]:
         q = str(query or "").strip()
         if not q:
             return []
-        like = f"%{q}%"
         rows = self.conn.execute(
             "SELECT id,text,summary,thread_title,thread_aliases,thread_status,"
             "thread_last_seen_at,source_ids FROM memory "
-            "WHERE tier='L3' AND thread_status IN ('open','closed','standalone') "
-            "AND (thread_title LIKE ? OR thread_aliases LIKE ? OR summary LIKE ?) "
+            "WHERE tier='L3' AND thread_status IN ('open','closed','standalone','dormant') "
             "ORDER BY CASE thread_status WHEN 'open' THEN 0 ELSE 1 END, "
-            "thread_last_seen_at DESC LIMIT ?",
-            (like, like, like, max(1, min(int(limit), 8))),
+            "thread_last_seen_at DESC LIMIT 200"
         ).fetchall()
-        out = []
+        scored = []
         for r in rows:
+            names = [r["thread_title"] or ""]
+            try:
+                names += [str(x) for x in json.loads(r["thread_aliases"] or "[]")]
+            except Exception:  # noqa: BLE001
+                pass
+            score = max((_title_score(q, name) for name in names), default=0.0)
+            if score >= 0.45:
+                scored.append((score, r))
+        scored.sort(key=lambda x: (-x[0], 0 if x[1]["thread_status"] == "open" else 1,
+                                   -float(x[1]["thread_last_seen_at"] or 0)))
+        out = []
+        for _, r in scored[:max(1, min(int(limit), 8))]:
             out.append({
                 "title": r["thread_title"] or "",
                 "status": r["thread_status"],
@@ -867,11 +937,11 @@ class MemoryStore:
         if self._light_cache is not None:
             return self._light_cache
         rows = self.conn.execute(
-            "SELECT id, ts, half_life_days, tier, subject, scope FROM memory"
+            "SELECT id, ts, half_life_days, tier, subject, scope, stale_at FROM memory"
         ).fetchall()
         self._light_cache = {
             int(r["id"]): (float(r["ts"]), r["half_life_days"], r["tier"], r["subject"],
-                           (r["scope"] or "global"))
+                           (r["scope"] or "global"), r["stale_at"])
             for r in rows
         }
         return self._light_cache
@@ -918,11 +988,15 @@ class MemoryStore:
             if meta is None:
                 continue
             ts, half, tier, subj, sc = meta[0], meta[1], meta[2], meta[3], (meta[4] if len(meta) > 4 else "global")
+            stale_at = meta[5] if len(meta) > 5 else None
             if tier_set is not None:
                 if tier not in tier_set:
                     continue
             elif tier in ("L2", "L4"):
                 # L2 已退役；L4 是核心记忆，只能显式指定 tiers 时召回
+                continue
+            if tier == "L1" and stale_at and tiers is None:
+                # 过期的 L1 不删除，只是默认不再召回；显式 tier=L1 仍可看
                 continue
             if subject and subj != subject:
                 continue
