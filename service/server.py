@@ -3007,7 +3007,7 @@ class Handler(BaseHTTPRequestHandler):
             if status not in ("open", "closed"):
                 status = "open"
             ev_ids, _ = match_evidence(item.get("evidence") or [], source_rows)
-            if not summary or not ev_ids:
+            if not summary:
                 continue
             store.update_thread(int(target["id"]), summary, status, source_ids=ev_ids, last_seen_at=now)
             for lid in l1_ids:
@@ -3028,8 +3028,6 @@ class Handler(BaseHTTPRequestHandler):
             if status not in ("open", "closed"):
                 status = "open"
             ev_ids, ev_status = match_evidence(item.get("evidence") or [], source_rows)
-            if not ev_ids:
-                continue
             mid = store.add(MemoryInput(
                 text=summary,
                 tier="L3",
