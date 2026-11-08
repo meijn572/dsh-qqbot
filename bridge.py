@@ -2094,9 +2094,6 @@ async def proactive_say(dsh: Dsh, onebot: OneBot, kind: str, extra: str = "") ->
     users = CONFIG.get("allowed_users") or []
     if not users:
         return None
-    if not _proactive_allowed():
-        log.info("proactive[%s] 上一条还没回，跳过", kind)
-        return None
     uid = int(users[0])
     chat_key = f"private:{uid}"
     sid = await activity_sid(dsh)
@@ -2106,9 +2103,31 @@ async def proactive_say(dsh: Dsh, onebot: OneBot, kind: str, extra: str = "") ->
     except Exception:  # noqa: BLE001
         persona = ""
     try:
-        recent = (await recent_dialogue_text(12)).strip()
+        data = await cmem_call("GET", "/memories?tier=L0&limit=20")
+        raw_items = (data or {}).get("items") or []
+        raw_items = sorted(
+            [x for x in raw_items if isinstance(x, dict)],
+            key=lambda x: float(x.get("ts") or 0),
+        )[-16:]
+        lines = []
+        last_user_ts = 0.0
+        last_me_ts = 0.0
+        for x in raw_items:
+            text = str(x.get("text") or "").strip()
+            if not text:
+                continue
+            ts = float(x.get("ts") or 0)
+            stamp = time.strftime("%H:%M", time.localtime(ts)) if ts else ""
+            lines.append(f"{stamp} {text}")
+            if text.startswith("主人："):
+                last_user_ts = max(last_user_ts, ts)
+            elif text.startswith("我："):
+                last_me_ts = max(last_me_ts, ts)
+        recent = "\n".join(lines).strip()
     except Exception:  # noqa: BLE001
         recent = ""
+        last_user_ts = 0.0
+        last_me_ts = 0.0
     try:
         state = await cmem_call("GET", "/state")
         relationship = str(((state or {}).get("relationship") or {}).get("summary") or "")
@@ -2145,18 +2164,38 @@ async def proactive_say(dsh: Dsh, onebot: OneBot, kind: str, extra: str = "") ->
             f"    {a.get('detail') or ''}\n"
             f"    想法：{a.get('thought') or '（没写）'}"
         )
+    now = time.time()
+
+    def _ago(ts: float) -> str:
+        if not ts:
+            return "不知道"
+        mins = max(0, int((now - ts) / 60))
+        if mins < 60:
+            return f"{mins} 分钟前"
+        return f"{mins // 60} 小时 {mins % 60} 分钟前"
+
+    last_outgoing = "你上一条主动说之后，主人还没回。" if last_me_ts > last_user_ts else "最近是主人在说，或者你已经回过。"
     prompt_text = (
         "（内部主动说，不要回复用户，不要调用工具。）\n\n"
         "你是大肥鱼，现在想主动找主人说句话。\n\n"
+        "【时间】\n"
+        f"现在是 {time.strftime('%H:%M', time.localtime(now))}。\n"
+        f"主人最后一条消息：{_ago(last_user_ts)}\n"
+        f"你最后一条消息：{_ago(last_me_ts)}\n"
+        f"{last_outgoing}\n\n"
         "【你是谁】\n" + (persona or "（人格为空）") + "\n\n"
         "【我们现在的关系】\n" + (relationship or "（还没复盘）") + "\n\n"
-        "【最近你们聊过】\n" + (recent or "（最近没聊）") + "\n\n"
+        "【最近你们聊过（带时间）】\n" + (recent or "（最近没聊）") + "\n\n"
         "【最近发生的事 / 相关旧事】\n" + (memories or "（没有）") + "\n\n"
         "【最近可以说的】\n" + ("\n".join(act_lines) if act_lines else "（没有）") + "\n\n"
         "规则：\n"
-        "- 最近 L0 里如果有你刚主动说过的话：别重复；主人已经回了就自然接着聊；没回就不要追问。\n"
+        "- 时间是重要信息，自己判断现在开口合不合适。\n"
+        "- 刚发完不久可以等；隔了很久可以关心、问一句，或者犯个欠。\n"
+        "- 也可以不追问，换个话题，或者只说说你自己。\n"
+        "- 怎么开口、开不开口，由你判断，不要机械地连续追问。\n"
+        "- 最近 L0 里有你刚主动说过的话，别重复。\n"
         "- 像人一样主动开口，不是汇报记忆。\n"
-        "- 可以从 activity 里挑一条自然地说，也可以不提 activity，说自己的念头。\n"
+        "- 可以从 activity 里挑一条自然地说，也可以不提 activity。\n"
         "- 可以接最近聊过的话题，但不要逐句复述。\n"
         "- 不要一次讲很多件事，最多一个主题。\n"
         "- 不要逐字复述 L1/L3，像自己想起来一样。\n"
@@ -2201,7 +2240,6 @@ async def proactive_say(dsh: Dsh, onebot: OneBot, kind: str, extra: str = "") ->
                 await cmem_call("POST", "/activity/shared", {"id": activity_id})
             except Exception:  # noqa: BLE001
                 pass
-    _save_proactive_sent(text)
     log.info("proactive[%s] 已发送: %s", kind, text[:160])
     return text
     return text
@@ -2242,32 +2280,6 @@ def save_proactive_next(next_at: float) -> None:
     data["next_at"] = int(next_at)
     try:
         PROACTIVE_STATE_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    except Exception:  # noqa: BLE001
-        pass
-
-
-def _proactive_allowed() -> bool:
-    """上一条主动说没人回，就全部停。"""
-    state = load_proactive_state()
-    if not state.get("awaiting_reply"):
-        return True
-    last_sent = float(state.get("last_sent") or 0)
-    if float(LAST_INBOUND.get(OWNER_CHAT_KEY, 0) or 0) > last_sent:
-        state["awaiting_reply"] = 0
-        try:
-            PROACTIVE_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
-        except Exception:  # noqa: BLE001
-            pass
-        return True
-    return False
-
-
-def _save_proactive_sent(text: str) -> None:
-    state = load_proactive_state()
-    state["last_sent"] = time.time()
-    state["awaiting_reply"] = 1
-    try:
-        PROACTIVE_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
     except Exception:  # noqa: BLE001
         pass
 
