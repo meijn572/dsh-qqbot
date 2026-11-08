@@ -38,6 +38,7 @@
 ### 1.5 对话与表达
 
 - [对话预检](conversation-preflight.md)
+- [主动说](proactive.md)
 - [小本子](notebook.md)
 - [表情包系统](stickers.md)
 - [表情元数据与离线复盘](sticker-metadata.md)
