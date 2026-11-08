@@ -21,6 +21,7 @@
 
 - [记忆分层](memory-layers.md)
 - [提取规则](extraction-rules.md)
+- [复盘与合并](reviews.md)
 - [模型层自然语言原则](model-facing-language.md)
 
 ### 1.3 人格
