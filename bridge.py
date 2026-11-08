@@ -97,6 +97,7 @@ from qqbot.domains.group.slang import (
 )
 from qqbot.domains.qzone import publish as qzone_publish
 from qqbot.domains.group import proactive as group_proactive
+from qqbot.domains.group import lexicon as lexicon_store
 from qqbot.domains.autonomy.state import (
     AUT_REPORT_DIR,
     autonomy_cfg,
@@ -754,6 +755,145 @@ async def group_slang_loop(dsh: Dsh) -> None:
                     state_path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
         except Exception as exc:  # noqa: BLE001
             log.warning("group_slang_loop err: %s", exc)
+        await asyncio.sleep(1800)
+
+
+LEXICON_REVIEW_STATE = DSH_HOME / "persona-roles" / "state" / "lexicon-review.json"
+
+
+async def review_lexicon(dsh: Dsh) -> bool:
+    """每天一次：从最近 L0 里找旧词新解和新词，写入统一词库。"""
+    data = await cmem_call("GET", "/memories?tier=L0&limit=200")
+    items = (data or {}).get("items") or []
+    since = time.time() - 86400
+    rows = [x for x in items if float(x.get("ts") or 0) >= since]
+    if not rows:
+        log.info("词库复盘：最近 24h 没有 L0")
+        return False
+    text = "\n\n".join(str(x.get("text") or "") for x in rows)[-12000:]
+    entries = lexicon_store.list_entries()
+    hits = []
+    for entry in entries:
+        names = [str(entry.get("term") or "")] + [str(a) for a in (entry.get("aliases") or [])]
+        if any(n and n in text for n in names):
+            hits.append(
+                f"- {entry.get('term')}（{entry.get('kind')}）：{entry.get('meaning') or '（无解释）'}"
+            )
+        if len(hits) >= 8:
+            break
+    prompt = (
+        "（内部词库维护，不要回复用户，不要调用工具。）\n"
+        "下面是最近 24 小时的私聊原文。\n\n"
+        + text
+        + "\n\n【本段命中的旧词】\n"
+        + ("\n".join(hits) if hits else "（没有）")
+        + "\n\n请判断两件事：\n"
+        "1. 对旧词有没有新的理解、修正或更具体的用法？没有就空。\n"
+        "2. 有没有出现新的梗/黑话/热词/缩写/角色称呼？没有就空。\n"
+        "规则：\n"
+        "- 只写这段里真的出现过的词。\n"
+        "- 新词必须有明确 meaning，拿不准就不写。\n"
+        "- 旧词没有新理解就不要为了有输出硬改。\n"
+        "- 普通词、语气词、地名、游戏名不算。\n"
+        "- 最多 2 个新词，最多 2 个更新。\n"
+        "只输出 JSON：\n"
+        '{"updates":[{"term":"旧词","meaning":"新的解释","example":"原话"}],'
+        '"new":[{"term":"新词","meaning":"解释","kind":"meme","aliases":[],"example":"原话"}]}'
+    )
+    reply = await maintenance_turn(dsh, OWNER_CHAT_KEY, prompt)
+    match = re.search(r"\{.*\}", reply or "", re.S)
+    if not match:
+        log.info("词库复盘：没有拿到 JSON")
+        return False
+    try:
+        parsed = json.loads(match.group(0))
+    except Exception:  # noqa: BLE001
+        log.info("词库复盘：JSON 解析失败")
+        return False
+
+    def _kind(value):
+        value = str(value or "meme")
+        return value if value in lexicon_store.KINDS else "meme"
+
+    def _aliases(value):
+        if isinstance(value, list):
+            return [str(x).strip() for x in value if str(x).strip()]
+        return [x.strip() for x in str(value or "").split(",") if x.strip()]
+
+    def _find_entry(term: str):
+        for entry in entries:
+            names = [str(entry.get("term") or "")] + [str(a) for a in (entry.get("aliases") or [])]
+            if term in names:
+                return entry
+        return None
+
+    changed = 0
+    for item in parsed.get("updates") or []:
+        if not isinstance(item, dict):
+            continue
+        term = str(item.get("term") or "").strip()
+        meaning = str(item.get("meaning") or "").strip()
+        if not term or not meaning:
+            continue
+        existing = _find_entry(term)
+        canonical = str((existing or {}).get("term") or term)
+        lexicon_store.upsert_entry(
+            canonical, kind=_kind(existing.get("kind") if existing else "meme"),
+            scope=str((existing or {}).get("scope") or "global"),
+            status=str((existing or {}).get("status") or "stable"),
+            meaning=meaning,
+            aliases=_aliases(item.get("aliases")),
+            examples=[str(item.get("example"))] if item.get("example") else [],
+            source="daily-review",
+        )
+        changed += 1
+    for item in parsed.get("new") or []:
+        if not isinstance(item, dict):
+            continue
+        term = str(item.get("term") or "").strip()
+        meaning = str(item.get("meaning") or "").strip()
+        if not term or not meaning:
+            continue
+        if _find_entry(term):
+            continue
+        lexicon_store.upsert_entry(
+            term, kind=_kind(item.get("kind")), scope="global", status="fresh",
+            meaning=meaning, aliases=_aliases(item.get("aliases")),
+            examples=[str(item.get("example"))] if item.get("example") else [],
+            source="daily-review",
+        )
+        changed += 1
+    if changed:
+        log.info("词库复盘：更新 %s 条", changed)
+    return bool(changed)
+
+
+async def lexicon_review_loop(dsh: Dsh) -> None:
+    await asyncio.sleep(180)
+    while True:
+        try:
+            cfg = {"enabled": True}
+            cfg.update(CONFIG.get("lexicon_review") or {})
+            if not cfg.get("enabled", True):
+                await asyncio.sleep(1800)
+                continue
+            if is_review_hour():
+                state = {}
+                if LEXICON_REVIEW_STATE.exists():
+                    try:
+                        state = json.loads(LEXICON_REVIEW_STATE.read_text(encoding="utf-8"))
+                    except Exception:  # noqa: BLE001
+                        state = {}
+                today = time.strftime("%Y-%m-%d")
+                if state.get("date") != today:
+                    ok = await review_lexicon(dsh)
+                    if ok or state.get("attempt_date") != today:
+                        state["date"] = today
+                        state["attempt_date"] = today
+                        LEXICON_REVIEW_STATE.parent.mkdir(parents=True, exist_ok=True)
+                        LEXICON_REVIEW_STATE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001
+            log.warning("lexicon_review_loop err: %s", exc)
         await asyncio.sleep(1800)
 
 
@@ -2478,6 +2618,7 @@ async def run() -> None:
     asyncio.create_task(observation_archive_loop())
     asyncio.create_task(growth_diary.loop(CONFIG.get("diary") or {}))
     asyncio.create_task(group_slang_loop(dsh))
+    asyncio.create_task(lexicon_review_loop(dsh))
     asyncio.create_task(report_watch(dsh, onebot))
     asyncio.create_task(session_watch(dsh, onebot))
     asyncio.create_task(sticker_review_loop(dsh))
