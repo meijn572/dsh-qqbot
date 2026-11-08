@@ -28,8 +28,8 @@ L3：标题支持模糊匹配
 词库：只剩 learn_word 一个写工具，同时写 slang + lexicon
 词库自动流程：07:00 每日词库复盘已接；群黑话 22:00 仍关闭
 复盘合并：不合并；只新增词库复盘
-主动说：设计稿统一到 proactive（完整人格 + L0/L1/L3 + activity）
-B站：autonomy 只负责看，分享由 proactive 决定（未实现）
+主动说：已统一到 proactive（完整人格 + L0/L1/L3 + activity）
+B站：autonomy 只负责看，分享由 proactive 决定（已接）
 关系系统：v3 已上线（L3 文本影响 + 模型自由写关系，无固定阶段）
 短时偏好：明说→L1，推断→L2，长期→画像；L2 第一版已接
 L2：字段/生成/confirmed 升 L1/面板已接

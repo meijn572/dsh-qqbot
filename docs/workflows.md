@@ -698,59 +698,38 @@ plugin client.profile()
 
 工具来自 `dsh-bili-scroll` 和 `dsh-bili-watch`，不是本仓库实现。
 
-### 6.4 判断分享
+### 6.4 B 站只记录，不分享
 
-同一轮再问一次：
+autonomy 不再自己发消息。
 
-- 要不要说
-- `why_now`
-- `line`
-- `links`
-
-不分享就只留记录。
-
-### 6.4.1 一条没回就不再发
-
-默认：
+它只：
 
 ```text
-发出一条 B 站分享
-→ 主人没回
-→ 后续不再发
-→ 也不再攒
+看视频
+写 activity（shared=0）
+更新兴趣
+写日报
 ```
 
-主人回消息后：
+分享统一由 proactive 处理：
 
 ```text
-unanswered_shares 归零
-→ 下一轮重新判断要不要发
-→ 不补发之前攒的
+读未分享 activity
+模型决定挑一条 / 说别的 / 不说
+说了才 mark shared=1
 ```
 
-正常新分享仍要主人空闲 `share_min_idle_minutes`（默认 20 分钟），否则先攒着，避免打断正在聊的话题；这个 pending 只用于“主人正在聊”，不用于“没回”。
+详见 [主动说](proactive.md)。
 
-配置：
+### 6.4.1 分享频率
 
 ```text
-bili_autonomy.max_unanswered_shares   # 默认 1
-bili_autonomy.share_max_per_day       # 0 = 不限
-bili_autonomy.pending_share_max       # 默认 5
-bili_autonomy.deferred_share_hours    # 默认 6
-bili_autonomy.deferred_min_idle_minutes # 默认 30
-bili_autonomy.share_min_idle_minutes   # 默认 20
+proactive 自己的间隔：25–50 分钟
+静默时段：0–8 点
+一条没回 → 后续主动说全部停
 ```
 
-效果：
-
-```text
-8:00 发一条 → 没回
-8:25 想发 → 跳过，不攒
-8:50 想发 → 跳过，不攒
-...
-11:00 主人回消息
-11:30 之后 → 重新判断，可以发下一条
-```
+B 站不再有独立的分享条数和 pending_shares。
 
 ### 6.4.2 主动发出的话进入上下文
 

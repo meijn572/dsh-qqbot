@@ -2543,12 +2543,24 @@ class Handler(BaseHTTPRequestHandler):
         """记一条活动日志（她真的做过什么）。"""
         body = self._body()
         with _lock:
-            store.log_activity(
+            mid = store.log_activity(
                 str(body.get("kind") or "other"),
                 str(body.get("detail") or ""),
                 str(body.get("thought") or ""),
             )
-        self._json(200, {"ok": True})
+        self._json(200, {"ok": True, "id": mid})
+
+    def _mark_activity_shared(self) -> None:
+        body = self._body()
+        try:
+            aid = int(body.get("id") or 0)
+        except Exception:
+            aid = 0
+        if not aid:
+            self._json(400, {"ok": False, "error": "id required"})
+            return
+        ok = store.mark_activity_shared(aid)
+        self._json(200 if ok else 404, {"ok": ok, "id": aid})
 
     def _write_diary(self) -> None:
         """写今天的日记：情绪事件 + 对应 L0 + L3 旧记忆 + 少量活动。"""

@@ -6,6 +6,11 @@ def simple_get(path: str, query: dict, store):
     if path == "/stats":
         return {"ok": True, "stats": store.stats()}
     if path == "/activity":
+        unshared = str((query.get("unshared") or ["0"])[0]).lower() in ("1", "true", "yes")
+        if unshared:
+            kind = str((query.get("kind") or ["bili"])[0])
+            limit = int((query.get("limit") or ["5"])[0])
+            return store.unshared_activities(kind=kind, limit=limit)
         date = (query.get("date") or [None])[0] or None
         return store.list_activities(date)
     if path == "/emotion":

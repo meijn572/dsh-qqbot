@@ -132,35 +132,6 @@ async def run_round(deps: Deps) -> dict | None:
             frames_used = 0
         videos = data.get("videos") if isinstance(data.get("videos"), list) else []
         mark_aut_seen([v for v in videos if isinstance(v, dict)], round_topic)
-        scene = await deps.recent_scene(chat_key)
-        video_lines = "\n".join(
-            f"- 《{v.get('title', '')}》" for v in videos[:max_videos] if isinstance(v, dict)
-        ) or "（没有具体视频）"
-        decide_prompt = (
-            "（内部判断，不要回复用户）刚才你看完了这些：\n"
-            f"主题：{round_topic}\n视频：\n{video_lines}\n想法：{thought or '（没写）'}\n\n"
-            f"{scene}\n\n"
-            "现在要跟主人说吗？这一轮也可以什么都不做，刷到的东西可以只自己留着。\n"
-            "如果决定说，先写 why_now：为什么是现在。写不出来，就把 share 设为 false。\n"
-            "只输出 JSON：{\"share\":true或false,\"why_now\":\"为什么现在说\","
-            "\"line\":\"想对主人说的话（share=true 才写；像随口聊天，不要罗列数据）\","
-            "\"links\":[\"值得贴出来时才填 BV 号，通常留空\"]}\n"
-            "不要输出 JSON 以外的内容。"
-        )
-        decision_reply = await deps.internal_turn(sid, chat_key, decide_prompt)
-        decision_match = re.search(r"\{.*\}", decision_reply or "", re.S)
-        decision: dict = {}
-        if decision_match:
-            try:
-                decision = json.loads(decision_match.group(0))
-            except Exception:  # noqa: BLE001
-                decision = {}
-        data["share"] = bool(decision.get("share"))
-        data["why_now"] = str(decision.get("why_now") or "").strip()
-        data["line"] = str(decision.get("line") or "").strip()
-        data["links"] = decision.get("links") if isinstance(decision.get("links"), list) else []
-        if not data["share"]:
-            log.info("自主刷：这轮决定不说（%s）", data.get("why_now") or "没写理由")
     AUT_REPORT_DIR.mkdir(parents=True, exist_ok=True)
     report = AUT_REPORT_DIR / f"{time.strftime('%Y-%m-%d')}.md"
     lines = [f"\n## {time.strftime('%H:%M')} · {round_topic}（{'自由探索' if mode == 'explore' else '兴趣驱动'}）"]
@@ -188,80 +159,9 @@ async def run_round(deps: Deps) -> dict | None:
     recent_topics = list(state.get("recent_topics") or [])
     recent_topics.append(round_topic)
     state["recent_topics"] = recent_topics[-6:]
-    share_line = str(data.get("line") or "").strip()
-    raw_links = data.get("links") if isinstance(data.get("links"), list) else []
-    chosen: list[str] = []
-    for item in raw_links:
-        value = str(item).strip()
-        if not value:
-            continue
-        url = value if value.startswith("http") else f"https://www.bilibili.com/video/{value}"
-        if url not in chosen:
-            chosen.append(url)
-
-    max_unanswered = max(1, int(cfg.get("max_unanswered_shares", 1)))
-    pending = list(state.get("pending_shares") or [])
-    recent_reply = float(state.get("last_user_reply") or 0)
-    idle_minutes = ((time.time() - recent_reply) / 60) if recent_reply else 9999
-    deferred_idle = float(cfg.get("deferred_min_idle_minutes", 30))
-    share_idle = float(cfg.get("share_min_idle_minutes", 20))
-
-    def _under_cap() -> bool:
-        cap = int(cfg.get("share_max_per_day", 0) or 0)
-        return cap <= 0 or int(state.get("shares", 0)) < cap
-
-    deferred_sent = False
-    # 主人刚聊完先不急着补；等对话空下来再发攒下的
-    if (pending
-            and int(state.get("unanswered_shares", 0)) == 0
-            and recent_reply
-            and idle_minutes >= deferred_idle
-            and time.time() - recent_reply <= float(cfg.get("deferred_share_hours", 6)) * 3600
-            and _under_cap()):
-        item = pending.pop(0)
-        text = compose_share_text(str(item.get("line") or ""), item.get("links") or [])
-        if text:
-            await deps.send_private(uid, text)
-            deps.add_l0(chat_key, text)
-            state["pending_shares"] = pending
-            state["unanswered_shares"] = 1
-            deps.last_share[chat_key] = {
-                "topic": item.get("topic") or "",
-                "text": text,
-                "links": item.get("links") or [],
-                "ts": time.time(),
-            }
-            state["shares"] = int(state.get("shares", 0)) + 1
-            deferred_sent = True
-            log.info("自主刷补发攒下的分享：%s", text[:160])
-
-    if data.get("share") and share_line and not deferred_sent and _under_cap():
-        if int(state.get("unanswered_shares", 0)) >= max_unanswered:
-            # 一条没回就不再发；也不继续攒，避免之后一次性倒出来
-            state["pending_shares"] = []
-            log.info("自主刷分享跳过：上一条还没回")
-        elif idle_minutes < share_idle:
-            pending.append({"topic": round_topic, "line": share_line, "links": chosen, "ts": int(time.time())})
-            state["pending_shares"] = pending[-max(1, int(cfg.get("pending_share_max", 5))):]
-            log.info("自主刷分享暂存：主人还在聊，先不打断（空闲 %.0f 分钟）", idle_minutes)
-        else:
-            text = compose_share_text(share_line, chosen)
-            await deps.send_private(uid, text)
-            deps.add_l0(chat_key, text)
-            deps.last_share[chat_key] = {
-                "topic": round_topic,
-                "text": text,
-                "links": chosen,
-                "ts": time.time(),
-            }
-            state["unanswered_shares"] = int(state.get("unanswered_shares", 0)) + 1
-            state["shares"] = int(state.get("shares", 0)) + 1
-            log.info("自主刷分享：%s", text[:160])
     save_aut_state(state)
     titles = "、".join(f"《{v.get('title')}》" for v in videos[:3] if isinstance(v, dict) and v.get("title"))
     deps.log_activity("bili", f"刷了「{round_topic}」{titles}", thought)
-    if thought:
-        deps.add_event(f"事件：{time.strftime('%m-%d %H:%M')} 刷到「{round_topic}」{titles}；想法：{thought[:100]}")
     log.info("自主刷完成：%s（%s 条视频，%s 帧）", round_topic, len(videos), frames_used)
     return data
 

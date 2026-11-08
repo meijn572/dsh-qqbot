@@ -314,7 +314,9 @@ class MemoryStore:
                        ("game_plays", "INTEGER DEFAULT 0"),
                        ("chat_since_wake", "INTEGER DEFAULT 0"),
                        ("interaction_count", "REAL DEFAULT 0")]),
-            ("activity_log", [("thought", "TEXT DEFAULT ''")]),
+            ("activity_log", [("thought", "TEXT DEFAULT ''"),
+                              ("shared", "INTEGER DEFAULT 0"),
+                              ("shared_at", "REAL DEFAULT NULL")]),
             ("slang", [("meaning", "TEXT DEFAULT ''"),
                        ("example", "TEXT DEFAULT ''"),
                        ("source", "TEXT DEFAULT 'chat'"),
@@ -1466,16 +1468,17 @@ class MemoryStore:
         except Exception:
             return False
 
-    def log_activity(self, kind: str, detail: str = "", thought: str = "") -> None:
+    def log_activity(self, kind: str, detail: str = "", thought: str = "") -> int | None:
         """记一条活动。thought = 她当时的想法（可以空）。"""
         try:
-            self.conn.execute(
+            cur = self.conn.execute(
                 "INSERT INTO activity_log(ts, kind, detail, thought) VALUES (?,?,?,?)",
                 (time.time(), str(kind), str(detail)[:300], str(thought)[:600]),
             )
             self.conn.commit()
+            return int(cur.lastrowid)
         except Exception:
-            pass
+            return None
 
     def list_activities(self, date: str | None = None, limit: int = 100) -> list[dict]:
         if date:
@@ -1487,16 +1490,42 @@ class MemoryStore:
             start = _dt.datetime.combine(day, _dt.time.min).timestamp()
             end = start + 86400
             rows = self.conn.execute(
-                "SELECT ts, kind, detail, thought FROM activity_log WHERE ts >= ? AND ts < ? ORDER BY ts DESC LIMIT ?",
+                "SELECT id,ts,kind,detail,thought,shared,shared_at FROM activity_log "
+                "WHERE ts >= ? AND ts < ? ORDER BY ts DESC LIMIT ?",
                 (start, end, max(1, min(int(limit), 500))),
             ).fetchall()
         else:
             rows = self.conn.execute(
-                "SELECT ts, kind, detail, thought FROM activity_log ORDER BY ts DESC LIMIT ?",
+                "SELECT id,ts,kind,detail,thought,shared,shared_at FROM activity_log "
+                "ORDER BY ts DESC LIMIT ?",
                 (max(1, min(int(limit), 500)),),
             ).fetchall()
-        return [{"ts": float(r["ts"]), "kind": r["kind"], "detail": r["detail"],
-                 "thought": (r["thought"] if "thought" in r.keys() else "") or ""} for r in rows]
+        return [{
+            "id": int(r["id"]), "ts": float(r["ts"]), "kind": r["kind"],
+            "detail": r["detail"], "thought": r["thought"] or "",
+            "shared": bool(r["shared"]), "shared_at": r["shared_at"],
+        } for r in rows]
+
+    def unshared_activities(self, kind: str = "bili", limit: int = 5, days: int = 7) -> list[dict]:
+        since = time.time() - max(1, int(days)) * 86400
+        rows = self.conn.execute(
+            "SELECT id,ts,kind,detail,thought FROM activity_log "
+            "WHERE kind=? AND shared=0 AND ts>=? ORDER BY ts DESC LIMIT ?",
+            (str(kind), since, max(1, min(int(limit), 20))),
+        ).fetchall()
+        return [{
+            "id": int(r["id"]), "ts": float(r["ts"]), "kind": r["kind"],
+            "detail": r["detail"], "thought": r["thought"] or "",
+        } for r in rows]
+
+    def mark_activity_shared(self, activity_id: int) -> bool:
+        cur = self.conn.execute(
+            "UPDATE activity_log SET shared=1, shared_at=? WHERE id=? AND shared=0",
+            (time.time(), int(activity_id)),
+        )
+        self.conn.commit()
+        return bool(cur.rowcount)
+
 
 
     # -- 情绪双轴：valence（效价）/ arousal（唤醒度） --------------------------

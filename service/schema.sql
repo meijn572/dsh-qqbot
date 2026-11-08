@@ -188,7 +188,10 @@ CREATE TABLE IF NOT EXISTS activity_log (
   kind       TEXT NOT NULL,
   detail     TEXT NOT NULL DEFAULT '',
   -- 2026-10-27 补：活动列表要显示「当时的想法」
-  thought    TEXT NOT NULL DEFAULT ''
+  thought    TEXT NOT NULL DEFAULT '',
+  -- 2026-11-08：有没有被主动说用过
+  shared     INTEGER NOT NULL DEFAULT 0,
+  shared_at  REAL DEFAULT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_activity_ts ON activity_log(ts);
 

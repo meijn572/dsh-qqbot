@@ -2090,43 +2090,119 @@ def is_skip(reply: str) -> bool:
 
 
 async def proactive_say(dsh: Dsh, onebot: OneBot, kind: str, extra: str = "") -> str | None:
-    """让 DSH 主动说一句；它选择 SKIP 就不发。"""
+    """统一主动说：带人格、关系、最近 L0/L3/相关 L1、未分享 activity。"""
     users = CONFIG.get("allowed_users") or []
     if not users:
+        return None
+    if not _proactive_allowed():
+        log.info("proactive[%s] 上一条还没回，跳过", kind)
         return None
     uid = int(users[0])
     chat_key = f"private:{uid}"
     sid = await activity_sid(dsh)
+
     try:
-        recent = (await recent_dialogue_text(8)).strip()
+        persona = (await full_persona_text()).strip()
+    except Exception:  # noqa: BLE001
+        persona = ""
+    try:
+        recent = (await recent_dialogue_text(12)).strip()
     except Exception:  # noqa: BLE001
         recent = ""
-    context = f"\n\n最近你们聊过（只作参考，不要逐句复述）：\n{recent[:1200]}" if recent else ""
-    if kind == "spontaneous":
-        prompt_text = SPONTANEOUS_PROMPT + context
-    else:
-        prompt_text = (
-            f"（你刚刷完 B 站，今天的报告在 {extra}。如果里面有感兴趣、想跟我分享的，"
-            "就说一两句话；没有就只回复 SKIP，不要发别的。）" + context
+    try:
+        state = await cmem_call("GET", "/state")
+        relationship = str(((state or {}).get("relationship") or {}).get("summary") or "")
+    except Exception:  # noqa: BLE001
+        relationship = ""
+    try:
+        acts = await cmem_call("GET", "/activity?unshared=1&kind=bili&limit=5")
+    except Exception:  # noqa: BLE001
+        acts = []
+    if isinstance(acts, dict):
+        acts = acts.get("items") or []
+    acts = [x for x in (acts or []) if isinstance(x, dict)]
+
+    act_bits = []
+    for a in acts:
+        act_bits.append(f"{a.get('detail') or ''}\n想法：{a.get('thought') or ''}")
+    query = "\n".join([recent[-1200:]] + act_bits)[-3000:]
+    try:
+        ctx = await cmem_call("POST", "/context", {
+            "query": query,
+            "tiers": ["L1", "L3"],
+            "limits": {"L1": 12, "L3": 8},
+            "purpose": "proactive",
+            "max_chars": 6000,
+        })
+        memories = str((ctx or {}).get("text") or "")
+    except Exception:  # noqa: BLE001
+        memories = ""
+
+    act_lines = []
+    for i, a in enumerate(acts, 1):
+        act_lines.append(
+            f"[{i}] {time.strftime('%m-%d %H:%M', time.localtime(float(a.get('ts') or 0)))}\n"
+            f"    {a.get('detail') or ''}\n"
+            f"    想法：{a.get('thought') or '（没写）'}"
         )
+    prompt_text = (
+        "（内部主动说，不要回复用户，不要调用工具。）\n\n"
+        "你是大肥鱼，现在想主动找主人说句话。\n\n"
+        "【你是谁】\n" + (persona or "（人格为空）") + "\n\n"
+        "【我们现在的关系】\n" + (relationship or "（还没复盘）") + "\n\n"
+        "【最近你们聊过】\n" + (recent or "（最近没聊）") + "\n\n"
+        "【最近发生的事 / 相关旧事】\n" + (memories or "（没有）") + "\n\n"
+        "【最近可以说的】\n" + ("\n".join(act_lines) if act_lines else "（没有）") + "\n\n"
+        "规则：\n"
+        "- 像人一样主动开口，不是汇报记忆。\n"
+        "- 可以从 activity 里挑一条自然地说，也可以不提 activity，说自己的念头。\n"
+        "- 可以接最近聊过的话题，但不要逐句复述。\n"
+        "- 不要一次讲很多件事，最多一个主题。\n"
+        "- 不要逐字复述 L1/L3，像自己想起来一样。\n"
+        "- 不要为了用记忆而硬提旧事。\n"
+        "- 真没什么想说的，text 留空，activity_id 填 null。\n\n"
+        "只输出 JSON：\n"
+        '{"text":"想对主人说的话","activity_id":1或null}'
+    )
     async with ACTIVITY_LOCK:
         try:
             reply = await ask(dsh, sid, prompt_text)
         except Exception as exc:  # noqa: BLE001
             log.warning("proactive[%s] 失败: %s", kind, exc)
             return None
-    if is_skip(reply):
-        log.info("proactive[%s] 本鱼这次没话说，跳过", kind)
-        return None
-    text = strip_skip_lines(reply)
+
+    text = ""
+    activity_id = None
+    match = re.search(r"\{.*\}", reply or "", re.S)
+    if match:
+        try:
+            data = json.loads(match.group(0))
+            text = str(data.get("text") or "").strip()
+            try:
+                activity_id = int(data.get("activity_id")) if data.get("activity_id") is not None else None
+            except Exception:
+                activity_id = None
+        except Exception:  # noqa: BLE001
+            text = ""
+    if not text and not match:
+        text = strip_skip_lines(reply)
     if not text:
-        log.info("proactive[%s] 清洗后为空，跳过", kind)
+        log.info("proactive[%s] 本鱼这次没话说，跳过", kind)
         return None
     if len(text) > 800:
         text = text[:800] + "……"
     await onebot.send("private", uid, text)
     add_l0_message(f"private:{uid}", text)
+    if activity_id:
+        valid = {int(a.get("id")) for a in acts if a.get("id")}
+        if activity_id in valid:
+            try:
+                await cmem_call("POST", "/activity/shared", {"id": activity_id})
+            except Exception:  # noqa: BLE001
+                pass
+    _save_proactive_sent(text)
     log.info("proactive[%s] 已发送: %s", kind, text[:160])
+    return text
     return text
 
 
@@ -2148,17 +2224,50 @@ def in_quiet(now_hour: int) -> bool:
 PROACTIVE_STATE_FILE = DSH_HOME / "proactive-state.json"
 
 
-def load_proactive_next() -> float:
+def load_proactive_state() -> dict:
     try:
         data = json.loads(PROACTIVE_STATE_FILE.read_text(encoding="utf-8"))
-        return float(data.get("next_at") or 0)
+        return data if isinstance(data, dict) else {}
     except Exception:  # noqa: BLE001
-        return 0.0
+        return {}
+
+
+def load_proactive_next() -> float:
+    return float(load_proactive_state().get("next_at") or 0)
 
 
 def save_proactive_next(next_at: float) -> None:
+    data = load_proactive_state()
+    data["next_at"] = int(next_at)
     try:
-        PROACTIVE_STATE_FILE.write_text(json.dumps({"next_at": int(next_at)}, ensure_ascii=False), encoding="utf-8")
+        PROACTIVE_STATE_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _proactive_allowed() -> bool:
+    """上一条主动说没人回，就全部停。"""
+    state = load_proactive_state()
+    if not state.get("awaiting_reply"):
+        return True
+    last_sent = float(state.get("last_sent") or 0)
+    if float(LAST_INBOUND.get(OWNER_CHAT_KEY, 0) or 0) > last_sent:
+        state["awaiting_reply"] = 0
+        try:
+            PROACTIVE_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            pass
+        return True
+    return False
+
+
+def _save_proactive_sent(text: str) -> None:
+    state = load_proactive_state()
+    state["last_sent"] = time.time()
+    state["awaiting_reply"] = 1
+    state["last_text"] = str(text or "")[:300]
+    try:
+        PROACTIVE_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
     except Exception:  # noqa: BLE001
         pass
 

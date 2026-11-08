@@ -48,6 +48,7 @@ POST_ROUTES = {
     "/tasks/complete": "_complete_task",
     "/notes": "_post_note",
     "/activity": "_log_activity",
+    "/activity/shared": "_mark_activity_shared",
     "/diary": "_write_diary",
     "/evolve": "_evolve",
     "/episode": "_episode",
