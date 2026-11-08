@@ -2154,6 +2154,7 @@ async def proactive_say(dsh: Dsh, onebot: OneBot, kind: str, extra: str = "") ->
         "【最近发生的事 / 相关旧事】\n" + (memories or "（没有）") + "\n\n"
         "【最近可以说的】\n" + ("\n".join(act_lines) if act_lines else "（没有）") + "\n\n"
         "规则：\n"
+        "- 最近 L0 里如果有你刚主动说过的话：别重复；主人已经回了就自然接着聊；没回就不要追问。\n"
         "- 像人一样主动开口，不是汇报记忆。\n"
         "- 可以从 activity 里挑一条自然地说，也可以不提 activity，说自己的念头。\n"
         "- 可以接最近聊过的话题，但不要逐句复述。\n"
@@ -2265,7 +2266,6 @@ def _save_proactive_sent(text: str) -> None:
     state = load_proactive_state()
     state["last_sent"] = time.time()
     state["awaiting_reply"] = 1
-    state["last_text"] = str(text or "")[:300]
     try:
         PROACTIVE_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
     except Exception:  # noqa: BLE001
