@@ -709,27 +709,32 @@ plugin client.profile()
 
 不分享就只留记录。
 
-### 6.4.1 连续分享没人回
+### 6.4.1 一条没回就不再发
 
-默认连续分享 2 条主人都不回：
+默认：
 
-- 不再继续发
-- 后续想分享的内容写进 `state.json` 的 `pending_shares`
-- 最多攒 5 条
+```text
+发出一条 B 站分享
+→ 主人没回
+→ 后续不再发
+→ 也不再攒
+```
 
 主人回消息后：
 
-- `unanswered_shares` 归零
-- 不立刻补发
-- 等主人空闲 `deferred_min_idle_minutes`（默认 30 分钟）后的下一轮，再补一条攒下的分享
-- 补发也计入当天分享数
+```text
+unanswered_shares 归零
+→ 下一轮重新判断要不要发
+→ 不补发之前攒的
+```
 
-正常新分享也要主人空闲 `share_min_idle_minutes`（默认 20 分钟），否则先攒着，避免打断正在聊的话题。
+正常新分享仍要主人空闲 `share_min_idle_minutes`（默认 20 分钟），否则先攒着，避免打断正在聊的话题；这个 pending 只用于“主人正在聊”，不用于“没回”。
 
 配置：
 
-```
-bili_autonomy.max_unanswered_shares   # 默认 2
+```text
+bili_autonomy.max_unanswered_shares   # 默认 1
+bili_autonomy.share_max_per_day       # 0 = 不限
 bili_autonomy.pending_share_max       # 默认 5
 bili_autonomy.deferred_share_hours    # 默认 6
 bili_autonomy.deferred_min_idle_minutes # 默认 30
@@ -738,14 +743,13 @@ bili_autonomy.share_min_idle_minutes   # 默认 20
 
 效果：
 
-```
+```text
 8:00 发一条 → 没回
-8:25 发一条 → 没回
-8:50 想发 → 攒着，不发了
+8:25 想发 → 跳过，不攒
+8:50 想发 → 跳过，不攒
 ...
 11:00 主人回消息
-11:05 想补发 → 主人才刚回，先不补
-11:30 之后 → 补一条
+11:30 之后 → 重新判断，可以发下一条
 ```
 
 ### 6.4.2 主动发出的话进入上下文
