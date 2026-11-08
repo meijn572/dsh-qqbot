@@ -90,8 +90,6 @@ class Scheduler:
 
         if self._tick_wake(st, now):
             changed = True
-        if self._tick_bili(st, now):
-            changed = True
         if self._tick_diary(st, now):
             changed = True
         if self._tick_evolve(st, now):
@@ -194,10 +192,8 @@ class Scheduler:
     def _pick_actions(self, mode: str, n: int = 1) -> list:
         """从配置里抽 n 条动作。
 
-        过滤掉「刷 B 站」这类动作：B 站有自己独立的节奏（_tick_bili），
-        受 biliBrowsePerDay 限制。唤醒动作里再抽一次就会重复刷 ——
-        今天 08:00 和 08:01 隔一分钟刷了两回，一天刷到 8 次远超上限 3 次，
-        API 读取量翻倍，直接撞上 B站的 IP 级 412。
+        过滤掉「刷 B 站」这类动作：B 站只走 autonomy 的独立节奏。
+        唤醒动作里再抽一次就会重复刷，导致 API 读取翻倍、撞 B站 412。
         """
         """抽 n 条动作给她选（不重复）。"""
         try:
@@ -211,10 +207,8 @@ class Scheduler:
                 if isinstance(a, dict):
                     if a.get("enabled", True):
                         txt = str(a.get("text") or "").strip()
-                        # 「刷B站」类动作排除掉：B站有独立节奏（_tick_bili，受
-                        # biliBrowsePerDay 限制）。这里再抽一次就会重复刷 ——
-                        # 今天 08:00 和 08:01 隔一分钟刷两回，一天刷到 8 次，
-                        # API 读取翻倍，直接撞上 B站的 IP 级 412。
+                        # 「刷B站」类动作排除掉：B站只走 autonomy 的独立节奏。
+                        # 这里再抽一次就会重复刷，API 读取翻倍，撞 B站 412。
                         if txt and "bili_feed" not in txt:
                             texts.append(txt)
                 elif isinstance(a, str) and a.strip() and "bili_feed" not in a:
@@ -229,57 +223,6 @@ class Scheduler:
             return ["随便待会儿"]
 
     # ---------- 2. B 站 ----------
-    def _tick_bili(self, st: dict, now: float) -> bool:
-        cfg = self._proactive_cfg()
-        if not cfg.get("biliBrowseEnabled", True):
-            return False
-
-        hour = datetime.datetime.now().hour
-        if hour < 8 or hour >= 23:
-            return False
-
-        per_day = int(cfg.get("biliBrowsePerDay", 3))
-        count = int(st.get("bili_count", 0))
-        if per_day <= 0 or count >= per_day:
-            return False
-
-        min_gap = max(5, int(cfg.get("biliMinGapMinutes", 60)))
-        max_gap = max(min_gap, int(cfg.get("biliMaxGapMinutes", 240)))
-
-        last = float(st.get("bili_last", 0))
-        interval = float(st.get("bili_interval", 0))
-        if interval <= 0:
-            interval = (min_gap + random.randint(0, max_gap - min_gap)) * 60
-            st["bili_interval"] = interval
-            _log(f"bili: next nudge in {int(interval // 60)} min")
-            return True
-        if now - last < interval:
-            return False
-
-        st["bili_last"] = now
-        st["bili_interval"] = 0
-        st["bili_count"] = count + 1
-        # 和唤醒一样的机制，但动作固定为「刷 B 站」
-        hints = []
-        if cfg.get("biliShareToOwner", True):
-            hints.append("看到有意思的，把链接和你的想法发给主人")
-        if cfg.get("biliShareToGroup", False):
-            hints.append("也可以分享到群里")
-        if cfg.get("biliComment", True):
-            hints.append("想评论就评论（bili_run comment）")
-        if cfg.get("biliMentionOwner", True):
-            hints.append("评论或分享时 @主人")
-        hint_text = ("；".join(hints) + "。") if hints else ""
-        msg = (
-            f"（你自己待着，现在是 {hour} 点。"
-            "抽到：刷一会儿 B 站。用 bili_feed 刷，把你的真实想法写进 bili_feed 的 thought 参数。"
-            + hint_text
-            + "想做什么就做，也可以不刷——这只是你自己的时间。）"
-        )
-        self._inject(msg, silent=False)
-        _log(f"bili: nudged model ({count + 1}/{per_day} today)")
-        return True
-
     # ---------- 3. 日记（23 点）----------
     def _tick_diary(self, st: dict, now: float) -> bool:
         today = datetime.date.today().isoformat()
