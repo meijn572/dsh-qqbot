@@ -688,7 +688,7 @@ async def extract_group_slang(dsh: Dsh, gid: str) -> None:
         "表里已有、这次聊天里又出现的，也要列出来（同名，occurrences 填这次出现的次数），用来刷新它的次数和最后出现时间。"
         "如果这次看到了更准确的意思或更好的原话例子，就把 meaning/example 一起更新（名字保持不变）。"
         "只有确实是全新的说法才给新名字。\n"
-        "只输出 JSON 数组："
+        "只返回 JSON 数组："
         '[{"term":"说法","meaning":"大概什么意思","example":"原话例子","occurrences":2}]; 没有就输出 []。不要输出别的。'
     )
     reply = await maintenance_turn(dsh, chat_key, prompt)
@@ -789,14 +789,19 @@ async def review_lexicon(dsh: Dsh) -> bool:
         + ("\n".join(hits) if hits else "（没有）")
         + "\n\n请判断两件事：\n"
         "1. 对旧词有没有新的理解、修正或更具体的用法？没有就空。\n"
-        "2. 有没有出现新的梗/黑话/热词/缩写/角色称呼？没有就空。\n"
-        "规则：\n"
-        "- 只写这段里真的出现过的词。\n"
-        "- 新词必须有明确 meaning，拿不准就不写。\n"
-        "- 旧词没有新理解就不要为了有输出硬改。\n"
-        "- 普通词、语气词、地名、游戏名不算。\n"
-        "- 最多 2 个新词，最多 2 个更新。\n"
-        "只输出 JSON：\n"
+        "2. 有没有出现新的梗/黑话/热词/缩写/角色称呼？没有就空。\n\n"
+        "例子：\n"
+        "旧词新解：\n"
+        "美女潘：群里给本人起的称呼，从「猛男潘」被当场改成「美女潘」，带自嘲和反串的调侃。\n"
+        "这次多了「必须是美女潘啊」这种接自嘲的用法。\n\n"
+        "新词：\n"
+        "奶蛋：黄色圆圆的，跟奶蛙一个系列。\n\n"
+        "只写这段里真的出现过的词。\n"
+        "新词必须有明确 meaning，拿不准就不写。\n"
+        "旧词没有新理解，不要为了有输出硬改。\n"
+        "普通词、语气词、地名、游戏名不算。\n"
+        "最多 2 个新词，最多 2 个更新。\n"
+        "只返回 JSON：\n"
         '{"updates":[{"term":"旧词","meaning":"新的解释","example":"原话"}],'
         '"new":[{"term":"新词","meaning":"解释","kind":"meme","aliases":[],"example":"原话"}]}'
     )
@@ -1238,7 +1243,7 @@ async def review_sticker(dsh: Dsh, rel: str, occurrences: list[dict]) -> bool:
         f"已有语义：{existing}\n"
         "下面是与这张表情相关的原始对话记忆，按时间排列：\n"
         f"{memory}\n\n"
-        "请结合图片和记忆，更新表情语义。只输出 JSON（不要解释）：\n"
+        "请结合图片和记忆，更新表情语义。只返回 JSON（不要解释）：\n"
         '{"changed":true|false,'
         '"label":"2-10字短名，认不出就空",'
         '"category":"happy|angry|sad|confused|surprised|shy|sleep|affection|food|money|greeting|work|entertainment|teasing|reply",'
@@ -2201,7 +2206,7 @@ async def proactive_say(dsh: Dsh, onebot: OneBot, kind: str, extra: str = "") ->
         "- 不要逐字复述 L1/L3，像自己想起来一样。\n"
         "- 不要为了用记忆而硬提旧事。\n"
         "- 真没什么想说的，text 留空，activity_id 填 null。\n\n"
-        "只输出 JSON：\n"
+        "只返回 JSON：\n"
         '{"text":"想对主人说的话","activity_id":1或null}'
     )
     async with ACTIVITY_LOCK:

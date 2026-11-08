@@ -74,7 +74,7 @@ async def run(turn: Turn) -> bool:
         "只判断有没有需要修正核心设定里的「判断」「关系」「约定」。\n"
         "不要改身份、性格、边界；不要直接写核心设定。\n"
         "每条必须有最近对话或长期证据支撑；没有就空数组。\n"
-        '只输出 JSON，不要解释，不要代码块：\n'
+        '只返回 JSON，不要解释，不要代码块：\n'
         '{"judgment":[{"op":"add|modify|remove","text":"新内容","from":"旧内容","reason":"依据"}],'
         '"relationship":[{"op":"add|modify|remove","text":"新内容","from":"旧内容","reason":"依据"}],'
         '"commitment":[{"op":"add","text":"一句约定","reason":"依据"}]}\n'

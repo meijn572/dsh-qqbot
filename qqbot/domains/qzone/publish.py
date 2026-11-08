@@ -65,7 +65,7 @@ async def generate(turn: Turn, interests: list[str]) -> str:
         "限制：10–180 字；纯文字；不带链接、BV号、@、话题；"
         "不写主人、私聊、群、token、记忆系统；不写广告/引流/敏感内容；不要解释。\n"
         "想发就写一条；不想发就只输出 {\"skip\":true}。\n"
-        "只输出 JSON：{\"text\":\"说说正文\"} 或 {\"skip\":true}。"
+        "只返回 JSON：{\"text\":\"说说正文\"} 或 {\"skip\":true}。"
     )
     reply = await turn(prompt)
     match = re.search(r"\{.*\}", reply or "", re.S)

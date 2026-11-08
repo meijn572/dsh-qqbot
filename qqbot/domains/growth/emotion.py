@@ -53,7 +53,7 @@ async def review_turn(turn: Turn, transcript: str, ts_start: float | None = None
         "- valence：-1 很负面，0 中性，1 很正面\n"
         "- arousal：0 很平静，0.5 普通，1 很激动\n"
         "- reason：一句由头\n"
-        '只输出 JSON：{"label":"...","valence":0.0,"arousal":0.5,"reason":"..."} '
+        '只返回 JSON：{"label":"...","valence":0.0,"arousal":0.5,"reason":"..."} '
         '或 {"skip":true}。'
     )
     reply = await turn(prompt)

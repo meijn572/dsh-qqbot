@@ -157,7 +157,7 @@ B 站视频 + 大笑表情 + “代码跑通才算数”
 L4 是以后从 L3 里再挑的。
 现在只判断：这件事会不会被记得久一点。
 
-输出 JSON：
+返回 JSON：
 {
   "updates": [
     {"title": "现有标题", "summary": "更新后的摘要", "status": "open|closed",
@@ -190,25 +190,30 @@ status：
 - 同一话题的多个 source_refs 放进同一条 new，不要拆。
 - 没有要更新的就 "updates": []
 - 没有新事件就 "new": []
-- 只输出 JSON，不要解释。"""
+- 只返回 JSON，不要解释。"""
 
 L2_SYSTEM = VOICE_RULE + """你从这段对话和 L1 事实里，找「没有明说、但可以推断」的短期判断。
 
-只写推断，不写事实：
-- 主人说「最近吃辣胃不舒服」→ L1
-- 他最近可能不太想吃辣 → L2
+只写推断，不写事实。
+事实留在 L1；长期性格、身份、主人一直怎样，都不写。
 
-规则：
-- 最多 3 条，宁可少。
-- 只写最近会变化的事：状态、短期偏好、心情、打算。
-- 不写长期性格，不写身份，不写「主人一直……」。
-- 每条带 confidence（0–1）、expires_in_days（1–30）、source_refs。
-- 没有依据就不写。
+只写最近会变化的事：状态、短期偏好、心情、打算。
 
-输出 JSON 数组：
-[{"text":"他最近可能不太想吃辣","confidence":0.6,"expires_in_days":7,"source_refs":[1]}]
+例子：
+主人：今晚又去客串了朋友的训练赛
+这次是作为他们的对手
+→ {"text":"主人这几天可能还会被叫去客串陪练","confidence":0.6,"expires_in_days":7,"source_refs":[1]}
 
-没有就输出 []。"""
+主人：那支队伍新换上来的中辅
+感觉有点怕背锅
+→ {"text":"主人对那支队伍新中辅的处境有点上心，短期可能还会再提","confidence":0.55,"expires_in_days":14,"source_refs":[1,2]}
+
+最多 3 条，宁可少。没有依据就不写。
+
+只返回 JSON 数组：
+[{"text":"他最近可能……","confidence":0.6,"expires_in_days":7,"source_refs":[1]}]
+
+没有就返回 []。"""
 
 
 L2_REVIEW_SYSTEM = VOICE_RULE + """你复查当前的短期判断（L2）。
@@ -225,7 +230,7 @@ L2_REVIEW_SYSTEM = VOICE_RULE + """你复查当前的短期判断（L2）。
 confirm 的 fact 必须去掉「可能/大概/我猜」，写成明确事实。
 没有证据就 keep，不要硬 confirm。
 
-输出 JSON：
+返回 JSON：
 {"items":[{"ref":1,"action":"confirm|reject|keep","fact":"确认后的确定事实"}]}
 
 不要输出别的。"""
@@ -246,13 +251,13 @@ RELATIONSHIP_REVIEW_SYSTEM = VOICE_RULE + """你复查我和主人的关系状�
 - 写关系站位，不写“你该怎么说话”。
 - evidence_refs 引用上面关系影响的编号，不能编。
 
-输出 JSON：
+返回 JSON：
 {"summary":"一句或几句关系总结","evidence_refs":[1,2]}
 
 没有要改的：
 {"summary":"没有需要改的。","evidence_refs":[]}
 
-只输出 JSON。"""
+只返回 JSON。"""
 
 
 CORE_SYSTEM = VOICE_RULE + """你从已经结束的 L3 里，挑真正改变了“你是谁”或“我们是什么关系”的时刻。
@@ -287,7 +292,7 @@ CORE_SYSTEM = VOICE_RULE + """你从已经结束的 L3 里，挑真正改变了�
 
 最多 0–2 条，宁缺勿滥。
 
-输出 JSON：
+返回 JSON：
 {"items":[{"title":"现有标题","shift":"忘了它，我会……"}]}
 
 没有就 {"items":[]}。
@@ -453,7 +458,7 @@ DECIDE_SYSTEM = VOICE_RULE + """你在管理一个记忆库。下面是「新事
 3. 同一件事换个说法 → NONE
 4. 更具体的新信息 → UPDATE 成更完整的版本
 
-严格输出 JSON 数组：
+严格返回 JSON 数组：
 [{"fact_index": 0, "op": "ADD|UPDATE|DELETE|NONE", "target_id": 123, "text": "合并后的完整文本", "reason": "一句话理由"}]"""
 
 
@@ -472,7 +477,7 @@ EPISODE_SYSTEM = VOICE_RULE + """你把一段连续对话压缩成一条「以�
 - 助手自己说了什么（除非你明显因为那句话改变了语气）
 - 推测出来的东西
 
-输出 JSON：
+返回 JSON：
 {"text": "Markdown 正文", "evidence": ["从对话里逐字抄的 1–3 句"]}
 
 正文要求：
@@ -486,7 +491,7 @@ EPISODE_SYSTEM = VOICE_RULE + """你把一段连续对话压缩成一条「以�
 evidence 要求：
 - 从对话原文里逐字抄，不要改写、不要拼接
 - 选能支撑这条事件记录的 1–3 句
-- 只输出 JSON，不要代码块，不要额外说明"""
+- 只返回 JSON，不要代码块，不要额外说明"""
 
 
 def _is_speculation(text: str) -> bool:
@@ -585,7 +590,7 @@ class Extractor:
             "你是个语言助手。判断用户给的一个词或短语：\n"
             "1) 是什么意思（如果是网络梗/方言/圈内黑话，解释清楚）\n"
             "2) 什么场景下会说出来（给一个具体例句，像真的在聊天）\n"
-            "输出 JSON：{\"meaning\": \"一句话解释\", \"example\": \"例句\"}\n"
+            "返回 JSON：{\"meaning\": \"一句话解释\", \"example\": \"例句\"}\n"
             "如果这个词很普通（如「好的」「吃饭」），meaning 写「常用词，无特殊含义」。"
         )
         try:
@@ -614,7 +619,7 @@ class Extractor:
         ext = _os.path.splitext(path)[1].lstrip(".").lower()
         mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "webp": "webp", "gif": "gif"}.get(ext, "png")
         prompt = (
-            "你看这张表情包。输出 JSON（只输出 JSON）："
+            "你看这张表情包。返回 JSON（只返回 JSON）："
             '{"emotion":"happy|angry|sad|shy|confused|daily","caption":"一句话描述画面（20字内）","keywords":"关键词 空格分隔"}'
         )
         try:
@@ -843,7 +848,7 @@ class Extractor:
             "你从长期记忆里找「真正需要遵守的约定、底线、称呼/相处要求」。\n"
             "只收明确、长期、以后还要照做的；观点、感慨、一次性事件、普通偏好都不要。\n"
             "已经有同类规则的不要重复，只输出新增或需要合并的。\n"
-            '只输出 JSON：{"rules":["..."]}，没有就 {"rules":[]}。'
+            '只返回 JSON：{"rules":["..."]}，没有就 {"rules":[]}。'
         )
         prompt = (
             (f"【身份】\n{context}\n\n" if context else "")

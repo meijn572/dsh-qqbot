@@ -77,11 +77,16 @@ async def check_once(turn: Turn) -> str:
         "回看最近这段相处，判断有没有一件事重要到「以后不能忘」：约定、底线、身份、关系里最关键的事。\n"
         "日常小事、情绪、一次性经历、称呼纠正、角色名这类事实都不算；那些属于普通记忆。\n"
         "没有就跳过，不要为了填而填。\n\n"
+        "例子：\n"
+        "该记：\n"
+        "2026-11-01 凌晨，主人说她在自己这里已经有一块位置、绝对配得上一个名字，她收下了。\n\n"
+        "不该记：\n"
+        "主人说吃饱了喵，我接话说这顿没白等、下午大概又要趴下。\n\n"
         + (persona_text or "（当前人格为空）") + "\n\n"
         f"【已经记下的】\n" + ("\n".join(f"- {x}" for x in current) or "（空）") + "\n\n"
         + recent_block + "\n\n"
         "最多补一条，写一句具体的话，不要写标签。\n"
-        '只输出 JSON：{"item":"..."} 或 {"skip":true}。'
+        '只返回 JSON：{"item":"..."} 或 {"skip":true}。'
     )
     reply = await turn(prompt)
     match = re.search(r"\{.*\}", reply or "", re.S)
