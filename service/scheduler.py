@@ -132,7 +132,11 @@ class Scheduler:
         start = int(cfg.get("startHour", 8))
         end = int(cfg.get("endHour", 23))
         hour = datetime.datetime.now().hour
-        if hour < start or hour >= end:
+        if start <= end:
+            active = start <= hour < end
+        else:
+            active = hour >= start or hour < end
+        if not active:
             return False
 
         min_gap = max(5, int(cfg.get("minGapMinutes", 30)))
