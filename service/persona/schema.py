@@ -24,7 +24,7 @@ PROFILE_TITLES = {
     "boundaries": "边界",
 }
 
-SELF_FORBIDDEN = re.compile(r"(回答时|默认|必须|不要|每次|工具名|主人喜欢|主人是)")
+SELF_FORBIDDEN = re.compile(r"(回答时|默认要|必须|工具名|主人喜欢|主人是)")
 PROFILE_FORBIDDEN = re.compile(r"(回答时|默认|你应该|你应当|口癖|人格设定)")
 
 
