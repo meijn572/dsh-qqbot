@@ -513,6 +513,14 @@ def memory_payload() -> dict:
                 "stale": bool(item.get("stale_at")),
                 "source_count": len(item.get("source_ids") or []),
                 "relationship_impact": str(item.get("relationship_impact") or ""),
+                "insight_text": str(item.get("insight_text") or ""),
+                "insight_kind": str(item.get("insight_kind") or ""),
+                "memorability": item.get("memorability"),
+                "dominant": str(item.get("dominant") or ""),
+                "last_recalled_at": item.get("last_recalled_at") or "",
+                "active_until": item.get("active_until") or "",
+                "recall_count": int(item.get("recall_count") or 0),
+                "stability_days": item.get("stability_days"),
             })
             out["stats"]["tiers"][tier] = out["stats"]["tiers"].get(tier, 0) + 1
             if tier == "L3":
@@ -848,7 +856,23 @@ def bili_feed_payload() -> dict:
             interests = json.loads(AUT_INTERESTS.read_text(encoding="utf-8")) or []
         except Exception:  # noqa: BLE001
             interests = []
-    return {"seen": seen[:40], "notes": notes[:20], "interests": interests[:10], "login": bili_payload()}
+    activities = []
+    data = cmem_get("/activity?kind=bili&limit=50")
+    if isinstance(data, list):
+        for item in data:
+            activities.append({
+                "id": item.get("id"),
+                "time": item.get("ts") or "",
+                "detail": str(item.get("detail") or ""),
+                "summary": str(item.get("summary") or ""),
+                "thought": str(item.get("thought") or ""),
+                "insight": str(item.get("insight") or ""),
+                "insight_kind": str(item.get("insight_kind") or ""),
+                "l3_id": item.get("l3_id"),
+                "shared": bool(item.get("shared")),
+            })
+    return {"seen": seen[:40], "notes": notes[:20], "interests": interests[:10],
+            "activities": activities, "login": bili_payload()}
 
 
 def bili_payload() -> dict:

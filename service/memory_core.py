@@ -406,7 +406,8 @@ class MemoryStore:
         """管理用：列出记忆（按时间倒序），带 tier 过滤和关键词搜索。"""
         sql = ("SELECT id, tier, subject, text, summary, tags, source_ids, source_status, "
                "thread_status, thread_title, thread_aliases, thread_opened_at, thread_last_seen_at, thread_closed_at, "
-               "stale_at, relationship_impact, "
+               "stale_at, relationship_impact, insight_text, insight_kind, source_activity_id, "
+               "memorability, dominant, last_recalled_at, active_until, recall_count, stability_days, "
                "confidence, expires_at, l2_status, promoted_to, ts, half_life_days FROM memory")
         conds = []
         args: list = []
@@ -447,6 +448,15 @@ class MemoryStore:
                 "thread_closed_at": float(r["thread_closed_at"]) if r["thread_closed_at"] else None,
                 "stale_at": float(r["stale_at"]) if r["stale_at"] else None,
                 "relationship_impact": str(r["relationship_impact"] or ""),
+                "insight_text": str(r["insight_text"] or ""),
+                "insight_kind": str(r["insight_kind"] or ""),
+                "source_activity_id": int(r["source_activity_id"]) if r["source_activity_id"] else None,
+                "memorability": float(r["memorability"] or 0.5),
+                "dominant": str(r["dominant"] or ""),
+                "last_recalled_at": float(r["last_recalled_at"]) if r["last_recalled_at"] else None,
+                "active_until": float(r["active_until"]) if r["active_until"] else None,
+                "recall_count": int(r["recall_count"] or 0),
+                "stability_days": float(r["stability_days"]) if r["stability_days"] is not None else None,
                 "confidence": float(r["confidence"]) if r["confidence"] is not None else None,
                 "expires_at": float(r["expires_at"]) if r["expires_at"] is not None else None,
                 "l2_status": str(r["l2_status"] or ""),
@@ -1573,7 +1583,13 @@ class MemoryStore:
         except Exception:
             return None
 
-    def list_activities(self, date: str | None = None, limit: int = 100) -> list[dict]:
+    def list_activities(self, date: str | None = None, limit: int = 100,
+                        kind: str = "") -> list[dict]:
+        where = []
+        args: list = []
+        if kind:
+            where.append("kind=?")
+            args.append(str(kind))
         if date:
             import datetime as _dt
             try:
@@ -1582,17 +1598,14 @@ class MemoryStore:
                 day = _dt.date.today()
             start = _dt.datetime.combine(day, _dt.time.min).timestamp()
             end = start + 86400
-            rows = self.conn.execute(
-                "SELECT id,ts,kind,detail,thought,summary,insight,insight_kind,l3_id,shared,shared_at "
-                "FROM activity_log WHERE ts >= ? AND ts < ? ORDER BY ts DESC LIMIT ?",
-                (start, end, max(1, min(int(limit), 500))),
-            ).fetchall()
-        else:
-            rows = self.conn.execute(
-                "SELECT id,ts,kind,detail,thought,summary,insight,insight_kind,l3_id,shared,shared_at "
-                "FROM activity_log ORDER BY ts DESC LIMIT ?",
-                (max(1, min(int(limit), 500)),),
-            ).fetchall()
+            where.append("ts >= ? AND ts < ?")
+            args.extend([start, end])
+        clause = (" WHERE " + " AND ".join(where)) if where else ""
+        rows = self.conn.execute(
+            "SELECT id,ts,kind,detail,thought,summary,insight,insight_kind,l3_id,shared,shared_at "
+            f"FROM activity_log{clause} ORDER BY ts DESC LIMIT ?",
+            (*args, max(1, min(int(limit), 500))),
+        ).fetchall()
         return [{
             "id": int(r["id"]), "ts": float(r["ts"]), "kind": r["kind"],
             "detail": r["detail"], "thought": r["thought"] or "",

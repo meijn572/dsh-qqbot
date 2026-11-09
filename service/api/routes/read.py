@@ -12,7 +12,9 @@ def simple_get(path: str, query: dict, store):
             limit = int((query.get("limit") or ["5"])[0])
             return store.unshared_activities(kind=kind, limit=limit)
         date = (query.get("date") or [None])[0] or None
-        return store.list_activities(date)
+        kind = str((query.get("kind") or [""])[0])
+        limit = int((query.get("limit") or ["100"])[0])
+        return store.list_activities(date, limit=limit, kind=kind)
     if path == "/bili/insights":
         kind = str((query.get("kind") or [""])[0])
         limit = int((query.get("limit") or ["20"])[0])

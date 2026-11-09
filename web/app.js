@@ -1,4 +1,5 @@
 const $=(s)=>document.querySelector(s);
+const DOMINANT_LABEL={importance:'重要',emotion:'情绪',distinctiveness:'离奇',self_relevance:'自我',relationship:'关系',none:'无'};
 const esc=(s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
 const attr=(s)=>esc(s).replace(/"/g,'&quot;');
 function inlineMd(s){return esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');}
@@ -79,7 +80,9 @@ function renderMem(){
     const src=it.source_count?`<span class="mut">来源 ${it.source_count} 条</span> `:'';
     const rel=it.relationship_impact?`<div class="mut" style="margin-top:3px">关系影响：${esc(it.relationship_impact)}</div>`:'';
     const l2=it.type==='L2'?`<div class="mut" style="margin-top:3px">${it.confidence!=null?`置信 ${(Number(it.confidence)*100).toFixed(0)}%`:''}${it.expires_at?` · 过期 ${new Date(Number(it.expires_at)*1000).toLocaleDateString('zh-CN')}`:''}</div>`:'';
-    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${status} ${stale}${title}<span class="mut">${esc(t)}</span><div style="margin-top:3px">${esc(it.content)}</div>${rel}${l2}<div style="margin-top:3px">${src}</div></div>`;
+    const memo=it.type==='L3'?`<div class="mut" style="margin-top:3px">难忘 ${it.memorability!=null?(Number(it.memorability)*100).toFixed(0)+'%':'—'}${it.dominant?(' · 主导 '+esc(DOMINANT_LABEL[it.dominant]||it.dominant)):''}${it.stability_days?(' · 稳定 '+Math.round(Number(it.stability_days))+' 天'):''}${it.recall_count?(' · 召回 '+it.recall_count+' 次'):''}${it.active_until&&Number(it.active_until)>Date.now()/1000?(' · 活跃至 '+new Date(Number(it.active_until)*1000).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})):''}</div>`:'';
+    const insight=it.insight_text?`<div class="mut" style="margin-top:3px">感悟：${esc(it.insight_text)}</div>`:'';
+    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${status} ${stale}${title}<span class="mut">${esc(t)}</span><div style="margin-top:3px">${esc(it.content)}</div>${memo}${insight}${rel}${l2}<div style="margin-top:3px">${src}</div></div>`;
   }
   const box=document.getElementById('memlist'); if(box) box.innerHTML=h||'<div class="mut">没有匹配的记忆</div>';
 }
@@ -455,6 +458,19 @@ async function load(){
     }
     if(!f.seen.length) h+='<div class="mut">还没有记录</div>';
     h+='</div>';
+    if(f.activities && f.activities.length){
+      h+=`<div class="card"><div class="k">刷完留下的记录（${f.activities.length}）</div>`;
+      for(const a of f.activities){
+        const t=Number(a.time||0)?new Date(Number(a.time)*1000).toLocaleString('zh-CN',{hour12:false}):'';
+        h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:6px"><span class="mut">${esc(t)}</span> <span class="badge ok">B站</span> ${esc(a.detail||'')}`;
+        if(a.summary) h+=`<div class="mut" style="margin-top:3px">讲了什么：${esc(a.summary)}</div>`;
+        if(a.thought) h+=`<div class="mut" style="margin-top:3px">想法：${esc(a.thought)}</div>`;
+        if(a.insight) h+=`<div style="margin-top:3px">感悟${a.insight_kind?`（${esc(a.insight_kind)}）`:''}：${esc(a.insight)}</div>`;
+        if(a.l3_id) h+=`<div class="mut" style="margin-top:3px">已生成 L3 #${a.l3_id}</div>`;
+        h+='</div>';
+      }
+      h+='</div>';
+    }
     h+=`<div class="section-title">刷到并记下的</div>`;
     for(const n of f.notes){
       const parts = n.head.split(' · ');
