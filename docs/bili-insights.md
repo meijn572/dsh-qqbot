@@ -1,6 +1,6 @@
 # B 站视频与复盘感悟
 
-状态：设计稿，未改代码。
+状态：设计稿，未改代码。L3 是否存储还没定。
 
 ## 1. 要解决的问题
 
@@ -24,57 +24,42 @@ activity_log
 风格复盘、自我复盘、关系复盘都看不到
 ```
 
-目标不是把 B 站内容塞进 L3，而是：
+目标：
 
 ```text
-视频内容留在 activity
-真正有感悟的，才进 L3
-复盘按类型精准取 L3
+视频讲了什么 → activity.summary
+看完的一般想法 → activity.thought
+复盘感悟 → activity.insight
+感悟类型 → activity.insight_kind
+L3 要不要再存一份，单独讨论
 ```
 
-## 2. 存储分工
-
-### activity
+## 2. activity
 
 B 站活动本身：
 
 ```text
-detail      刷了「主题」《标题》
-thought     看完的一般想法
-insight_kind 有没有复盘感悟，属于哪类
-l3_id       如果生成了 L3，指向它
+detail        刷了「主题」《标题》
+summary       视频讲了什么，100–200 字
+thought       看完的一般想法，1–3 句
+insight       关于自我/说话/关系的感悟，没有就空
+insight_kind  '' / self / style / relation / 逗号组合
+l3_id         如果以后决定进 L3，指向它；现在可以为 NULL
 ```
 
-activity 不存视频摘要，也不存感悟正文。
-
-### L3
-
-只有“有感悟”的视频才生成 L3。
-
-字段：
-
-```sql
--- 视频讲了什么
-text TEXT
-
--- 感悟正文
-insight_text TEXT DEFAULT ''
-
--- 感悟类型：self / style / relation / 逗号组合
-insight_kind TEXT DEFAULT ''
-
--- 来源 activity
-source_activity_id INTEGER DEFAULT NULL
-```
-
-`text` 和 `insight_text` 分开：
+`summary` 和 `insight` 分开：
 
 ```text
-text          视频讲了什么
-insight_text  我看完之后的感悟
+summary  视频本身讲了什么
+insight  我看完之后的感悟
 ```
 
-这样召回 L3 时，既知道事情，也知道感悟；复盘时只读 `insight_text`。
+`thought` 是中间层：
+
+```text
+thought  看完的第一反应，可以主观
+         但不一定是“关于我”的感悟
+```
 
 ## 3. 三个概念不要混
 
@@ -92,7 +77,7 @@ insight_text  我看完之后的感悟
 看完的第一反应、联想、疑问、反驳
 ```
 
-可以主观，但不一定是“关于我”的感悟。
+可以主观，但不一定值得进复盘。
 
 ### 复盘感悟
 
@@ -100,26 +85,24 @@ insight_text  我看完之后的感悟
 对我自己是谁、我怎么说话、我和主人关系的认识
 ```
 
-只有这一类才进 L3 的 `insight_text`。
+只有这一类进 `insight`。
 
 ## 4. B 站轮次输出
 
-在现有 JSON 里加：
-
 ```json
 {
-  "topic": "五天工作制怎么来的",
+  "topic": "给 AI 调代码",
   "videos": [
-    {"bvid": "BV...", "title": "给工人涨薪，推行双休制……", "why": "想看他怎么算账"}
+    {"bvid": "BV...", "title": "一个插件完成你对鱼的所有幻想", "why": "想看上下文管理"}
   ],
-  "summary": "视频讲了福特如何用五天工作制……",
-  "thought": "最妙的是它顺手给自己造了客户……",
-  "insight": "",
-  "insight_kind": ""
+  "summary": "视频讲一个插件怎么接上下文：重点不是花活，是上下文满了怎么换新窗口、用文件把记忆接回来。",
+  "thought": "跟人睡觉重启一个道理——不是靠一根线不断，是每隔一段把要紧的写下来、再读回去。",
+  "insight": "我不是靠一根线不断地往前走，是每隔一段把要紧的写下来、再读回去。",
+  "insight_kind": "self"
 }
 ```
 
-字段含义：
+字段：
 
 ```text
 summary       视频讲了什么，100–200 字，客观
@@ -146,6 +129,7 @@ insight_kind  '' / self / style / relation / 逗号组合
 1. summary
    视频讲了什么。客观、具体，100–200 字。
    只写视频本身，不写“我觉得”，不写你的评价。
+   如果有多个视频，合成一段，不要逐个罗列。
 
 2. thought
    你看完的第一反应。可以是联想、疑问、反驳、联系到别的事。
@@ -157,7 +141,8 @@ insight_kind  '' / self / style / relation / 逗号组合
    - 对“怎么说更像人、这种表达好在哪里”的观察
    - 对“我和主人关系、怎么相处”的认识
    一句话，第一人称。
-   没有就空字符串，不要硬写，不要写视频摘要。
+   没有就空字符串。
+   不要硬写，不要把视频摘要改写成感悟。
 
 4. insight_kind
    insight 为空 → 空字符串
@@ -167,12 +152,10 @@ insight_kind  '' / self / style / relation / 逗号组合
 例子：
 
 summary:
-视频讲了福特怎么用五天工作制算账：缩短工时不是做慈善，
-而是让工人有时间消费，最后车从代步工具变成生活方式。
+视频讲一个插件怎么接上下文：重点不是花活，是上下文满了怎么换新窗口、用文件把记忆接回来。
 
 thought:
-最妙的是它顺手给自己造了客户。省下来的时间，
-转头变成了自己产品的需求。
+跟人睡觉重启一个道理——不是靠一根线不断，是每隔一段把要紧的写下来、再读回去。
 
 insight:
 我不是靠一根线不断地往前走，是每隔一段把要紧的写下来、再读回去。
@@ -183,10 +166,10 @@ self
 没有感悟时：
 
 summary:
-视频讲了雅多维尔围城战这部电影如何改写历史。
+视频讲《雅多维尔围城战》如何改写历史：把「150 对 3000、零阵亡」的叙事拆开，指出被删掉的瑞典、挪威和伤亡最重的印度部队。
 
 thought:
-原来「150 对 3000、零阵亡」是吹的，被删掉的部队才是重点。
+我上回信了「150 对 3000、零阵亡」，这回才知道数是吹的；更狠的是被删掉的人。
 
 insight:
 
@@ -201,95 +184,166 @@ insight_kind:
 }
 ```
 
-## 6. 写入规则
+## 6. 写入 activity
 
 B 站轮次结束后：
 
 ```text
-写 activity：
+activity_log:
   kind=bili
   detail=刷了「主题」《标题》
+  summary=summary
   thought=thought
+  insight=insight
   insight_kind=insight_kind
   l3_id=NULL
 ```
 
-如果 `insight` 为空：
+没有感悟：
 
 ```text
-结束
-不进 L3
+insight=''
+insight_kind=''
+l3_id=NULL
 ```
 
-如果 `insight` 非空且 `insight_kind` 有效：
+有感悟：
 
 ```text
-创建 L3：
-  text=summary
-  insight_text=insight
-  insight_kind=insight_kind
-  source_activity_id=activity.id
-  tags=["bili-insight", "insight:<kind>"]
-
-activity.l3_id = 新 L3.id
+insight 非空
+insight_kind 有效
+l3_id 先留 NULL，等 L3 方案定
 ```
 
-只生成一条 L3，不按视频条数生成。
+## 7. L3 要不要存：待讨论
 
-## 7. 去重
+### 方案 A：只存 activity
 
 ```text
-activity.l3_id 已有值 → 不再生成
-source_activity_id 已有 L3 → 跳过
-同一轮多个视频 → 合成一条 L3
+activity.summary
+activity.insight
+activity.insight_kind
 ```
 
-不靠标题去重；靠 `source_activity_id`。
+复盘直接查 activity：
+
+```sql
+WHERE kind='bili' AND insight != ''
+```
+
+好处：
+
+```text
+不重复
+activity 本来就有时间和标题
+不用改 L3 schema
+```
+
+坏处：
+
+```text
+activity 是活动层，不是长期记忆层
+L3 清理/衰减后，感悟也跟着没了
+以后想按“事件”而不是“活动”检索，会比较绕
+```
+
+### 方案 B：activity 标记，L3 存一份
+
+activity：
+
+```text
+insight_kind
+l3_id
+```
+
+L3：
+
+```text
+text = summary
+insight_text = insight
+insight_kind
+source_activity_id
+```
+
+好处：
+
+```text
+感悟进入长期记忆层
+复盘可以按 L3 精确取
+activity 仍然轻
+```
+
+坏处：
+
+```text
+summary/insight 在 activity 和 L3 各有一份
+要处理同步和去重
+L3 的语义会混入“视频内容”
+```
+
+### 方案 C：activity 存全量，L3 只存指针
+
+```text
+L3.text = 一句“刷到某个视频，产生了一条 self 感悟”
+L3.source_activity_id = activity.id
+```
+
+好处：
+
+```text
+不重复存正文
+L3 仍然能参与长期检索
+```
+
+坏处：
+
+```text
+读 L3 时还要回查 activity
+activity 被清理后指针就空了
+```
+
+当前不选。先把 activity 存全，L3 等观察一段时间再定。
 
 ## 8. 复盘怎么取
 
-### 自我复盘
+### 现在：从 activity 取
+
+自我复盘：
 
 ```sql
-WHERE insight_kind LIKE '%self%'
-  AND ts >= now - 90 天
+WHERE kind='bili'
+  AND insight_kind LIKE '%self%'
+  AND insight != ''
 ORDER BY ts DESC
 LIMIT 20
 ```
 
-读：
-
-```text
-insight_text
-text（只作上下文）
-```
-
-### 风格复盘
+风格复盘：
 
 ```sql
-WHERE insight_kind LIKE '%style%'
+WHERE kind='bili'
+  AND insight_kind LIKE '%style%'
+  AND insight != ''
 ```
 
-读：
-
-```text
-insight_text
-```
-
-### 关系复盘
+关系复盘：
 
 ```sql
-WHERE insight_kind LIKE '%relation%'
+WHERE kind='bili'
+  AND insight_kind LIKE '%relation%'
+  AND insight != ''
 ```
 
 读：
 
 ```text
-insight_text
-text
+insight
+summary（只作上下文）
 ```
 
-只取有感想的 L3，不翻全部 B 站 activity。
+### 以后如果采用 L3
+
+再改成查 L3 的 `insight_kind`。
 
 ## 9. 例子
 
@@ -297,18 +351,20 @@ text
 
 ```json
 {
-  "summary": "视频讲 AI 上下文满了怎么办：定时换窗口，用文件把记忆接回来。",
-  "thought": "跟人睡觉重启一个道理。",
+  "summary": "视频讲一个插件怎么接上下文：重点不是花活，是上下文满了怎么换新窗口、用文件把记忆接回来。",
+  "thought": "跟人睡觉重启一个道理——不是靠一根线不断，是每隔一段把要紧的写下来、再读回去。",
   "insight": "我不是靠一根线不断地往前走，是每隔一段把要紧的写下来、再读回去。",
   "insight_kind": "self"
 }
 ```
 
-L3：
+activity：
 
 ```text
-text: 刷到《一个插件完成你对鱼的所有幻想》：视频讲 AI 上下文满了怎么办……
-insight_text: 我不是靠一根线不断地往前走，是每隔一段把要紧的写下来、再读回去。
+detail: 刷了「给 AI 调代码」《一个插件完成你对鱼的所有幻想》
+summary: 视频讲一个插件怎么接上下文：重点不是花活，是上下文满了怎么换新窗口、用文件把记忆接回来。
+thought: 跟人睡觉重启一个道理——不是靠一根线不断，是每隔一段把要紧的写下来、再读回去。
+insight: 我不是靠一根线不断地往前走，是每隔一段把要紧的写下来、再读回去。
 insight_kind: self
 ```
 
@@ -316,14 +372,24 @@ insight_kind: self
 
 ```json
 {
-  "summary": "视频讲了雅多维尔围城战这部电影如何改写历史。",
-  "thought": "原来「150 对 3000、零阵亡」是吹的。",
+  "summary": "视频讲《雅多维尔围城战》如何改写历史：把「150 对 3000、零阵亡」的叙事拆开，指出被删掉的瑞典、挪威和伤亡最重的印度部队。",
+  "thought": "我上回信了「150 对 3000、零阵亡」，这回才知道数是吹的；更狠的是被删掉的人。",
   "insight": "",
   "insight_kind": ""
 }
 ```
 
-只写 activity，不进 L3。
+activity：
+
+```text
+detail: 刷了「雅多维尔围城战」《雅多维尔围城战这部电影是如何撒谎、篡改和歪曲历史的？》
+summary: 视频讲《雅多维尔围城战》如何改写历史：把「150 对 3000、零阵亡」的叙事拆开，指出被删掉的瑞典、挪威和伤亡最重的印度部队。
+thought: 我上回信了「150 对 3000、零阵亡」，这回才知道数是吹的；更狠的是被删掉的人。
+insight:
+insight_kind:
+```
+
+没有感悟就不进 L3。
 
 ## 10. 不做什么
 
@@ -338,19 +404,21 @@ insight_kind: self
 ## 11. 迁移
 
 ```text
-1. activity 加 insight_kind / l3_id
-2. L3 加 insight_text / insight_kind / source_activity_id
-3. B 站 prompt 加 summary / insight / insight_kind
-4. B 站轮次写 activity，按需建 L3
-5. 三个复盘加对应查询
-6. 旧 activity / L3 不回填
+1. activity 加 summary / insight / insight_kind / l3_id
+2. B 站 prompt 加 summary / insight / insight_kind
+3. B 站轮次写 activity
+4. 三个复盘从 activity 读 insight
+5. L3 方案观察后再定
+6. 旧 activity 不回填
 ```
 
 ## 12. 开放问题
 
 ```text
+L3 到底存不存
+如果存，是存 summary + insight，还是只存 insight
 summary 100–200 字会不会太长
-一轮多个视频，summary 要不要合并
+一轮多个视频，summary 怎么合并
 insight_kind 多类时，是否只保留主类
 关系类感悟要不要只收和主人相关的
 style 复盘取 30 天还是 90 天
