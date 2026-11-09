@@ -1505,20 +1505,28 @@ def add_l0_message(chat_key: str, text: str) -> None:
         log.warning("写 L0 失败：%s", exc)
 
 
-def log_activity(kind: str, detail: str, thought: str = "") -> None:
+def log_activity(kind: str, detail: str, thought: str = "", summary: str = "",
+                 insight: str = "", insight_kind: str = "", insight_context: str = "") -> dict | None:
     """活动日志：她做过什么，不进记忆。"""
     try:
         payload = json.dumps({
             "kind": kind,
             "detail": str(detail or "")[:500],
             "thought": str(thought or "")[:500],
+            "summary": str(summary or "")[:1200],
+            "insight": str(insight or "")[:1200],
+            "insight_kind": str(insight_kind or "")[:80],
+            "insight_context": str(insight_context or "")[:1200],
         }, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(
             CMEM_BASE + "/activity", data=payload,
             headers={"Content-Type": "application/json"}, method="POST")
-        urllib.request.urlopen(req, timeout=5).read()
+        raw = urllib.request.urlopen(req, timeout=5).read()
+        data = json.loads(raw.decode("utf-8"))
+        return data if isinstance(data, dict) else None
     except Exception as exc:  # noqa: BLE001
         log.warning("写活动日志失败：%s", exc)
+        return None
 
 
 def quiet_now() -> bool:
@@ -2094,7 +2102,7 @@ SILENT_REPLY_RULE = (
     "这轮如果你判断不用接话，只回 SKIP，不要解释。\n"
     "适合不回：\n"
     "- 主人像是在分几条说，话还没说完（停在「然后」「还有」「就是」「我想」「你猜」，或明显说到一半）\n"
-    "- 主人只是发个表情、嗯、好、晚安\n"
+    "- 主人只是发个表情收尾、嗯、好、晚安\n"
     "- 话已经说完了，没有需要接的\n"
     "- 你确实没什么想说的\n"
     "不适合不回：\n"

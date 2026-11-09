@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS memory (
   thread_closed_at REAL DEFAULT NULL,
   stale_at       REAL DEFAULT NULL,          -- L1 过期标记，不删除
   relationship_impact TEXT DEFAULT '',       -- L3 对关系的影响，一句人话
+  insight_text   TEXT DEFAULT '',             -- L3：B 站等来源的感悟正文
+  insight_kind   TEXT DEFAULT '',             -- L3：self/style/relation
+  source_activity_id INTEGER DEFAULT NULL,    -- L3：来源 activity
   confidence     REAL DEFAULT NULL,          -- L2 置信度
   expires_at     REAL DEFAULT NULL,          -- L2 过期时间
   l2_status      TEXT DEFAULT '',            -- L2: hypothesis/promoted/rejected/expired/superseded
@@ -189,6 +192,10 @@ CREATE TABLE IF NOT EXISTS activity_log (
   detail     TEXT NOT NULL DEFAULT '',
   -- 2026-10-27 补：活动列表要显示「当时的想法」
   thought    TEXT NOT NULL DEFAULT '',
+  summary    TEXT NOT NULL DEFAULT '',
+  insight    TEXT NOT NULL DEFAULT '',
+  insight_kind TEXT NOT NULL DEFAULT '',
+  l3_id      INTEGER DEFAULT NULL,
   -- 2026-11-08：有没有被主动说用过
   shared     INTEGER NOT NULL DEFAULT 0,
   shared_at  REAL DEFAULT NULL

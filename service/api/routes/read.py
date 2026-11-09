@@ -13,6 +13,11 @@ def simple_get(path: str, query: dict, store):
             return store.unshared_activities(kind=kind, limit=limit)
         date = (query.get("date") or [None])[0] or None
         return store.list_activities(date)
+    if path == "/bili/insights":
+        kind = str((query.get("kind") or [""])[0])
+        limit = int((query.get("limit") or ["20"])[0])
+        days = int((query.get("days") or ["90"])[0])
+        return store.bili_insights(kind=kind, limit=limit, days=days)
     if path == "/emotion":
         days = int((query.get("days") or ["0"])[0])
         limit = int((query.get("limit") or ["50"])[0])

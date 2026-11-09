@@ -34,6 +34,14 @@ async def long_term_memory(tiers: dict | None = None) -> str:
     return str(data.get("text") or "")
 
 
+async def bili_insights(kind: str = "", limit: int = 20, days: int = 90) -> list[dict]:
+    """B 站视频留下的 L3 感悟，按 self/style/relation 过滤。"""
+    data = await cmem_call(
+        "GET", f"/bili/insights?kind={kind}&limit={int(limit)}&days={int(days)}"
+    )
+    return data if isinstance(data, list) else []
+
+
 def session_id_for(chat_key: str) -> str:
     try:
         scopes = json.loads((DSH_HOME / "session-scopes.json").read_text(encoding="utf-8"))

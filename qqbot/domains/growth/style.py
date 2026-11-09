@@ -8,7 +8,7 @@ import re
 import time
 from typing import Awaitable, Callable
 
-from qqbot.clients.memory import cmem_call, persona_context, recent_dialogue
+from qqbot.clients.memory import bili_insights, cmem_call, persona_context, recent_dialogue
 from qqbot.domains.growth.evidence import collect, format_block
 from settings import DSH_HOME
 
@@ -43,13 +43,16 @@ async def run(turn: Turn, chat_key: str) -> bool:
     recent = await recent_dialogue(60)
     ev = await collect(l1=30, l3=20, l0=30)
     material = format_block(ev) or "（没有足够素材）"
+    insights = await bili_insights("style", limit=12, days=90)
+    insight_block = "\n".join(f"- {x.get('insight_text')}" for x in insights if x.get("insight_text"))
     prompt = (
         "（内部维护，不要回复用户）只调整她的「表达风格」，不要改身份、底线和相处原则。\n\n"
         + (persona_text or "（空）") + "\n\n"
         + "【当前风格】\n" + current + "\n\n"
         + "【最近对话】\n" + (recent or "（最近没聊什么）") + "\n\n"
         + material + "\n\n"
-        "任务：结合完整人格、最近相处和长期记忆，判断她的说话方式有没有自然变化，写出更新后的风格段。\n"
+        + (("【看视频时留下的表达观察】\n" + insight_block + "\n\n") if insight_block else "")
+        + "任务：结合完整人格、最近相处和长期记忆，判断她的说话方式有没有自然变化，写出更新后的风格段。\n"
         "保留仍然成立的部分，只改真正有变化的。\n\n"
         "例子：\n"
         "旧：\n"

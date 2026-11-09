@@ -136,6 +136,9 @@ class MemoryInput:
     thread_closed_at: float | None = None
     stale_at: float | None = None
     relationship_impact: str = ""
+    insight_text: str = ""
+    insight_kind: str = ""
+    source_activity_id: int | None = None
     confidence: float | None = None
     expires_at: float | None = None
     l2_status: str = ""
@@ -315,8 +318,15 @@ class MemoryStore:
                        ("chat_since_wake", "INTEGER DEFAULT 0"),
                        ("interaction_count", "REAL DEFAULT 0")]),
             ("activity_log", [("thought", "TEXT DEFAULT ''"),
+                              ("summary", "TEXT DEFAULT ''"),
+                              ("insight", "TEXT DEFAULT ''"),
+                              ("insight_kind", "TEXT DEFAULT ''"),
+                              ("l3_id", "INTEGER"),
                               ("shared", "INTEGER DEFAULT 0"),
                               ("shared_at", "REAL DEFAULT NULL")]),
+            ("memory", [("insight_text", "TEXT DEFAULT ''"),
+                        ("insight_kind", "TEXT DEFAULT ''"),
+                        ("source_activity_id", "INTEGER")]),
             ("slang", [("meaning", "TEXT DEFAULT ''"),
                        ("example", "TEXT DEFAULT ''"),
                        ("source", "TEXT DEFAULT 'chat'"),
@@ -458,10 +468,11 @@ class MemoryStore:
                thread_opened_at, thread_last_seen_at, thread_closed_at,
                stale_at,
                relationship_impact,
+               insight_text, insight_kind, source_activity_id,
                confidence, expires_at, l2_status, promoted_to,
                tags, ts, half_life_days,
                vec, vec_dim, vec_model, created_at, updated_at, user_id, scope)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 item.tier,
@@ -478,6 +489,9 @@ class MemoryStore:
                 item.thread_closed_at,
                 item.stale_at,
                 str(item.relationship_impact or "")[:2000],
+                str(item.insight_text or "")[:2000],
+                str(item.insight_kind or "")[:80],
+                item.source_activity_id,
                 item.confidence,
                 item.expires_at,
                 str(item.l2_status or ""),
@@ -1468,12 +1482,15 @@ class MemoryStore:
         except Exception:
             return False
 
-    def log_activity(self, kind: str, detail: str = "", thought: str = "") -> int | None:
+    def log_activity(self, kind: str, detail: str = "", thought: str = "",
+                     summary: str = "", insight: str = "", insight_kind: str = "") -> int | None:
         """记一条活动。thought = 她当时的想法（可以空）。"""
         try:
             cur = self.conn.execute(
-                "INSERT INTO activity_log(ts, kind, detail, thought) VALUES (?,?,?,?)",
-                (time.time(), str(kind), str(detail)[:300], str(thought)[:600]),
+                "INSERT INTO activity_log(ts, kind, detail, thought, summary, insight, insight_kind) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (time.time(), str(kind), str(detail)[:300], str(thought)[:600],
+                 str(summary)[:1200], str(insight)[:1200], str(insight_kind)[:80]),
             )
             self.conn.commit()
             return int(cur.lastrowid)
@@ -1490,33 +1507,80 @@ class MemoryStore:
             start = _dt.datetime.combine(day, _dt.time.min).timestamp()
             end = start + 86400
             rows = self.conn.execute(
-                "SELECT id,ts,kind,detail,thought,shared,shared_at FROM activity_log "
-                "WHERE ts >= ? AND ts < ? ORDER BY ts DESC LIMIT ?",
+                "SELECT id,ts,kind,detail,thought,summary,insight,insight_kind,l3_id,shared,shared_at "
+                "FROM activity_log WHERE ts >= ? AND ts < ? ORDER BY ts DESC LIMIT ?",
                 (start, end, max(1, min(int(limit), 500))),
             ).fetchall()
         else:
             rows = self.conn.execute(
-                "SELECT id,ts,kind,detail,thought,shared,shared_at FROM activity_log "
-                "ORDER BY ts DESC LIMIT ?",
+                "SELECT id,ts,kind,detail,thought,summary,insight,insight_kind,l3_id,shared,shared_at "
+                "FROM activity_log ORDER BY ts DESC LIMIT ?",
                 (max(1, min(int(limit), 500)),),
             ).fetchall()
         return [{
             "id": int(r["id"]), "ts": float(r["ts"]), "kind": r["kind"],
             "detail": r["detail"], "thought": r["thought"] or "",
+            "summary": r["summary"] or "", "insight": r["insight"] or "",
+            "insight_kind": r["insight_kind"] or "", "l3_id": r["l3_id"],
             "shared": bool(r["shared"]), "shared_at": r["shared_at"],
         } for r in rows]
 
     def unshared_activities(self, kind: str = "bili", limit: int = 5, days: int = 7) -> list[dict]:
         since = time.time() - max(1, int(days)) * 86400
         rows = self.conn.execute(
-            "SELECT id,ts,kind,detail,thought FROM activity_log "
+            "SELECT id,ts,kind,detail,thought,summary,insight,insight_kind FROM activity_log "
             "WHERE kind=? AND shared=0 AND ts>=? ORDER BY ts DESC LIMIT ?",
             (str(kind), since, max(1, min(int(limit), 20))),
         ).fetchall()
         return [{
             "id": int(r["id"]), "ts": float(r["ts"]), "kind": r["kind"],
             "detail": r["detail"], "thought": r["thought"] or "",
+            "summary": r["summary"] or "", "insight": r["insight"] or "",
+            "insight_kind": r["insight_kind"] or "",
         } for r in rows]
+
+    def bili_insights(self, kind: str = "", limit: int = 20, days: int = 90) -> list[dict]:
+        since = time.time() - max(1, int(days)) * 86400
+        sql = ("SELECT id,ts,text,insight_text,insight_kind,source_activity_id "
+               "FROM memory WHERE tier='L3' AND insight_text!='' AND ts>=?")
+        args: list = [since]
+        if kind:
+            sql += " AND insight_kind LIKE ?"
+            args.append(f"%{kind}%")
+        sql += " ORDER BY ts DESC LIMIT ?"
+        args.append(max(1, min(int(limit), 50)))
+        rows = self.conn.execute(sql, args).fetchall()
+        return [{
+            "id": int(r["id"]), "ts": float(r["ts"]), "text": r["text"],
+            "insight_text": r["insight_text"], "insight_kind": r["insight_kind"],
+            "source_activity_id": r["source_activity_id"],
+        } for r in rows]
+
+    def add_bili_insight(self, activity_id: int, context: str = "",
+                         insight: str = "", insight_kind: str = "") -> int | None:
+        insight = str(insight or "").strip()
+        kind = str(insight_kind or "").strip()
+        if not insight or not kind:
+            return None
+        row = self.conn.execute(
+            "SELECT id,l3_id,summary,detail FROM activity_log WHERE id=?",
+            (int(activity_id),),
+        ).fetchone()
+        if not row:
+            return None
+        if row["l3_id"]:
+            return int(row["l3_id"])
+        ctx = str(context or "").strip() or str(row["summary"] or "").strip() or str(row["detail"] or "")
+        ctx = ctx[:1200]
+        mem_id = self.add(MemoryInput(
+            text=ctx, tier="L3", summary=ctx, tags=["bili-insight", f"insight:{kind}"],
+            source_status="bili", thread_status="standalone",
+            insight_text=insight[:1200], insight_kind=kind[:80],
+            source_activity_id=int(activity_id),
+        ))
+        self.conn.execute("UPDATE activity_log SET l3_id=? WHERE id=?", (mem_id, int(activity_id)))
+        self.conn.commit()
+        return int(mem_id)
 
     def mark_activity_shared(self, activity_id: int) -> bool:
         cur = self.conn.execute(

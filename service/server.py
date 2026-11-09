@@ -2542,13 +2542,27 @@ class Handler(BaseHTTPRequestHandler):
     def _log_activity(self) -> None:
         """记一条活动日志（她真的做过什么）。"""
         body = self._body()
+        kind = str(body.get("kind") or "other")
+        insight = str(body.get("insight") or "")
+        insight_kind = str(body.get("insight_kind") or "")
         with _lock:
             mid = store.log_activity(
-                str(body.get("kind") or "other"),
+                kind,
                 str(body.get("detail") or ""),
                 str(body.get("thought") or ""),
+                summary=str(body.get("summary") or ""),
+                insight=insight,
+                insight_kind=insight_kind,
             )
-        self._json(200, {"ok": True, "id": mid})
+            l3_id = None
+            if kind == "bili" and mid and insight.strip() and insight_kind.strip():
+                l3_id = store.add_bili_insight(
+                    mid,
+                    context=str(body.get("insight_context") or ""),
+                    insight=insight,
+                    insight_kind=insight_kind,
+                )
+        self._json(200, {"ok": True, "id": mid, "l3_id": l3_id})
 
     def _mark_activity_shared(self) -> None:
         body = self._body()
@@ -3147,6 +3161,13 @@ class Handler(BaseHTTPRequestHandler):
             "title": str(r["thread_title"] or ""),
             "ts": float(r["ts"] or 0),
         } for r in rows]
+        for item in store.bili_insights("relation", limit=20, days=90):
+            impacts.append({
+                "id": int(item["id"]),
+                "text": str(item.get("insight_text") or ""),
+                "title": "B站感悟",
+                "ts": float(item.get("ts") or 0),
+            })
         if not impacts:
             self._json(200, {"ok": True, "skipped": "no-impact"})
             return
