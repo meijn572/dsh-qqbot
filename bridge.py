@@ -1136,12 +1136,24 @@ async def _process_locked(dsh: Dsh, onebot: OneBot, mtype: str, target: int, cha
         meme_hint = network_meme_hint(text)
         if meme_hint:
             extras.append(meme_hint)
+        if mtype == "private":
+            extras.append(SILENT_REPLY_RULE)
         payload = text
         if extras:
             payload = text + "\n[[bridge-note]]\n" + "\n".join(extras) + "\n[[/bridge-note]]"
         await dsh.prompt(sid, payload, images=images)
         reply = await dsh.wait_reply(sid, baseline)
         log.info("reply (%s): %s", chat_key, reply[:200])
+        first_line = (reply or "").strip().splitlines()[0].strip().upper() if (reply or "").strip() else ""
+        if mtype == "private" and (first_line in ("SKIP", "跳过") or first_line.startswith(("SKIP ", "跳过 "))):
+            log.info("选择不回 (%s): %s", chat_key, reply[:80])
+            log_activity("chat", "看到消息，选择先不回")
+            try:
+                proj_after = await dsh.projections(sid)
+                set_state(chat_key, sid, int(proj_after.get("asOfSeq") or 0))
+            except Exception:  # noqa: BLE001
+                pass
+            return sid
         if LAST_INBOUND.get(chat_key, 0) > prompt_started:
             # 生成期间又来了新消息：这条回复仍然发出去，避免“记忆里有、QQ 没有”
             log.info("处理期间来了新消息，本条仍发送，随后处理新消息 (%s)", chat_key)
@@ -2076,6 +2088,20 @@ async def ask(dsh: Dsh, sid: str, prompt_text: str) -> str:
     baseline = int(proj.get("asOfSeq") or 0)
     await dsh.prompt(sid, prompt_text)
     return await dsh.wait_reply(sid, baseline)
+
+
+SILENT_REPLY_RULE = (
+    "这轮如果你判断不用接话，只回 SKIP，不要解释。\n"
+    "适合不回：\n"
+    "- 主人像是在分几条说，话还没说完（停在「然后」「还有」「就是」「我想」「你猜」，或明显说到一半）\n"
+    "- 主人只是发个表情、嗯、好、晚安\n"
+    "- 话已经说完了，没有需要接的\n"
+    "- 你确实没什么想说的\n"
+    "不适合不回：\n"
+    "- 主人在问你\n"
+    "- 主人在难受、求助\n"
+    "- 你刚才说错了，需要补"
+)
 
 
 SPONTANEOUS_PROMPT = (
