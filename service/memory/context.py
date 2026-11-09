@@ -51,31 +51,31 @@ def build_context(store, body: dict, embedder) -> dict:
             if taken.get(tier, 0) >= cap:
                 continue
             taken[tier] = taken.get(tier, 0) + 1
-            items.append({"tier": tier, "text": hit.text, "ts": hit.ts})
+            items.append({"id": hit.id, "tier": tier, "text": hit.text, "ts": hit.ts})
     else:
         for tier in tiers:
             limit = max(1, min(200, int(limits.get(tier, 10))))
             if tier == "L0" and session_id:
                 rows = store.conn.execute(
-                    "SELECT text,ts FROM memory WHERE tier='L0' AND tags LIKE ? ORDER BY ts DESC LIMIT ?",
+                    "SELECT id,text,ts FROM memory WHERE tier='L0' AND tags LIKE ? ORDER BY ts DESC LIMIT ?",
                     (f"%session:{session_id}%", limit),
                 ).fetchall()
             elif scope and tier != "L0":
                 rows = store.conn.execute(
-                    "SELECT text,ts FROM memory WHERE tier=? AND (scope=? OR scope='global') ORDER BY ts DESC LIMIT ?",
+                    "SELECT id,text,ts FROM memory WHERE tier=? AND (scope=? OR scope='global') ORDER BY ts DESC LIMIT ?",
                     (tier, scope, limit),
                 ).fetchall()
             elif scope:
                 rows = store.conn.execute(
-                    "SELECT text,ts FROM memory WHERE tier=? AND scope=? ORDER BY ts DESC LIMIT ?",
+                    "SELECT id,text,ts FROM memory WHERE tier=? AND scope=? ORDER BY ts DESC LIMIT ?",
                     (tier, scope, limit),
                 ).fetchall()
             else:
                 rows = store.conn.execute(
-                    "SELECT text,ts FROM memory WHERE tier=? ORDER BY ts DESC LIMIT ?",
+                    "SELECT id,text,ts FROM memory WHERE tier=? ORDER BY ts DESC LIMIT ?",
                     (tier, limit),
                 ).fetchall()
-            items.extend({"tier": tier, "text": str(r["text"]), "ts": r["ts"]} for r in rows)
+            items.extend({"id": int(r["id"]), "tier": tier, "text": str(r["text"]), "ts": r["ts"]} for r in rows)
     if not items:
         return {"ok": True, "text": "", "count": 0, "counts": {}}
     order = {t: i for i, t in enumerate(tiers)}
@@ -85,18 +85,26 @@ def build_context(store, body: dict, embedder) -> dict:
         items.sort(key=lambda x: (order.get(x["tier"], 99), -float(x["ts"] or 0)))
     lines = []
     counts: dict[str, int] = {}
+    recalled_ids: list[int] = []
     for item in items:
         tier = str(item["tier"])
         text = str(item["text"]).strip()
         if not text:
             continue
         counts[tier] = counts.get(tier, 0) + 1
+        if tier in ("L1", "L2", "L3") and item.get("id"):
+            recalled_ids.append(int(item["id"]))
         label = {"L0": "原话", "L1": "上次聊到的", "L2": "我的判断", "L3": "记得的事", "L4": "核心记忆"}.get(tier, tier)
         if tier in ("L0", "L3"):
             stamp = time.strftime("%m-%d %H:%M", time.localtime(float(item["ts"] or 0)))
             lines.append(f"[{label} · {stamp}] {text}")
         else:
             lines.append(f"[{label}] {text}")
+    if recalled_ids:
+        try:
+            store.note_recall(recalled_ids)
+        except Exception:
+            pass
     header = (
         "以下是最近的对话原话（按时间从早到晚）："
         if purpose == "recent"

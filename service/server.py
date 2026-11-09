@@ -3076,6 +3076,19 @@ class Handler(BaseHTTPRequestHandler):
         def _impact(item) -> str:
             return str(item.get("relationship_impact") or "").strip()[:1000]
 
+        def _memo(item) -> float | None:
+            try:
+                return max(0.0, min(1.0, float(item.get("memorability"))))
+            except (TypeError, ValueError):
+                return None
+
+        def _dominant(item) -> str | None:
+            value = str(item.get("dominant") or "").strip()
+            if value not in ("importance", "emotion", "distinctiveness",
+                             "self_relevance", "relationship", "none"):
+                return None
+            return value
+
         updates = plan.get("updates") if isinstance(plan.get("updates"), list) else []
         for item in updates[:8]:
             if not isinstance(item, dict):
@@ -3098,6 +3111,7 @@ class Handler(BaseHTTPRequestHandler):
             store.update_thread(
                 int(target["id"]), summary, status, source_ids=l0_ids, last_seen_at=now,
                 relationship_impact=_impact(item),
+                memorability=_memo(item), dominant=_dominant(item),
             )
             if not ref_pairs:
                 ref_pairs = [("L1", x) for x in l1_ids] + [("L0", x) for x in l0_ids]
@@ -3138,6 +3152,8 @@ class Handler(BaseHTTPRequestHandler):
                 thread_last_seen_at=now,
                 thread_closed_at=now if status == "closed" else None,
                 relationship_impact=_impact(item),
+                memorability=_memo(item) if _memo(item) is not None else 0.5,
+                dominant=_dominant(item) or "",
             ))
             for tier, rid in ref_pairs:
                 store.link(mid, rid, "derived_from", role_for.get(tier, "evidence"))

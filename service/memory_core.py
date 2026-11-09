@@ -139,6 +139,12 @@ class MemoryInput:
     insight_text: str = ""
     insight_kind: str = ""
     source_activity_id: int | None = None
+    memorability: float = 0.5
+    dominant: str = ""
+    last_recalled_at: float | None = None
+    active_until: float | None = None
+    recall_count: int = 0
+    stability_days: float | None = None
     confidence: float | None = None
     expires_at: float | None = None
     l2_status: str = ""
@@ -326,7 +332,13 @@ class MemoryStore:
                               ("shared_at", "REAL DEFAULT NULL")]),
             ("memory", [("insight_text", "TEXT DEFAULT ''"),
                         ("insight_kind", "TEXT DEFAULT ''"),
-                        ("source_activity_id", "INTEGER")]),
+                        ("source_activity_id", "INTEGER"),
+                        ("memorability", "REAL DEFAULT 0.5"),
+                        ("dominant", "TEXT DEFAULT ''"),
+                        ("last_recalled_at", "REAL"),
+                        ("active_until", "REAL"),
+                        ("recall_count", "INTEGER DEFAULT 0"),
+                        ("stability_days", "REAL")]),
             ("slang", [("meaning", "TEXT DEFAULT ''"),
                        ("example", "TEXT DEFAULT ''"),
                        ("source", "TEXT DEFAULT 'chat'"),
@@ -469,10 +481,12 @@ class MemoryStore:
                stale_at,
                relationship_impact,
                insight_text, insight_kind, source_activity_id,
+               memorability, dominant, last_recalled_at, active_until,
+               recall_count, stability_days,
                confidence, expires_at, l2_status, promoted_to,
                tags, ts, half_life_days,
                vec, vec_dim, vec_model, created_at, updated_at, user_id, scope)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 item.tier,
@@ -492,6 +506,16 @@ class MemoryStore:
                 str(item.insight_text or "")[:2000],
                 str(item.insight_kind or "")[:80],
                 item.source_activity_id,
+                max(0.0, min(1.0, float(item.memorability if item.memorability is not None else 0.5))),
+                str(item.dominant or "")[:40],
+                item.last_recalled_at,
+                item.active_until,
+                int(item.recall_count or 0),
+                item.stability_days if item.stability_days is not None else (
+                    (TIER_HALF_LIFE.get(item.tier) or 0) *
+                    (0.5 + max(0.0, min(1.0, float(item.memorability if item.memorability is not None else 0.5))))
+                    if item.tier in ("L1", "L3") else None
+                ),
                 item.confidence,
                 item.expires_at,
                 str(item.l2_status or ""),
@@ -592,6 +616,43 @@ class MemoryStore:
             (blob, dim, model, time.time(), mem_id),
         )
         self.conn.commit()
+
+    def note_recall(self, mem_ids: Sequence[int], now: float | None = None) -> int:
+        """记录一次“被放进上下文”。只在间隔足够久时强化长期稳定度。"""
+        now = float(now if now is not None else time.time())
+        ids = [int(x) for x in dict.fromkeys(mem_ids or []) if int(x or 0) > 0]
+        if not ids:
+            return 0
+        marks = ",".join("?" for _ in ids)
+        rows = self.conn.execute(
+            f"SELECT id,tier,half_life_days,last_recalled_at,active_until,recall_count,stability_days "
+            f"FROM memory WHERE id IN ({marks})",
+            ids,
+        ).fetchall()
+        changed = 0
+        for row in rows:
+            if str(row["tier"]) not in ("L1", "L3"):
+                continue
+            last = float(row["last_recalled_at"] or 0)
+            active = float(row["active_until"] or 0)
+            span = float(row["stability_days"] or row["half_life_days"] or 30.0)
+            count = int(row["recall_count"] or 0)
+            if last and now >= active:
+                gap = now - last
+                if gap >= max(12 * 3600, 0.5 * span * 86400):
+                    gain = max(1.2, 1.8 - 0.2 * min(count, 4))
+                    span *= gain
+                    count += 1
+            self.conn.execute(
+                "UPDATE memory SET last_recalled_at=?, active_until=?, recall_count=?, "
+                "stability_days=? WHERE id=?",
+                (now, now + 12 * 3600, count, span, int(row["id"])),
+            )
+            changed += 1
+        if changed:
+            self.conn.commit()
+            self._invalidate_caches()
+        return changed
 
     def mark_lifecycle(self, l1_days: float = 30.0, thread_days: float = 14.0) -> dict:
         """只打标记，不删除。
@@ -745,7 +806,9 @@ class MemoryStore:
     def update_thread(self, mem_id: int, summary: str, status: str,
                       source_ids: Sequence[int] | None = None,
                       last_seen_at: float | None = None,
-                      relationship_impact: str | None = None) -> bool:
+                      relationship_impact: str | None = None,
+                      memorability: float | None = None,
+                      dominant: str | None = None) -> bool:
         now = time.time()
         row = self.conn.execute(
             "SELECT source_ids,source_status,thread_status,thread_opened_at FROM memory WHERE id=? AND tier='L3'",
@@ -766,12 +829,18 @@ class MemoryStore:
         self.conn.execute(
             "UPDATE memory SET summary=?, text=?, source_ids=?, source_status=?, "
             "thread_status=?, thread_last_seen_at=?, thread_closed_at=?, "
-            "relationship_impact=COALESCE(?, relationship_impact), updated_at=? WHERE id=?",
+            "relationship_impact=COALESCE(?, relationship_impact), "
+            "memorability=COALESCE(?, memorability), dominant=COALESCE(?, dominant), "
+            "stability_days=CASE WHEN ? IS NULL THEN stability_days "
+            "ELSE (? + 0.5) * COALESCE(half_life_days, 90.0) END, "
+            "updated_at=? WHERE id=?",
             (
                 str(summary)[:2000], str(summary)[:4000],
                 json.dumps(old, ensure_ascii=False), source_status, str(status),
                 float(last_seen_at or now), closed,
                 relationship_impact,
+                memorability, dominant,
+                memorability, memorability,
                 now, int(mem_id),
             ),
         )
@@ -1031,11 +1100,13 @@ class MemoryStore:
         if self._light_cache is not None:
             return self._light_cache
         rows = self.conn.execute(
-            "SELECT id, ts, half_life_days, tier, subject, scope, stale_at FROM memory"
+            "SELECT id, ts, half_life_days, tier, subject, scope, stale_at, "
+            "stability_days, last_recalled_at, active_until FROM memory"
         ).fetchall()
         self._light_cache = {
             int(r["id"]): (float(r["ts"]), r["half_life_days"], r["tier"], r["subject"],
-                           (r["scope"] or "global"), r["stale_at"])
+                           (r["scope"] or "global"), r["stale_at"],
+                           r["stability_days"], r["last_recalled_at"], r["active_until"])
             for r in rows
         }
         return self._light_cache
@@ -1083,6 +1154,9 @@ class MemoryStore:
                 continue
             ts, half, tier, subj, sc = meta[0], meta[1], meta[2], meta[3], (meta[4] if len(meta) > 4 else "global")
             stale_at = meta[5] if len(meta) > 5 else None
+            stability = meta[6] if len(meta) > 6 else None
+            last_recalled = meta[7] if len(meta) > 7 else None
+            active_until = meta[8] if len(meta) > 8 else None
             if tier_set is not None:
                 if tier not in tier_set:
                     continue
@@ -1100,7 +1174,8 @@ class MemoryStore:
                 continue
             b_raw = bm25.get(mid, 0.0)
             v_raw = max(0.0, vec.get(mid, 0.0))
-            rec = _recency(ts, half, now)
+            rec = _recency(ts, half, now, stability_days=stability,
+                           last_recalled_at=last_recalled, active_until=active_until)
             # 饱和映射而不是「除以本批最大值」：后者会让只有一个候选的弱命中
             # 变成满分（实测「量子纠缠」曾以 0.709 命中无关记忆）。
             fused = W_BM25 * _norm_bm25(b_raw) + W_VEC * v_raw + W_RECENCY * rec
@@ -2393,11 +2468,18 @@ def _norm_bm25(score: float) -> float:
     return score / (score + BM25_SATURATION)
 
 
-def _recency(ts: float, half_life_days: float | None, now: float) -> float:
-    if half_life_days is None or half_life_days <= 0:
+def _recency(ts: float, half_life_days: float | None, now: float,
+             stability_days: float | None = None,
+             last_recalled_at: float | None = None,
+             active_until: float | None = None) -> float:
+    if active_until is not None and now < float(active_until):
         return 1.0
-    age_days = max(0.0, (now - float(ts)) / 86400.0)
-    return float(2.0 ** (-age_days / half_life_days))
+    span = float(stability_days) if stability_days and float(stability_days) > 0 else half_life_days
+    if span is None or float(span) <= 0:
+        return 1.0
+    anchor = max(float(ts or 0), float(last_recalled_at or 0))
+    age_days = max(0.0, (now - anchor) / 86400.0)
+    return float(2.0 ** (-age_days / float(span)))
 
 
 def cos_sim(a: Sequence[float], b: Sequence[float]) -> float:

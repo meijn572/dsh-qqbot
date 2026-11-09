@@ -162,11 +162,13 @@ L4 是以后从 L3 里再挑的。
   "updates": [
     {"title": "现有标题", "summary": "更新后的摘要", "status": "open|closed",
      "relationship_impact": "这件事对关系的影响，一句人话",
+     "memorability": 0.0, "dominant": "importance|emotion|distinctiveness|self_relevance|relationship|none",
      "source_refs": [1], "evidence": ["原文"]}
   ],
   "new": [
     {"title": "新标题", "summary": "摘要", "status": "open|closed|standalone",
      "relationship_impact": "这件事对关系的影响，一句人话",
+     "memorability": 0.0, "dominant": "importance|emotion|distinctiveness|self_relevance|relationship|none",
      "source_refs": [1, 2], "evidence": ["原文"]}
   ]
 }
@@ -181,6 +183,15 @@ status：
 - 一句人话，不评分，不填数值。
 - 例如：「这次他听我把话说完，我觉得可以再多说一点。」
 - 没有明显影响就留空，不要硬编。
+
+难忘性（memorability）：
+- 只填一个 0–1 的数，不要逐项打分。
+- 参考：importance（多重要）、emotion（情绪多强）、distinctiveness（多反常/离奇）、
+  self_relevance（是否关于我是谁）、relationship（是否关于我和主人）。
+- 0.0–0.2 普通日常；0.2–0.4 有点印象；0.4–0.6 值得留；
+  0.6–0.8 很难忘；0.8–1.0 身份/关系/底线级别。
+- 离奇但和我无关，最多中等；不要因为聊得开心就给高分。
+- dominant 填最强的那一维，没有就 none。
 
 规则：
 - title 必须短，2–12 个字。

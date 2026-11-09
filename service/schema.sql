@@ -30,6 +30,12 @@ CREATE TABLE IF NOT EXISTS memory (
   insight_text   TEXT DEFAULT '',             -- L3：B 站等来源的感悟正文
   insight_kind   TEXT DEFAULT '',             -- L3：self/style/relation
   source_activity_id INTEGER DEFAULT NULL,    -- L3：来源 activity
+  memorability   REAL DEFAULT 0.5,            -- 0–1，模型判断的难忘性
+  dominant       TEXT DEFAULT '',             -- 最强维度
+  last_recalled_at REAL DEFAULT NULL,
+  active_until   REAL DEFAULT NULL,
+  recall_count   INTEGER DEFAULT 0,
+  stability_days REAL DEFAULT NULL,
   confidence     REAL DEFAULT NULL,          -- L2 置信度
   expires_at     REAL DEFAULT NULL,          -- L2 过期时间
   l2_status      TEXT DEFAULT '',            -- L2: hypothesis/promoted/rejected/expired/superseded
