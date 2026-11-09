@@ -102,20 +102,28 @@ POST /batch/run
 条件：
 
 - 从 `batch_l0_last` 水位线之后取 L0
-- 每次最多取 30 条
-- 满足任一：
-  - 新 L0 ≥ `l1_every`（默认 6）
-  - 最新一条 L0 已经 ≥ `idle_minutes`（默认 15 分钟）
+- 按时间切段，不把整段积压一次塞给模型：
+  - 相邻 L0 间隔 > `segment_idle_seconds`（默认 300 秒）就切
+  - 单段跨度 >= `segment_max_minutes`（默认 30 分钟）就切
+  - 单段最多 `segment_max_messages`（默认 80 条）
+- 切出来的这一段不需要再等满 30 分钟；段已经结束就处理
+- 还没结束就返回 `segment-not-ended`
 
 执行：
 
-- 取前 `l1_max` 条（默认 12）
-- 拼成文本
-- 调 `extractor.extract_batch()`
+- 调 `extractor.extract_batch()`，L1 输出预算 2400 tokens
 - 只产 **L1**
 - 写 `source_ids` 指回 L0
 - 成功后推进 `batch_l0_last`
 - 把新 L1 id 放入 `batch_l1_pending`
+
+失败时：
+
+- 不推进水位线
+- 返回 `waiting=l1-failed`
+- `reason` 写进返回值和 `meta.batch_last_error`
+- 服务日志打印 `[batch] l1-failed ids=... reason=...`
+- bridge 日志打印 `批量记忆失败：...`
 
 `extract_batch()` 即使上游给了 L2/L3/L4，也会强制改成 L1。
 

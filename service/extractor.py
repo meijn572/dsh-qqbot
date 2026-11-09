@@ -831,7 +831,7 @@ class Extractor:
         facts = self._extract(text, "", context, source_rows=source_rows or None)
         if facts is None:
             return {"ok": False, "degraded": "extract-failed",
-                    "error": getattr(self.llm, "last_error", None)}
+                    "error": getattr(self.llm, "last_error", None) or "llm returned no parseable JSON"}
         for fact in facts:
             if isinstance(fact, dict):
                 fact["tier"] = "L1"
@@ -1103,7 +1103,7 @@ class Extractor:
 
         last = None
         for _attempt in range(2):
-            result = self.llm.chat_json(EXTRACT_SYSTEM, convo, max_tokens=900)
+            result = self.llm.chat_json(EXTRACT_SYSTEM, convo, max_tokens=2400)
             if result is None:
                 continue
             if not isinstance(result, list):

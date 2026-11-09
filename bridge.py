@@ -2699,6 +2699,8 @@ async def memory_batch_loop() -> None:
             result = await cmem_call("POST", "/batch/run", {})
             if result.get("l1") or result.get("l3"):
                 log.info("批量记忆：L1+%s L3+%s", result.get("l1"), result.get("l3"))
+            elif result.get("waiting") == "l1-failed":
+                log.warning("批量记忆失败：%s", result.get("reason") or "unknown")
         except Exception as exc:  # noqa: BLE001
             log.warning("memory_batch_loop err: %s", exc)
         await asyncio.sleep(300)

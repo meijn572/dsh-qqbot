@@ -2959,23 +2959,43 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, stats)
             return
 
-        newest = max(float(r["ts"] or 0) for r in rows)
-        oldest = min(float(r["ts"] or 0) for r in rows)
+        # 按时间切段：先处理一段连续对话，不把整段积压一次塞给模型。
+        batch = [rows[0]]
+        cut = False
+        for row in rows[1:]:
+            gap = float(row["ts"] or 0) - float(batch[-1]["ts"] or 0)
+            span = float(row["ts"] or 0) - float(batch[0]["ts"] or 0)
+            if gap > idle_seconds or span > max_minutes * 60 or len(batch) >= max_messages:
+                cut = True
+                break
+            batch.append(row)
+
+        newest = max(float(r["ts"] or 0) for r in batch)
+        oldest = min(float(r["ts"] or 0) for r in batch)
         idle = time.time() - newest
         span = newest - oldest
-        ended = idle >= idle_seconds or len(rows) >= max_messages or span >= max_minutes * 60
+        # 被时间/条数切开，或整段已经空闲够久，就可以处理。
+        ended = cut or len(batch) >= max_messages or span >= max_minutes * 60 or idle >= idle_seconds
         if not ended:
             stats["waiting"] = "segment-not-ended"
+            stats["batch"] = {"count": len(batch), "oldest": int(oldest), "newest": int(newest)}
             self._json(200, stats)
             return
 
-        batch = rows[:max_messages]
         source_rows = [{"id": int(r["id"]), "tier": "L0", "text": str(r["text"])} for r in batch]
         source_ids = [int(r["id"]) for r in batch]
+        stats["batch"] = {"count": len(batch), "oldest": int(oldest), "newest": int(newest)}
         text = "\n\n".join(str(r["text"]) for r in batch)
         res = extractor.extract_batch(text, context=self._batch_identity(), source_ids=source_ids)
         if not res.get("ok"):
-            self._json(200, {**stats, "waiting": "l1-failed"})
+            reason = str(res.get("error") or res.get("degraded") or "unknown")
+            stats["waiting"] = "l1-failed"
+            stats["reason"] = reason
+            self._meta_set("batch_last_error", reason[:500])
+            self._meta_set("batch_last_error_at", str(int(time.time())))
+            print(f"[batch] l1-failed ids={source_ids[0]}..{source_ids[-1]} "
+                  f"count={len(batch)} reason={reason}", flush=True)
+            self._json(200, stats)
             return
         self._meta_set("batch_l0_last", str(max(source_ids)))
         self._meta_set("batch_l1_pending", "[]")
