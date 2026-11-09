@@ -513,7 +513,8 @@ class MemoryStore:
                 int(item.recall_count or 0),
                 item.stability_days if item.stability_days is not None else (
                     (TIER_HALF_LIFE.get(item.tier) or 0) *
-                    (0.5 + max(0.0, min(1.0, float(item.memorability if item.memorability is not None else 0.5))))
+                    (0.5 + max(0.0, min(1.0, float(item.memorability if item.memorability is not None else 0.5)))) *
+                    (2.0 if item.tier == "L3" and str(item.thread_status or "") == "open" else 1.0)
                     if item.tier in ("L1", "L3") else None
                 ),
                 item.confidence,
