@@ -31,6 +31,7 @@ L3：标题支持模糊匹配
 主动说：已统一到 proactive（完整人格 + L0/L1/L3 + activity）；活跃 9:00–次日 2:00
 B站：autonomy 只负责看，分享由 proactive 决定（已接）
 B站感悟：已接（activity 存 summary/insight，L3 存 insight + 类型 + 短上下文）
+忘记机制：设计稿见 forgetting.md（memorability + 间隔召回 + 活跃期，未实现）
 关系系统：v3 已上线（L3 文本影响 + 模型自由写关系，无固定阶段）
 短时偏好：明说→L1，推断→L2，长期→画像；L2 第一版已接
 L2：字段/生成/confirmed 升 L1/面板已接
