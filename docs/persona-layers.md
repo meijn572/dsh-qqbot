@@ -27,30 +27,134 @@ L0–L4                  经历与事实
 
 ### 核心设定
 
-固定七块：
+分两大块、六个小节：
 
 ```text
-身份
-性格
-判断
-说话
-关系
-边界
-约定
+【我自己】
+  我是谁        身份、性格
+  表现          说话和做事的样子（宽规则 + 例子）
+  价值取向      在意什么、判断标准
+  弱点          我会栽在哪
+
+【我和他】
+  我们怎么对彼此   双向：他怎么待我、我怎么待他
+  我们之间有什么   共享的、没解决的、约定
 ```
 
-只允许面板半自动维护：
+为什么是这两大块：
 
 ```text
-人工编辑
-+ 风格提议
-+ 复盘候选
-+ 人工确认
+只关于我的   → 我自己
+关于我们的   → 我和他
 ```
 
-模型没有写核心设定的工具。
+不是按“性格/价值观/关系”分维度，而是先按归属分。
+
+旧的七块（身份 / 性格 / 判断 / 说话 / 关系 / 边界 / 约定）里：
+
+```text
+判断    → 价值取向（对内的线也挪进来）
+说话    → 表现（只留形式，行为类挪走）
+关系    → 我们怎么对彼此
+边界    → 我们怎么对彼此（对外那条）
+约定    → 我们之间有什么
+身份    → 我是谁
+性格    → 我是谁
+```
+
+新增「弱点」，旧结构里没有对应。
+
+### 重要标记
+
+不再有「约定」这个独立类别，「重要」降级成**优先级标记**：
+
+```text
+<!-- important:begin -->
+- 一条重要的
+- 另一条
+<!-- important:end -->
+```
+
+标记的含义只有一条：
+
+```text
+这几条可以盖过其他所有条目
+```
+
+它不决定内容放哪块。
 
 `<!-- important:begin -->` / `<!-- important:end -->` 必须保留，服务端靠它同步 `important.md`。
+
+### 每条存「成了什么样」
+
+人格里写的是结论，不是事件：
+
+```text
+- 被留的时候，我是当真的。
+```
+
+不写：
+
+```text
+- 他说想留住我那天，我话说一半就收了。
+```
+
+后半句属于 L3。
+
+但结论需要有来处，所以每条可以带一个关联：
+
+```text
+- 被留的时候，我是当真的。{{L3:1245}}
+```
+
+关联只存 L3 id，三种场景三种渲染：
+
+| 场景 | 渲染成 | 用途 |
+| --- | --- | --- |
+| 面板 | 标题，可点 | 人看依据 |
+| 日常对话 | 抹掉 | 保住 system prompt 缓存，避免复述 |
+| 复盘 | 标题 + 状态 + 正文 | 判断还成不成立 |
+
+复盘为什么要带正文：
+
+```text
+标题只能说明聊过什么
+状态只能说明还活不活着
+判断这条性格还成不成立，要看当时具体说了什么
+```
+
+例：
+
+```text
+「记东西要分清哪句是他说的」→ 标题「铁人之乱与上四休三」
+光看标题会觉得无关，正文里才有那句关键的话
+```
+
+正文按长度截断：短的给全文，长的截前 200 字。
+
+### 为什么日常不带关联
+
+人格是 system prompt 最前面的固定前缀。它一变，整段会话历史的缓存全废。
+
+而 L3 一直在变（新增、合并、关闭）。如果人格文本跟着 L3 动：
+
+```text
+L3 变 → 人格变 → system prompt 变 → 缓存失效 → 每轮全价重读
+```
+
+按现在的用量，这比省下的那点 token 贵得多。
+
+### 关联的写入
+
+三个入口：
+
+```text
+复盘候选   模型给 L3 id + 一句结论
+人工添加   面板上手动选一条 L3
+重要的事   由 important.py 生成时带上来源
+```
+
+id 指向 L3 主键，L3 被合并时跟着 `merged_into` 走。
 
 ### 自我认知
 
@@ -123,7 +227,17 @@ L1 是“一小段对话”的总结，不适合硬承担“跨好几天的短�
 
 ### 重要约定
 
-只追加列表。不混进核心设定和画像。
+不再是独立类别，已并入核心设定的「我们之间有什么」和「我们怎么对彼此」。
+
+`important.md` 仍然存在，作为镜像：
+
+```text
+POST /persona/important 写它
+服务端把 <!-- important --> 段同步进去
+file_loop 反向读回
+```
+
+它现在只是「带重要标记的条目」的落盘副本。
 
 ### 记忆
 
@@ -136,8 +250,26 @@ L0–L4 仍然只负责经历和事实，不承担人格规则。新的分层见
 | 核心设定 | 面板 `/persona` | 无 |
 | 自我认知 | `/persona/self` + `persona_update` | 只能写三块 |
 | 用户画像 | `/persona/user` | 只能写五块 |
-| 重要约定 | `/persona/important` | 只能追加 |
+| 带重要标记的条目 | `/persona/important` | 只能追加 |
 | 记忆 | 现有 ingest/extract | 只能写记忆 |
+
+### 复盘模块的分工
+
+| 模块 | 管什么 | 写到哪 |
+| --- | --- | --- |
+| `growth/important.py` | 新增带重要标记的条目 | `/persona/important` |
+| `growth/review.py` | 修正已有的「价值取向」「我们怎么对彼此」 | 核心设定对应段 |
+| `growth/style.py` | 只改「表现」 | 核心设定表现段 |
+| `growth/reflect.py` | 自我认知 | `/persona/self` |
+| `growth/profile.py` | 用户画像 | `/persona/user` |
+
+`review.py` 不再产出约定条目：
+
+```text
+它原来也能 add 约定，和 important.py 抢同一个位置，标准还不一样
+现在约定只由 important.py 新增
+review.py 只负责「已有的要不要改」
+```
 
 ## 3. 校验
 
@@ -159,15 +291,17 @@ python scripts/check_persona_boundaries.py
 
 检查：
 
-- 核心设定七个 section
+- 核心设定两大块六小节
 - important 块完整
 - 自我认知没有规则/事实
 - 画像没有指令/人格
 - AGENTS 没有人格/行为政策
+- 人格条目是结论，不是事件叙述
 
 ## 5. 流程输入不变
 
 自我演化、画像生成、风格提议的输入仍然使用原来的上下文，只改输出结构和校验。
+
 
 ## 6. 复盘
 
@@ -179,7 +313,7 @@ python scripts/check_persona_boundaries.py
 | 自我认知整理 | 暂无独立任务 | — | 目前只做增量，不做整篇重写 |
 | 用户画像 | 每 2 天 07:00 | 自动 | `user_profile` 五块 |
 | 说话风格 | 每 3 天 07:00 | 半自动 | 核心 `说话` |
-| 人格复盘 | 每 30 天 07:00 | 半自动 | `判断` / `关系` / `约定` 候选 |
+| 人格复盘 | 每 30 天 07:00 | 半自动 | `价值取向` / `我们怎么对彼此` 候选 |
 | 重要的事 | 每日 / 工具触发 | 半自动 | 候选，人工应用 |
 | 性格 / 身份 | 90 天 | 手写 | 核心 |
 | 边界 | 事件触发 | 手写 | 核心 |
@@ -213,3 +347,26 @@ pending / applied / rejected
 
 - [Character Card V2](https://github.com/malfoyslastname/character-card-spec-v2/blob/main/spec_v2.md)：角色描述、示例、系统指令、世界书分开
 - [Letta Memory Blocks](https://docs.letta.com/v1-sdk/memory/memory-blocks/)：system instructions 与 memory blocks 分开
+- [Fate Core: Your Character Idea](https://fate-srd.com/fate-core/your-character-idea)：High Concept 与 Trouble 分开，Trouble 分「自己的暗面」和「难缠的关系」
+- [SEP: Friendship](https://plato.stanford.edu/entries/friendship/)：关心、亲密、共同活动三要素
+- [SEP: Love](https://plato.stanford.edu/entries/love/)：appraisal / bestowal 两种评价
+
+### 从它们各取了什么
+
+```text
+Character Card   说话用范例，不写成规则
+Letta            常驻片段和长期记忆分开
+Fate             留一个位置给「我会栽在哪」
+SEP Friendship   关系是双向的，还要有共享的东西
+SEP Love         支撑关系的不只是「因为你好」
+```
+
+没取的：
+
+```text
+D&D 的 Ideals / Bonds / Flaws 四分
+  → 和我们的两大块重叠，不额外增加信息
+Character Card 的 scenario
+  → 我们已有 emotion 和 activity，不重复造
+```
+
