@@ -3205,6 +3205,8 @@ class Handler(BaseHTTPRequestHandler):
                 relationship_impact=_impact(item),
                 memorability=_memo(item), dominant=_dominant(item),
                 aliases=_aliases(item),
+                insight_text=str(item.get("insight") or ""),
+                insight_kind=str(item.get("insight_kind") or ""),
             )
             if not ref_pairs:
                 ref_pairs = [("L1", x) for x in l1_ids] + [("L0", x) for x in l0_ids]
@@ -3245,6 +3247,8 @@ class Handler(BaseHTTPRequestHandler):
                 thread_last_seen_at=now,
                 thread_closed_at=now if status == "closed" else None,
                 relationship_impact=_impact(item),
+                insight_text=str(item.get("insight") or ""),
+                insight_kind=str(item.get("insight_kind") or ""),
                 memorability=_memo(item) if _memo(item) is not None else 0.5,
                 dominant=_dominant(item) or "",
             ))

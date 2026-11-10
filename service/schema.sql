@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS memory (
   relationship_impact TEXT DEFAULT '',       -- L3 对关系的影响，一句人话
   insight_text   TEXT DEFAULT '',             -- L3：B 站等来源的感悟正文
   insight_kind   TEXT DEFAULT '',             -- L3：self/style/relation
+  insight_history TEXT DEFAULT '[]',          -- L3：历次感悟，JSON 数组
   source_activity_id INTEGER DEFAULT NULL,    -- L3：来源 activity
   lifecycle_reviewed_at REAL DEFAULT NULL,   -- L3：上次生命周期复盘
   status_reason TEXT DEFAULT '',             -- L3：状态变更原因

@@ -332,6 +332,7 @@ class MemoryStore:
                               ("shared_at", "REAL DEFAULT NULL")]),
             ("memory", [("insight_text", "TEXT DEFAULT ''"),
                         ("insight_kind", "TEXT DEFAULT ''"),
+                        ("insight_history", "TEXT DEFAULT '[]'"),
                         ("source_activity_id", "INTEGER"),
                         ("memorability", "REAL DEFAULT 0.5"),
                         ("dominant", "TEXT DEFAULT ''"),
@@ -905,10 +906,13 @@ class MemoryStore:
                       memorability: float | None = None,
                       dominant: str | None = None,
                       aliases: Sequence[str] | None = None,
-                      status_reason: str | None = None) -> bool:
+                      status_reason: str | None = None,
+                      insight_text: str | None = None,
+                      insight_kind: str | None = None) -> bool:
         now = time.time()
         row = self.conn.execute(
-            "SELECT source_ids,source_status,thread_status,thread_opened_at,thread_aliases "
+            "SELECT source_ids,source_status,thread_status,thread_opened_at,thread_aliases,"
+            "insight_text,insight_kind,insight_history "
             "FROM memory WHERE id=? AND tier='L3'",
             (int(mem_id),),
         ).fetchone()
@@ -933,11 +937,27 @@ class MemoryStore:
                 old.append(int(sid))
         closed = now if status == "closed" else None
         source_status = "verified" if source_ids else str(row["source_status"] or "legacy")
+        history = []
+        try:
+            history = json.loads(row["insight_history"] or "[]")
+        except Exception:  # noqa: BLE001
+            history = []
+        current_insight = str(row["insight_text"] or "")
+        current_kind = str(row["insight_kind"] or "")
+        new_insight = str(insight_text or "").strip()
+        new_kind = str(insight_kind or "").strip()
+        if new_insight and (not current_insight or new_insight != current_insight):
+            history.append({"text": new_insight[:1200], "kind": new_kind[:80], "ts": now})
+            history = history[-20:]
+            current_insight = new_insight[:1200]
+            if new_kind:
+                current_kind = new_kind[:80]
         self.conn.execute(
             "UPDATE memory SET summary=?, text=?, source_ids=?, thread_aliases=?, source_status=?, "
             "thread_status=?, thread_last_seen_at=?, thread_closed_at=?, "
             "relationship_impact=COALESCE(?, relationship_impact), "
             "memorability=COALESCE(?, memorability), dominant=COALESCE(?, dominant), "
+            "insight_text=?, insight_kind=?, insight_history=?, "
             "status_reason=COALESCE(?, status_reason), "
             "stability_days=CASE WHEN ? IS NULL THEN stability_days "
             "ELSE (? + 0.5) * COALESCE(half_life_days, 90.0) END, "
@@ -948,7 +968,9 @@ class MemoryStore:
                 source_status, str(status),
                 float(last_seen_at or now), closed,
                 relationship_impact,
-                memorability, dominant, status_reason,
+                memorability, dominant,
+                current_insight, current_kind, json.dumps(history, ensure_ascii=False),
+                status_reason,
                 memorability, memorability,
                 now, int(mem_id),
             ),

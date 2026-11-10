@@ -162,6 +162,8 @@ L4 是以后从 L3 里再挑的。
   "updates": [
     {"thread_id": 123, "title": "现有标题", "summary": "更新后的摘要", "status": "open|closed",
      "relationship_impact": "这件事对关系的影响，一句人话",
+     "insight": "这次对话里值得留下的理解/感触，没有就空",
+     "insight_kind": "self|style|relation|''",
      "memorability": 0.0, "dominant": "importance|emotion|distinctiveness|self_relevance|relationship|none",
      "aliases": ["这次用的新叫法"],
      "source_refs": [1], "evidence": ["原文"]}
@@ -169,6 +171,8 @@ L4 是以后从 L3 里再挑的。
   "new": [
     {"title": "新标题", "summary": "摘要", "status": "open|closed|standalone",
      "relationship_impact": "这件事对关系的影响，一句人话",
+     "insight": "这次对话里值得留下的理解/感触，没有就空",
+     "insight_kind": "self|style|relation|''",
      "memorability": 0.0, "dominant": "importance|emotion|distinctiveness|self_relevance|relationship|none",
      "aliases": [],
      "source_refs": [1, 2], "evidence": ["原文"]}
@@ -195,6 +199,12 @@ status：
 - 一句人话，不评分，不填数值。
 - 例如：「这次他听我把话说完，我觉得可以再多说一点。」
 - 没有明显影响就留空，不要硬编。
+
+感悟（insight）：
+- 只有这次对话真的产生了关于自我、说话方式、关系的理解/变化时才写。
+- 一句第一人称，最多 200 字；没有就空。
+- 已有的 insight 不要覆盖；如果只是同一句的补充，留空让系统保留旧句。
+- insight_kind 用 self / style / relation，没有就空。
 
 难忘性（memorability）：
 - 只填一个 0–1 的数，不要逐项打分。
