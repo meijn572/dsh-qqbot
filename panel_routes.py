@@ -142,11 +142,45 @@ def start_qr() -> dict:
     return {"ok": True, "status": qr_status()}
 
 
+def _bridge_pids() -> list[int]:
+    """所有在跑的 bridge.py 进程。
+
+    不能只用 health.json 里的 pid：一个桥会拉起两层 python（venv 的启动器
+    + 真正的解释器），而重启时新进程会覆盖 health.json，旧的那份就再也
+    匹配不上，于是每点一次「重启桥接」就多留一份，最后几份桥一起抢消息。
+    """
+    script = (
+        "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" "
+        "| Where-Object { $_.CommandLine -like '*bridge.py*' } "
+        "| ForEach-Object { $_.ProcessId }"
+    )
+    try:
+        out = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True, text=True, timeout=30,
+        ).stdout
+    except Exception:  # noqa: BLE001
+        out = ""
+    pids: list[int] = []
+    for line in out.splitlines():
+        line = line.strip()
+        if line.isdigit():
+            pids.append(int(line))
+    return sorted(set(pids))
+
+
 def restart_bridge() -> dict:
-    pid = health().get("pid")
-    if pid:
-        subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True, timeout=15)
+    killed: list[int] = []
+    for _ in range(3):
+        pids = _bridge_pids()
+        if not pids:
+            break
+        for pid in pids:
+            subprocess.run(["taskkill", "/PID", str(pid), "/F"],
+                           capture_output=True, timeout=15)
+            killed.append(pid)
         time.sleep(2)
+    time.sleep(1)
     py = CONFIG.get("bridge_python") or "python"
     subprocess.Popen(
         [str(py), str(BOT / "bridge.py")],
@@ -156,7 +190,7 @@ def restart_bridge() -> dict:
         creationflags=0x08000000,
     )
     time.sleep(6)
-    return {"ok": True, "status": health()}
+    return {"ok": True, "killed": killed, "running": _bridge_pids(), "status": health()}
 
 
 def handle_post(handler, path: str, parsed) -> None:
