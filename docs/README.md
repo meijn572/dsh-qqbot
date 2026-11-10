@@ -26,6 +26,7 @@
 - [提取规则](extraction-rules.md)
 - [复盘与合并](reviews.md)
 - [模型层自然语言原则](model-facing-language.md)
+- [提示词规则与范例盘点](prompt-audit.md)
 
 ### 1.3 人格
 
