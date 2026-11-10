@@ -96,10 +96,12 @@ function renderMem(){
     const insight=it.insight_text?`<div class="mut" style="margin-top:3px">感悟${ik?`（${esc(ik)}）`:''}：${esc(it.insight_text)}</div>`:'';
     const id=Number(it.id)||0;
     const editing=window.__memEdit===id;
-    const editBtn=it.type==='L3'&&!editing&&id?`<button style="float:right" onclick="editMemText(${id})">优化文字</button>`:'';
+    const editBtn=it.type==='L3'&&!editing&&id?`<button style="float:right" onclick="editMemText(${id})">改字</button>`:'';
     const content=editing?`<div style="margin-top:6px"><textarea id="memEditText" style="width:100%;height:160px;background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:10px;font-size:13px;line-height:1.6">${esc(it.content)}</textarea><div style="margin-top:6px"><button onclick="saveMemText(${id})">保存</button> <button onclick="cancelMemText()">取消</button></div></div>`:`<div style="margin-top:3px">${esc(it.content)}</div>`;
     h+=`<div id="mem-${id}" style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${status} ${stale}${title}<span class="mut">${esc(t)}</span>${editBtn}${content}${memo}${insight}${l2}<div style="margin-top:3px">${src}</div></div>`;
   }
+  const statusRow=document.getElementById('memstatus');
+  if(statusRow) statusRow.style.display=memTier==='L3'?'block':'none';
   const box=document.getElementById('memlist'); if(box) box.innerHTML=h||'<div class="mut">没有匹配的记忆</div>';
 }
 function editMemText(id){
@@ -303,13 +305,13 @@ async function load(){
         <button onclick="memTier='L3';memStatus='';renderMem()">L3 事件</button>
         <button onclick="memTier='L4';memStatus='';renderMem()">L4 核心</button>
       </div>
-      ${memTier==='L3' ? `<div style="margin:6px 0">
+      <div id="memstatus" style="margin:6px 0;display:${memTier==='L3'?'block':'none'}">
         <button onclick="memTier='L3';memStatus='open';renderMem()">进行中</button>
         <button onclick="memTier='L3';memStatus='closed';renderMem()">已结束</button>
         <button onclick="memTier='L3';memStatus='standalone';renderMem()">片段</button>
         <button onclick="memTier='L3';memStatus='dormant';renderMem()">沉睡</button>
         <button onclick="memTier='L3';memStatus='archived';renderMem()">归档</button>
-      </div>` : ''}
+      </div>
       <div id="memlist"></div></div>`;
     $('#memory').innerHTML=h;
     window.__memItems=m.items||[];
