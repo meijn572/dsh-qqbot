@@ -90,12 +90,11 @@ function renderMem(){
     const title=it.title?`<b>${esc(it.title)}</b> `:'';
     const stale=it.stale?`<span class="badge warn">已过期</span> `:'';
     const src=it.source_count?`<span class="mut">来源 ${it.source_count} 条</span> `:'';
-    const rel=it.relationship_impact?`<div class="mut" style="margin-top:3px">关系影响：${esc(it.relationship_impact)}</div>`:'';
     const l2=it.type==='L2'?`<div class="mut" style="margin-top:3px">${it.confidence!=null?`置信 ${(Number(it.confidence)*100).toFixed(0)}%`:''}${it.expires_at?` · 过期 ${new Date(Number(it.expires_at)*1000).toLocaleDateString('zh-CN')}`:''}</div>`:'';
     const memo=it.type==='L3'?`<div class="mut" style="margin-top:3px">难忘 ${it.memorability!=null?(Number(it.memorability)*100).toFixed(0)+'%':'—'}${it.dominant&&it.dominant!=='none'?`（${esc(DOMINANT_LABEL[it.dominant]||it.dominant)}）`:''}${it.stability_days?(' · 稳定 '+Math.round(Number(it.stability_days))+' 天'):''}${it.recall_count?(' · 召回 '+it.recall_count+' 次'):''}${it.active_until&&Number(it.active_until)>Date.now()/1000?(' · 活跃至 '+fmtUntil(it.active_until)):''}</div>`:'';
     const ik=insightKindLabel(it.insight_kind);
     const insight=it.insight_text?`<div class="mut" style="margin-top:3px">感悟${ik?`（${esc(ik)}）`:''}：${esc(it.insight_text)}</div>`:'';
-    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${status} ${stale}${title}<span class="mut">${esc(t)}</span><div style="margin-top:3px">${esc(it.content)}</div>${memo}${insight}${rel}${l2}<div style="margin-top:3px">${src}</div></div>`;
+    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${status} ${stale}${title}<span class="mut">${esc(t)}</span><div style="margin-top:3px">${esc(it.content)}</div>${memo}${insight}${l2}<div style="margin-top:3px">${src}</div></div>`;
   }
   const box=document.getElementById('memlist'); if(box) box.innerHTML=h||'<div class="mut">没有匹配的记忆</div>';
 }

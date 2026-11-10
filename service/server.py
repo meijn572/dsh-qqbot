@@ -3263,24 +3263,18 @@ class Handler(BaseHTTPRequestHandler):
         current = store.get_relationship()
         since = float(current.get("updated_at") or 0)
         rows = store.conn.execute(
-            "SELECT id,text,thread_title,relationship_impact,ts FROM memory "
-            "WHERE tier='L3' AND relationship_impact!='' AND ts>? "
-            "ORDER BY ts ASC LIMIT 20",
+            "SELECT id,text,thread_title,relationship_impact,insight_text,insight_kind,ts FROM memory "
+            "WHERE tier='L3' AND ts>? AND ("
+            "(insight_kind LIKE '%relation%' AND insight_text!='') OR relationship_impact!=''"
+            ") ORDER BY ts ASC LIMIT 20",
             (since,),
         ).fetchall()
         impacts = [{
             "id": int(r["id"]),
-            "text": str(r["relationship_impact"] or r["text"] or ""),
+            "text": str(r["insight_text"] or r["relationship_impact"] or r["text"] or ""),
             "title": str(r["thread_title"] or ""),
             "ts": float(r["ts"] or 0),
         } for r in rows]
-        for item in store.bili_insights("relation", limit=20, days=90):
-            impacts.append({
-                "id": int(item["id"]),
-                "text": str(item.get("insight_text") or ""),
-                "title": "B站感悟",
-                "ts": float(item.get("ts") or 0),
-            })
         if not impacts:
             self._json(200, {"ok": True, "skipped": "no-impact"})
             return

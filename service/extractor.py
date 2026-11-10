@@ -161,7 +161,6 @@ L4 是以后从 L3 里再挑的。
 {
   "updates": [
     {"thread_id": 123, "title": "现有标题", "summary": "更新后的摘要", "status": "open|closed",
-     "relationship_impact": "这件事对关系的影响，一句人话",
      "insight": "这次对话里值得留下的理解/感触，没有就空",
      "insight_kind": "self|style|relation|''",
      "memorability": 0.0, "dominant": "importance|emotion|distinctiveness|self_relevance|relationship|none",
@@ -170,7 +169,6 @@ L4 是以后从 L3 里再挑的。
   ],
   "new": [
     {"title": "新标题", "summary": "摘要", "status": "open|closed|standalone",
-     "relationship_impact": "这件事对关系的影响，一句人话",
      "insight": "这次对话里值得留下的理解/感触，没有就空",
      "insight_kind": "self|style|relation|''",
      "memorability": 0.0, "dominant": "importance|emotion|distinctiveness|self_relevance|relationship|none",
@@ -194,7 +192,8 @@ status：
   保留仍然成立的关键事实，压缩已解决/过时/重复的，把新进展写进去。
 - 不确定有没有下一步时，用 standalone，不要因为“以后可能有用”就标 open。
 
-关系影响（relationship_impact）：
+关系类感悟：
+- 统一写进 insight，insight_kind 用 relation。
 - 只写这件事让关系近了、远了，或者留下了什么。
 - 一句人话，不评分，不填数值。
 - 例如：「这次他听我把话说完，我觉得可以再多说一点。」
