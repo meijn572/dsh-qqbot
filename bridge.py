@@ -1506,7 +1506,8 @@ def add_l0_message(chat_key: str, text: str) -> None:
 
 
 def log_activity(kind: str, detail: str, thought: str = "", summary: str = "",
-                 insight: str = "", insight_kind: str = "", insight_context: str = "") -> dict | None:
+                 insight: str = "", insight_kind: str = "", insight_context: str = "",
+                 memorability: float = 0.5, dominant: str = "none") -> dict | None:
     """活动日志：她做过什么，不进记忆。"""
     try:
         payload = json.dumps({
@@ -1517,6 +1518,8 @@ def log_activity(kind: str, detail: str, thought: str = "", summary: str = "",
             "insight": str(insight or "")[:1200],
             "insight_kind": str(insight_kind or "")[:80],
             "insight_context": str(insight_context or "")[:1200],
+            "memorability": max(0.0, min(1.0, float(memorability or 0.5))),
+            "dominant": str(dominant or "none")[:40],
         }, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(
             CMEM_BASE + "/activity", data=payload,

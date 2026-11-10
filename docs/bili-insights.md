@@ -99,7 +99,9 @@ thought  看完的第一反应，可以主观
   "thought": "跟人睡觉重启一个道理——不是靠一根线不断，是每隔一段把要紧的写下来、再读回去。",
   "insight": "我不是靠一根线不断地往前走，是每隔一段把要紧的写下来、再读回去。",
   "insight_kind": "self",
-  "insight_context": "刷到《一个插件完成你对鱼的所有幻想》，里面讲 AI 上下文满了怎么换窗口、把记忆接回来。"
+  "insight_context": "刷到《一个插件完成你对鱼的所有幻想》，里面讲 AI 上下文满了怎么换窗口、把记忆接回来。",
+  "memorability": 0.82,
+  "dominant": "self_relevance"
 }
 ```
 
@@ -111,6 +113,8 @@ thought          看完的一般想法，1–3 句
 insight          关于自我/说话/关系的感悟，没有就空
 insight_kind     '' / self / style / relation / 逗号组合
 insight_context  这条感悟从哪来的，40–80 字；没有感悟就空
+memorability     0–1，只填一个数
+dominant         importance/emotion/distinctiveness/self_relevance/relationship/none
 ```
 
 ## 5. Prompt

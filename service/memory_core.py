@@ -1646,7 +1646,8 @@ class MemoryStore:
         } for r in rows]
 
     def add_bili_insight(self, activity_id: int, context: str = "",
-                         insight: str = "", insight_kind: str = "") -> int | None:
+                         insight: str = "", insight_kind: str = "",
+                         memorability: float = 0.5, dominant: str = "none") -> int | None:
         insight = str(insight or "").strip()
         kind = str(insight_kind or "").strip()
         if not insight or not kind:
@@ -1666,6 +1667,8 @@ class MemoryStore:
             source_status="bili", thread_status="standalone",
             insight_text=insight[:1200], insight_kind=kind[:80],
             source_activity_id=int(activity_id),
+            memorability=max(0.0, min(1.0, float(memorability or 0.5))),
+            dominant=str(dominant or "none")[:40],
         ))
         self.conn.execute("UPDATE activity_log SET l3_id=? WHERE id=?", (mem_id, int(activity_id)))
         self.conn.commit()

@@ -114,10 +114,13 @@ async def run_round(deps: Deps) -> dict | None:
         "insight：只有真的产生自我认知/说话风格/关系类感悟时才写，一句话，第一人称；没有就空。\n"
         "insight_kind：insight 为空就空；否则 self / style / relation，可逗号组合。\n"
         "insight_context：insight 非空时，写 40–80 字这条感悟从哪个视频、哪个点来；不要复述 summary；没有就空。\n"
+        "memorability：这条感悟的难忘性，0–1，只填一个数；参考 importance/emotion/distinctiveness/self_relevance/relationship。\n"
+        "dominant：最强维度，importance|emotion|distinctiveness|self_relevance|relationship|none。\n"
         "只输出 JSON：{\"topic\":\"这轮主题（短标签，≤12 字；若属于清单里已有方向，直接沿用清单里的名字）\","
         "\"videos\":[{\"bvid\":\"\",\"title\":\"\",\"why\":\"为什么点开\"}],"
         "\"frames\":0,\"summary\":\"视频讲了什么\",\"thought\":\"看完的想法（一两句，第一人称）\","
-        "\"insight\":\"感悟或空\",\"insight_kind\":\"\",\"insight_context\":\"来源上下文或空\"}\n"
+        "\"insight\":\"感悟或空\",\"insight_kind\":\"\",\"insight_context\":\"来源上下文或空\","
+        "\"memorability\":0.5,\"dominant\":\"none\"}\n"
         "不要输出 JSON 以外的内容。"
     )
     async with deps.lock:
@@ -137,6 +140,14 @@ async def run_round(deps: Deps) -> dict | None:
         insight = str(data.get("insight") or "").strip()
         insight_kind = str(data.get("insight_kind") or "").strip()
         insight_context = str(data.get("insight_context") or "").strip()
+        try:
+            memorability = max(0.0, min(1.0, float(data.get("memorability") or 0.5)))
+        except (TypeError, ValueError):
+            memorability = 0.5
+        dominant = str(data.get("dominant") or "none").strip()
+        if dominant not in ("importance", "emotion", "distinctiveness",
+                            "self_relevance", "relationship", "none"):
+            dominant = "none"
         try:
             frames_used = max(0, int(data.get("frames") or 0))
         except (TypeError, ValueError):
@@ -178,6 +189,7 @@ async def run_round(deps: Deps) -> dict | None:
         "bili", f"刷了「{round_topic}」{titles}", thought,
         summary=summary, insight=insight, insight_kind=insight_kind,
         insight_context=insight_context,
+        memorability=memorability, dominant=dominant,
     )
     log.info("自主刷完成：%s（%s 条视频，%s 帧）", round_topic, len(videos), frames_used)
     return data

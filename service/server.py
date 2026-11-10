@@ -2556,11 +2556,21 @@ class Handler(BaseHTTPRequestHandler):
             )
             l3_id = None
             if kind == "bili" and mid and insight.strip() and insight_kind.strip():
+                try:
+                    memo = max(0.0, min(1.0, float(body.get("memorability") or 0.5)))
+                except (TypeError, ValueError):
+                    memo = 0.5
+                dominant = str(body.get("dominant") or "none").strip()
+                if dominant not in ("importance", "emotion", "distinctiveness",
+                                    "self_relevance", "relationship", "none"):
+                    dominant = "none"
                 l3_id = store.add_bili_insight(
                     mid,
                     context=str(body.get("insight_context") or ""),
                     insight=insight,
                     insight_kind=insight_kind,
+                    memorability=memo,
+                    dominant=dominant,
                 )
         self._json(200, {"ok": True, "id": mid, "l3_id": l3_id})
 
