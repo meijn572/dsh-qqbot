@@ -186,11 +186,11 @@ status：
 
 难忘性（memorability）：
 - 只填一个 0–1 的数，不要逐项打分。
-- 参考：importance（多重要）、emotion（情绪多强）、distinctiveness（多反常/离奇）、
+- 参考：importance（多重要）、emotion（情绪多强）、distinctiveness（跟平时比有多独特、突出、反常）、
   self_relevance（是否关于我是谁）、relationship（是否关于我和主人）。
 - 0.0–0.2 普通日常；0.2–0.4 有点印象；0.4–0.6 值得留；
   0.6–0.8 很难忘；0.8–1.0 身份/关系/底线级别。
-- 离奇但和我无关，最多中等；不要因为聊得开心就给高分。
+- 独特/反常但和我无关，最多中等；不要因为聊得开心就给高分。
 - dominant 填最强的那一维，没有就 none。
 
 规则：

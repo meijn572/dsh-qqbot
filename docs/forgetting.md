@@ -69,7 +69,7 @@ dominant      最强维度
 ```text
 importance       对我有多重要
 emotion          当时情绪有多强
-distinctiveness  有多反常、离奇、跟平时不一样
+distinctiveness  跟平时比有多独特、突出、反常
 self_relevance   是否关于“我是谁、我怎么想”
 relationship     是否关于我和主人的关系
 ```
@@ -97,7 +97,7 @@ dominant none
 memorability 0.9
 dominant relationship
 
-刷到一个很离奇的视频
+刷到一个很独特、反常的视频
 memorability 0.45
 dominant distinctiveness
 
@@ -285,7 +285,7 @@ L0 不加，原话不参与难忘性。
 ```text
 不衰减
 但可以重新验证
-情绪强、离奇，不等于 L4
+情绪强、独特，不等于 L4
 ```
 
 ## 9. 什么时候评分
@@ -318,7 +318,7 @@ B 站感悟也走同一套：
 参考维度：
 - importance：对我有多重要
 - emotion：当时情绪有多强
-- distinctiveness：有多反常、离奇、跟平时不一样
+- distinctiveness：跟平时比有多独特、突出、反常
 - self_relevance：是否关于“我是谁、我怎么想”
 - relationship：是否关于我和主人的关系
 
@@ -329,8 +329,8 @@ B 站感悟也走同一套：
 0.6–0.8 很难忘
 0.8–1.0 身份、关系、底线级别
 
-不要因为“离奇”就直接给高分；
-离奇但和我无关，最多中等。
+不要因为“独特/反常”就直接给高分；
+独特但和我无关，最多中等。
 
 只返回 JSON：
 {"memorability": 0.0, "dominant": "importance|emotion|distinctiveness|self_relevance|relationship|none"}

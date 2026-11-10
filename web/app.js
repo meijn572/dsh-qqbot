@@ -1,5 +1,5 @@
 const $=(s)=>document.querySelector(s);
-const DOMINANT_LABEL={importance:'重要',emotion:'情绪',distinctiveness:'离奇',self_relevance:'自我',relationship:'关系',none:'无'};
+const DOMINANT_LABEL={importance:'重要',emotion:'情绪',distinctiveness:'独特',self_relevance:'自我',relationship:'关系',none:'无'};
 const esc=(s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
 const attr=(s)=>esc(s).replace(/"/g,'&quot;');
 function inlineMd(s){return esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');}
