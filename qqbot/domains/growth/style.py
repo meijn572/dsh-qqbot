@@ -25,7 +25,7 @@ def style_block(constitution: str) -> str:
     match = re.search(re.escape(STYLE_BEGIN) + r"(.*?)" + re.escape(STYLE_END), text, re.S)
     if match:
         return match.group(1).strip()
-    match = re.search(r"## 说话\s*\n(.*?)(?=\n## |\Z)", text, re.S)
+    match = re.search(r"## 表现\s*\n(.*?)(?=\n## |\Z)", text, re.S)
     return match.group(1).strip() if match else ""
 
 

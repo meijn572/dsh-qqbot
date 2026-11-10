@@ -318,7 +318,7 @@ def mood_payload() -> dict:
 STYLE_PROPOSAL = HOME / "persona-roles" / "state" / "style-proposal.json"
 STYLE_BEGIN = "<!-- style:begin -->"
 STYLE_END = "<!-- style:end -->"
-STYLE_HEADING = "## 说话"
+STYLE_HEADING = "## 表现"
 
 
 def _style_block(constitution: str) -> str:
@@ -326,7 +326,7 @@ def _style_block(constitution: str) -> str:
     match = re.search(re.escape(STYLE_BEGIN) + r"(.*?)" + re.escape(STYLE_END), text, re.S)
     if match:
         return match.group(1).strip()
-    match = re.search(r"## 说话\s*\n(.*?)(?=\n## |\Z)", text, re.S)
+    match = re.search(r"## 表现\s*\n(.*?)(?=\n## |\Z)", text, re.S)
     return match.group(1).strip() if match else ""
 
 
@@ -408,11 +408,15 @@ def review_apply(proposal_id: str) -> dict:
             return {"ok": False, "error": result.get("error") or "写入失败"}
         growth_review.set_status(proposal_id, "applied")
         return {"ok": True, "target": target}
-    if target not in ("judgment", "relationship"):
+    if target not in ("judgment", "relationship", "weakness"):
         return {"ok": False, "error": "未知目标"}
     persona = cmem_get("/persona")
     constitution = str(persona.get("constitution") or "")
-    heading = "## 判断" if target == "judgment" else "## 关系"
+    heading = {
+        "judgment": "## 价值取向",
+        "relationship": "## 我们怎么对彼此",
+        "weakness": "## 弱点",
+    }[target]
     try:
         new_constitution = _apply_section_ops(constitution, heading, ops)
     except ValueError as exc:
@@ -451,9 +455,9 @@ def apply_style() -> dict:
             lambda _: STYLE_BEGIN + "\n" + style + "\n" + STYLE_END,
             constitution, count=1, flags=re.S)
     else:
-        match = re.search(r"(## 说话\s*\n)(.*?)(?=\n## |\Z)", constitution, re.S)
+        match = re.search(r"(## 表现\s*\n)(.*?)(?=\n## |\Z)", constitution, re.S)
         if not match:
-            return {"ok": False, "error": "核心设定里没有「## 说话」段"}
+            return {"ok": False, "error": "核心设定里没有「## 表现」段"}
         new_constitution = constitution[:match.start(2)] + STYLE_BEGIN + "\n" + style + "\n" + STYLE_END + constitution[match.end(2):]
     backup = HOME / "persona-roles" / "state" / f"constitution-before-style-{time.strftime('%Y%m%d-%H%M%S')}.md"
     backup.write_text(constitution, encoding="utf-8")
