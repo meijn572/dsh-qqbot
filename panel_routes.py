@@ -27,6 +27,7 @@ from panel_readers import (
     lexicon_search_payload,
     close_thread,
     memory_payload,
+    update_memory_text,
     mood_payload,
     notebook_payload,
     persona_payload,
@@ -175,6 +176,9 @@ def handle_post(handler, path: str, parsed) -> None:
             str(body.get("field") or ""), str(body.get("text") or "")))
     elif path == "/api/threads/close":
         handler._json(close_thread(_body(handler).get("id")))
+    elif path == "/api/memory/update_text":
+        body = _body(handler)
+        handler._json(update_memory_text(body.get("id"), str(body.get("text") or "")))
     elif path == "/api/stickers/semantics":
         body = _body(handler)
         handler._json(sticker_update_semantics(

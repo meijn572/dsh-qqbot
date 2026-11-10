@@ -472,6 +472,26 @@ class MemoryStore:
             "SELECT tier, COUNT(*) AS n FROM memory GROUP BY tier").fetchall()}
         return {"total": int(total), "counts": counts, "items": items}
 
+    def update_memory_text(self, mem_id: int, text: str) -> dict:
+        """手动修改一条 L3 的正文；只动 summary/text，不碰感悟和状态。"""
+        body = str(text or "").strip()
+        if not body:
+            return {"ok": False, "error": "text required"}
+        row = self.conn.execute(
+            "SELECT tier FROM memory WHERE id=?", (int(mem_id),)
+        ).fetchone()
+        if row is None:
+            return {"ok": False, "error": "not found"}
+        if str(row["tier"]) != "L3":
+            return {"ok": False, "error": "only L3 text can be edited"}
+        self.conn.execute(
+            "UPDATE memory SET summary=?, text=?, updated_at=? WHERE id=?",
+            (body[:4000], body[:4000], time.time(), int(mem_id)),
+        )
+        self.conn.commit()
+        self._invalidate_caches()
+        return {"ok": True, "id": int(mem_id), "text": body[:4000]}
+
     def add(self, item: MemoryInput) -> int:
         # 幂等：同 tier 里已有同义文本（忽略标点/空白）就复用，不重复存
         _norm = _norm_for_dedupe(item.text)

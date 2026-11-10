@@ -94,9 +94,38 @@ function renderMem(){
     const memo=it.type==='L3'?`<div class="mut" style="margin-top:3px">难忘 ${it.memorability!=null?(Number(it.memorability)*100).toFixed(0)+'%':'—'}${it.dominant&&it.dominant!=='none'?`（${esc(DOMINANT_LABEL[it.dominant]||it.dominant)}）`:''}${it.stability_days?(' · 稳定 '+Math.round(Number(it.stability_days))+' 天'):''}${it.recall_count?(' · 召回 '+it.recall_count+' 次'):''}${it.active_until&&Number(it.active_until)>Date.now()/1000?(' · 活跃至 '+fmtUntil(it.active_until)):''}</div>`:'';
     const ik=insightKindLabel(it.insight_kind);
     const insight=it.insight_text?`<div class="mut" style="margin-top:3px">感悟${ik?`（${esc(ik)}）`:''}：${esc(it.insight_text)}</div>`:'';
-    h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${status} ${stale}${title}<span class="mut">${esc(t)}</span><div style="margin-top:3px">${esc(it.content)}</div>${memo}${insight}${l2}<div style="margin-top:3px">${src}</div></div>`;
+    const id=Number(it.id)||0;
+    const editing=window.__memEdit===id;
+    const editBtn=it.type==='L3'&&!editing&&id?`<button style="float:right" onclick="editMemText(${id})">优化文字</button>`:'';
+    const content=editing?`<div style="margin-top:6px"><textarea id="memEditText" style="width:100%;height:160px;background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:10px;font-size:13px;line-height:1.6">${esc(it.content)}</textarea><div style="margin-top:6px"><button onclick="saveMemText(${id})">保存</button> <button onclick="cancelMemText()">取消</button></div></div>`:`<div style="margin-top:3px">${esc(it.content)}</div>`;
+    h+=`<div id="mem-${id}" style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${status} ${stale}${title}<span class="mut">${esc(t)}</span>${editBtn}${content}${memo}${insight}${l2}<div style="margin-top:3px">${src}</div></div>`;
   }
   const box=document.getElementById('memlist'); if(box) box.innerHTML=h||'<div class="mut">没有匹配的记忆</div>';
+}
+function editMemText(id){
+  window.__memEdit=Number(id)||0;
+  renderMem();
+  setTimeout(()=>{ const el=document.getElementById('memEditText'); if(el){ el.focus(); el.setSelectionRange(el.value.length,el.value.length); } },0);
+}
+function cancelMemText(){
+  window.__memEdit=0;
+  renderMem();
+}
+async function saveMemText(id){
+  const el=document.getElementById('memEditText');
+  const text=(el?.value||'').trim();
+  if(!text){ alert('文字不能为空'); return; }
+  try{
+    const r=await fetch('/api/memory/update_text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,text})});
+    const d=await r.json();
+    if(!d.ok){ alert(d.error||'保存失败'); return; }
+    const item=(window.__memItems||[]).find(x=>Number(x.id)===Number(id));
+    if(item) item.content=text;
+    window.__memEdit=0;
+    renderMem();
+  }catch(e){
+    alert('保存失败：'+e);
+  }
 }
 async function closeThread(id,btn){
   if(!id){ alert('没有识别到这件事的 id'); return; }
@@ -264,22 +293,23 @@ async function load(){
     const l3=st.l3_status||{};
     const stat=(label,n)=>`<div><div class="k">${label}</div><div class="v">${n||0}</div></div>`;
     let h=`<div class="card"><div class="k">记忆 · ${m.count} 条</div>
-      <div class="grid" style="margin-top:8px">${stat('L1 总结',tiers.L1)}${stat('L3 事件',tiers.L3)}${stat('进行中',l3.open)}${stat('已结束',l3.closed)}${stat('片段',l3.standalone)}${stat('沉睡',l3.dormant)}${stat('L4 核心',tiers.L4)}</div>
+      <div class="grid" style="margin-top:8px">${stat('L1 总结',tiers.L1)}${stat('L2 判断',tiers.L2)}${stat('L3 事件',tiers.L3)}${stat('进行中',l3.open)}${stat('已结束',l3.closed)}${stat('片段',l3.standalone)}${stat('沉睡',l3.dormant)}${stat('L4 核心',tiers.L4)}</div>
       <div style="margin:10px 0"><input id="memq" placeholder="搜标题 / 内容…" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px;width:260px" oninput="renderMem()"></div>
       <div style="margin:6px 0">
         <button onclick="memTier='';memStatus='';renderMem()">全部</button>
+        <button onclick="memTier='L0';memStatus='';renderMem()">L0 原话</button>
         <button onclick="memTier='L1';memStatus='';renderMem()">L1 总结</button>
+        <button onclick="memTier='L2';memStatus='';renderMem()">L2 判断</button>
         <button onclick="memTier='L3';memStatus='';renderMem()">L3 事件</button>
         <button onclick="memTier='L4';memStatus='';renderMem()">L4 核心</button>
-        <button onclick="memTier='L0';memStatus='';renderMem()">L0 原话</button>
       </div>
-      <div style="margin:6px 0">
+      ${memTier==='L3' ? `<div style="margin:6px 0">
         <button onclick="memTier='L3';memStatus='open';renderMem()">进行中</button>
         <button onclick="memTier='L3';memStatus='closed';renderMem()">已结束</button>
         <button onclick="memTier='L3';memStatus='standalone';renderMem()">片段</button>
         <button onclick="memTier='L3';memStatus='dormant';renderMem()">沉睡</button>
         <button onclick="memTier='L3';memStatus='archived';renderMem()">归档</button>
-      </div>
+      </div>` : ''}
       <div id="memlist"></div></div>`;
     $('#memory').innerHTML=h;
     window.__memItems=m.items||[];

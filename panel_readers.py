@@ -607,6 +607,17 @@ def close_thread(thread_id) -> dict:
     return cmem_post("/threads/close", {"id": mid})
 
 
+def update_memory_text(mem_id, text) -> dict:
+    try:
+        mid = int(mem_id)
+    except Exception:
+        return {"ok": False, "error": "invalid id"}
+    body = str(text or "").strip()
+    if mid <= 0 or not body:
+        return {"ok": False, "error": "id and text required"}
+    return cmem_post("/memories/update_text", {"id": mid, "text": body})
+
+
 def persona_payload() -> dict:
     persona = cmem_get("/persona")
     if not persona:

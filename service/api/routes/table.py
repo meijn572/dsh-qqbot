@@ -56,6 +56,7 @@ POST_ROUTES = {
     "/l3/review": "_l3_review",
     "/core/review": "_core_review",
     "/threads/close": "_close_thread",
+    "/memories/update_text": "_update_memory_text",
     "/l2/review": "_l2_review",
     "/relationship/review": "_relationship_review",
 }

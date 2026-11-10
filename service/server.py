@@ -3356,6 +3356,20 @@ class Handler(BaseHTTPRequestHandler):
                 stats["kept"] += 1
         self._json(200, stats)
 
+    def _update_memory_text(self) -> None:
+        body = self._body()
+        try:
+            mid = int(body.get("id") or 0)
+        except Exception:
+            mid = 0
+        text = str(body.get("text") or "").strip()
+        if not mid or not text:
+            self._json(400, {"ok": False, "error": "id and text required"})
+            return
+        with _lock:
+            result = store.update_memory_text(mid, text)
+        self._json(200 if result.get("ok") else 400, result)
+
     def _close_thread(self) -> None:
         body = self._body()
         try:
