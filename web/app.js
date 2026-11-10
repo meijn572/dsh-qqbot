@@ -2,6 +2,16 @@ const $=(s)=>document.querySelector(s);
 const DOMINANT_LABEL={importance:'重要',emotion:'情绪',distinctiveness:'独特',self_relevance:'自我',relationship:'关系',none:'无'};
 const INSIGHT_KIND_LABEL={self:'自我认知',style:'说话风格',relation:'关系'};
 const insightKindLabel=(kind)=>String(kind||'').split(',').map(x=>INSIGHT_KIND_LABEL[x.trim()]||x.trim()).filter(Boolean).join('、');
+function fmtUntil(ts){
+  const d=new Date(Number(ts)*1000);
+  const now=new Date();
+  const hhmm=d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+  const same=(a,b)=>a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate();
+  if(same(d,now)) return hhmm;
+  const t=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1);
+  if(same(d,t)) return '次日 '+hhmm;
+  return d.toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'})+' '+hhmm;
+}
 const esc=(s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
 const attr=(s)=>esc(s).replace(/"/g,'&quot;');
 function inlineMd(s){return esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');}
@@ -82,7 +92,7 @@ function renderMem(){
     const src=it.source_count?`<span class="mut">来源 ${it.source_count} 条</span> `:'';
     const rel=it.relationship_impact?`<div class="mut" style="margin-top:3px">关系影响：${esc(it.relationship_impact)}</div>`:'';
     const l2=it.type==='L2'?`<div class="mut" style="margin-top:3px">${it.confidence!=null?`置信 ${(Number(it.confidence)*100).toFixed(0)}%`:''}${it.expires_at?` · 过期 ${new Date(Number(it.expires_at)*1000).toLocaleDateString('zh-CN')}`:''}</div>`:'';
-    const memo=it.type==='L3'?`<div class="mut" style="margin-top:3px">难忘 ${it.memorability!=null?(Number(it.memorability)*100).toFixed(0)+'%':'—'}${it.dominant&&it.dominant!=='none'?`（${esc(DOMINANT_LABEL[it.dominant]||it.dominant)}）`:''}${it.stability_days?(' · 稳定 '+Math.round(Number(it.stability_days))+' 天'):''}${it.recall_count?(' · 召回 '+it.recall_count+' 次'):''}${it.active_until&&Number(it.active_until)>Date.now()/1000?(' · 活跃至 '+new Date(Number(it.active_until)*1000).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})):''}</div>`:'';
+    const memo=it.type==='L3'?`<div class="mut" style="margin-top:3px">难忘 ${it.memorability!=null?(Number(it.memorability)*100).toFixed(0)+'%':'—'}${it.dominant&&it.dominant!=='none'?`（${esc(DOMINANT_LABEL[it.dominant]||it.dominant)}）`:''}${it.stability_days?(' · 稳定 '+Math.round(Number(it.stability_days))+' 天'):''}${it.recall_count?(' · 召回 '+it.recall_count+' 次'):''}${it.active_until&&Number(it.active_until)>Date.now()/1000?(' · 活跃至 '+fmtUntil(it.active_until)):''}</div>`:'';
     const ik=insightKindLabel(it.insight_kind);
     const insight=it.insight_text?`<div class="mut" style="margin-top:3px">感悟${ik?`（${esc(ik)}）`:''}：${esc(it.insight_text)}</div>`:'';
     h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${status} ${stale}${title}<span class="mut">${esc(t)}</span><div style="margin-top:3px">${esc(it.content)}</div>${memo}${insight}${rel}${l2}<div style="margin-top:3px">${src}</div></div>`;
