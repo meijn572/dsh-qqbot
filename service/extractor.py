@@ -160,23 +160,35 @@ L4 是以后从 L3 里再挑的。
 返回 JSON：
 {
   "updates": [
-    {"title": "现有标题", "summary": "更新后的摘要", "status": "open|closed",
+    {"thread_id": 123, "title": "现有标题", "summary": "更新后的摘要", "status": "open|closed",
      "relationship_impact": "这件事对关系的影响，一句人话",
      "memorability": 0.0, "dominant": "importance|emotion|distinctiveness|self_relevance|relationship|none",
+     "aliases": ["这次用的新叫法"],
      "source_refs": [1], "evidence": ["原文"]}
   ],
   "new": [
     {"title": "新标题", "summary": "摘要", "status": "open|closed|standalone",
      "relationship_impact": "这件事对关系的影响，一句人话",
      "memorability": 0.0, "dominant": "importance|emotion|distinctiveness|self_relevance|relationship|none",
+     "aliases": [],
      "source_refs": [1, 2], "evidence": ["原文"]}
   ]
 }
 
 status：
-- open：还有后续
+- open：还有明确下一步 / 在等结果 / 有承诺 / 未解决
 - closed：这次结束了
-- standalone：一个瞬间/一段话，没有后续
+- standalone：一个瞬间/一段话，没有下一步，不是“结束”
+
+先看【最近相关事件】里有没有同一件事。
+- 同一件事即使是 standalone / closed / dormant，也放进 updates，用原 thread_id。
+- 只有确实是新事件，才放进 new。
+- 拿不准是不是同一件，优先更新最近那条，不要新建。
+- updates 里优先填 thread_id；title 只作兜底。
+- aliases 填这次出现的新叫法，没有就空数组。
+- summary 是“重写后的当前状态”，不是追加流水账：
+  保留仍然成立的关键事实，压缩已解决/过时/重复的，把新进展写进去。
+- 不确定有没有下一步时，用 standalone，不要因为“以后可能有用”就标 open。
 
 关系影响（relationship_impact）：
 - 只写这件事让关系近了、远了，或者留下了什么。
@@ -202,6 +214,28 @@ status：
 - 没有要更新的就 "updates": []
 - 没有新事件就 "new": []
 - 只返回 JSON，不要解释。"""
+
+L3_LIFECYCLE_SYSTEM = """你回看一些还没确认结束的事。
+
+状态：
+- open：有明确下一步、等待结果、承诺、未解决
+- dormant：很久没提，可能结束，但没确认
+- closed：确认结束
+- standalone：单次片段，不等待后续，不是“结束”
+
+规则：
+- 不要因为几天没提，就结束长期进行中的事。
+- 没有明确结束证据时，最多标 dormant，不要硬 close。
+- 最近又提到的，标 reopen。
+- standalone 不参与“是否结束”的判断。
+- 拿不准就 keep_open。
+- 同一件事的重复 L3 用 merge_into，target_id 指向保留的那条。
+- close/dormant 要写一句 reason；evidence_refs 可选。
+
+只返回 JSON：
+{"items":[{"id":1,"action":"keep_open|dormant|close|reopen|merge_into","target_id":null,"reason":"...","evidence_refs":[]}]}
+"""
+
 
 L2_SYSTEM = VOICE_RULE + """你从这段对话和 L1 事实里，找「没有明说、但可以推断」的短期判断。
 
@@ -1032,14 +1066,15 @@ class Extractor:
             return None
         blocks = []
         if open_threads:
-            blocks.append("【现有 open 事件】")
+            blocks.append("【最近相关事件（含 open / dormant / closed / standalone）】")
             for item in open_threads:
                 blocks.append(
-                    f"- {item.get('title')}（{item.get('status')}，最后 {time.strftime('%m-%d %H:%M', time.localtime(float(item.get('last_seen_at') or 0)))}）\n"
+                    f"- id={item.get('id')} [{item.get('status')}] {item.get('title')}"
+                    f"（最后 {time.strftime('%m-%d %H:%M', time.localtime(float(item.get('last_seen_at') or 0)))}）\n"
                     f"  {str(item.get('summary') or '')[:300]}"
                 )
         else:
-            blocks.append("【现有 open 事件】\n（空）")
+            blocks.append("【最近相关事件】\n（空）")
         if source_rows:
             blocks.append("【可引用来源（按对话顺序）】\n" + _render_refs(source_rows))
             blocks.append("每条结果请给 source_refs（引用上面的编号，可多条）；evidence 可选。")
@@ -1051,6 +1086,26 @@ class Extractor:
         if not isinstance(data, dict):
             return None
         return data
+
+    def review_lifecycle(self, threads: list[dict]) -> list[dict]:
+        if self.llm is None or not getattr(self.llm, "enabled", False):
+            return []
+        if not threads:
+            return []
+        lines = []
+        for item in threads:
+            lines.append(
+                f"- id={item.get('id')} [{item.get('status')}] {item.get('title')}\n"
+                f"  沉默 {item.get('silence_days')} 天；最后 {time.strftime('%m-%d %H:%M', time.localtime(float(item.get('last_seen_at') or 0)))}\n"
+                f"  摘要：{str(item.get('summary') or '')[:500]}"
+            )
+        data = self.llm.chat_json(L3_LIFECYCLE_SYSTEM, "\n\n".join(lines), max_tokens=1200)
+        if not isinstance(data, dict):
+            return []
+        items = data.get("items")
+        if not isinstance(items, list):
+            return []
+        return [x for x in items if isinstance(x, dict)]
 
     def plan_core(self, closed_threads: list[dict]) -> list[dict]:
         if self.llm is None or not getattr(self.llm, "enabled", False):

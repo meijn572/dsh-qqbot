@@ -2960,6 +2960,71 @@ class Handler(BaseHTTPRequestHandler):
         ]
         return "\n\n".join(part for part in parts if part.strip())
 
+    def _apply_lifecycle(self, items: list[dict], threads: list[dict]) -> dict:
+        by_id = {int(x["id"]): x for x in threads}
+        now = time.time()
+        stats = {"ok": True, "updated": 0, "merged": 0, "skipped": 0}
+        for item in items if isinstance(items, list) else []:
+            if not isinstance(item, dict):
+                continue
+            try:
+                tid = int(item.get("id") or 0)
+            except (TypeError, ValueError):
+                tid = 0
+            if tid not in by_id:
+                stats["skipped"] += 1
+                continue
+            action = str(item.get("action") or "keep_open")
+            reason = str(item.get("reason") or "")[:500]
+            if action == "merge_into":
+                try:
+                    target = int(item.get("target_id") or 0)
+                except (TypeError, ValueError):
+                    target = 0
+                if target and target in by_id and target != tid:
+                    store.merge_threads(target, [tid], summary=str(item.get("summary") or ""),
+                                        status_reason=reason or "merged")
+                    stats["merged"] += 1
+                else:
+                    stats["skipped"] += 1
+                continue
+            if action == "close":
+                status = "closed"
+                closed_at = now
+            elif action == "dormant":
+                status = "dormant"
+                closed_at = None
+            elif action == "reopen":
+                status = "open"
+                closed_at = None
+            elif action == "keep_open":
+                status = "open"
+                closed_at = None
+            else:
+                stats["skipped"] += 1
+                continue
+            store.conn.execute(
+                "UPDATE memory SET thread_status=?, thread_closed_at=?, status_reason=?, "
+                "lifecycle_reviewed_at=?, updated_at=? WHERE id=? AND tier='L3'",
+                (status, closed_at, reason, now, now, tid),
+            )
+            stats["updated"] += 1
+        store.conn.commit()
+        store._invalidate_caches()
+        return stats
+
+    def _lifecycle_review(self, force: bool = False) -> dict:
+        threads = store.lifecycle_candidates(20)
+        if not force and len(threads) < 2:
+            return {"ok": True, "skipped": "not-enough"}
+        items = extractor.review_lifecycle(threads)
+        if not items:
+            return {"ok": True, "skipped": "no-result"}
+        return self._apply_lifecycle(items, threads)
+
+    def _l3_review(self) -> None:
+        self._json(200, self._lifecycle_review(force=True))
+
     def _batch_run(self) -> None:
         """按会话段提取：L0 → L1；L3 事件线程续写/新建。"""
         cfg = _load_config().get("batch") or {}
@@ -3075,7 +3140,9 @@ class Handler(BaseHTTPRequestHandler):
             stats["l2"] = stats.get("l2", 0) + 1
 
         ref_rows = source_rows + l1_rows + l2_rows
-        open_threads = store.open_threads(8)
+        if len(store.open_threads(20)) > 10:
+            stats["lifecycle"] = self._lifecycle_review(force=True)
+        open_threads = store.thread_candidates(text, open_limit=10, recall_limit=8)
         plan = extractor.plan_threads(text, facts, open_threads, source_rows=ref_rows)
         if not isinstance(plan, dict):
             self._json(200, stats)
@@ -3099,12 +3166,27 @@ class Handler(BaseHTTPRequestHandler):
                 return None
             return value
 
+        def _aliases(item) -> list[str]:
+            value = item.get("aliases")
+            if not isinstance(value, list):
+                return []
+            return [str(x).strip()[:60] for x in value if str(x).strip()][:8]
+
+        def _target(item):
+            try:
+                tid = int(item.get("thread_id") or 0)
+            except (TypeError, ValueError):
+                tid = 0
+            if tid:
+                return next((x for x in open_threads if int(x.get("id") or 0) == tid), None)
+            return store.resolve_thread(str(item.get("title") or ""), open_threads)
+
         updates = plan.get("updates") if isinstance(plan.get("updates"), list) else []
         for item in updates[:8]:
             if not isinstance(item, dict):
                 continue
             title = str(item.get("title") or "").strip()
-            target = store.resolve_thread(title, open_threads)
+            target = _target(item)
             if target is None:
                 continue
             summary = str(item.get("summary") or "").strip()[:2000]
@@ -3122,6 +3204,7 @@ class Handler(BaseHTTPRequestHandler):
                 int(target["id"]), summary, status, source_ids=l0_ids, last_seen_at=now,
                 relationship_impact=_impact(item),
                 memorability=_memo(item), dominant=_dominant(item),
+                aliases=_aliases(item),
             )
             if not ref_pairs:
                 ref_pairs = [("L1", x) for x in l1_ids] + [("L0", x) for x in l0_ids]
@@ -3157,7 +3240,7 @@ class Handler(BaseHTTPRequestHandler):
                 source_status="verified" if l0_ids else "unverified",
                 thread_status=status,
                 thread_title=title,
-                thread_aliases=[],
+                thread_aliases=_aliases(item),
                 thread_opened_at=now,
                 thread_last_seen_at=now,
                 thread_closed_at=now if status == "closed" else None,

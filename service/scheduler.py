@@ -98,6 +98,8 @@ class Scheduler:
             changed = True
         if self._tick_relationship(st, now):
             changed = True
+        if self._tick_l3_review(st, now):
+            changed = True
 
         if changed:
             self._save_state(st)
@@ -362,6 +364,33 @@ class Scheduler:
             _log(f"relationship: {data}")
         except Exception as exc:  # noqa: BLE001
             _log(f"relationship review failed: {exc}")
+
+    def _tick_l3_review(self, st: dict, now: float) -> bool:
+        last = float(st.get("l3_review_at") or 0)
+        if now - last < 7 * 86400:
+            return False
+        if datetime.datetime.now().hour < 7:
+            return False
+        st["l3_review_at"] = now
+        threading.Thread(target=self._run_l3_review, name="dsh-l3-review", daemon=True).start()
+        _log("l3: scheduled weekly lifecycle review")
+        return True
+
+    def _run_l3_review(self) -> None:
+        import urllib.request
+        port = os.environ.get("CMEM_PORT", "8081")
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/l3/review",
+            data=json.dumps({}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                data = json.loads(resp.read().decode("utf-8") or "{}")
+            _log(f"l3 review: {data}")
+        except Exception as exc:  # noqa: BLE001
+            _log(f"l3 review failed: {exc}")
 
     def _owner_qq(self) -> int:
         """主人的 QQ 号。

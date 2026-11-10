@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS memory (
   insight_text   TEXT DEFAULT '',             -- L3：B 站等来源的感悟正文
   insight_kind   TEXT DEFAULT '',             -- L3：self/style/relation
   source_activity_id INTEGER DEFAULT NULL,    -- L3：来源 activity
+  lifecycle_reviewed_at REAL DEFAULT NULL,   -- L3：上次生命周期复盘
+  status_reason TEXT DEFAULT '',             -- L3：状态变更原因
+  merged_into INTEGER DEFAULT NULL,          -- L3：被合并到哪条
   memorability   REAL DEFAULT 0.5,            -- 0–1，模型判断的难忘性
   dominant       TEXT DEFAULT '',             -- 最强维度
   last_recalled_at REAL DEFAULT NULL,

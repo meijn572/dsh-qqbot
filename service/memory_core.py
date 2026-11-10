@@ -338,7 +338,10 @@ class MemoryStore:
                         ("last_recalled_at", "REAL"),
                         ("active_until", "REAL"),
                         ("recall_count", "INTEGER DEFAULT 0"),
-                        ("stability_days", "REAL")]),
+                        ("stability_days", "REAL"),
+                        ("lifecycle_reviewed_at", "REAL"),
+                        ("status_reason", "TEXT DEFAULT ''"),
+                        ("merged_into", "INTEGER")]),
             ("slang", [("meaning", "TEXT DEFAULT ''"),
                        ("example", "TEXT DEFAULT ''"),
                        ("source", "TEXT DEFAULT 'chat'"),
@@ -732,13 +735,14 @@ class MemoryStore:
         self.conn.commit()
         return bool(cur.rowcount)
 
-    def open_threads(self, limit: int = 8) -> list[dict]:
+    def open_threads(self, limit: int = 10) -> list[dict]:
         rows = self.conn.execute(
             "SELECT id,tier,text,summary,thread_title,thread_aliases,thread_status,"
             "thread_opened_at,thread_last_seen_at,thread_closed_at,source_ids "
             "FROM memory WHERE tier='L3' AND thread_status='open' "
+            "AND (merged_into IS NULL OR merged_into=0) "
             "ORDER BY thread_last_seen_at DESC, id DESC LIMIT ?",
-            (max(1, min(int(limit), 8)),),
+            (max(1, min(int(limit), 30)),),
         ).fetchall()
         out = []
         for r in rows:
@@ -756,11 +760,89 @@ class MemoryStore:
             })
         return out
 
-    def resolve_thread(self, query: str, threads: list[dict] | None = None) -> dict | None:
+    def thread_candidates(self, query: str = "", open_limit: int = 10,
+                          recall_limit: int = 8) -> list[dict]:
+        """提取时候选：全部 open（按上限）+ 召回的其他状态 L3。"""
+        open_items = self.open_threads(max(open_limit, 10))
+        out = []
+        seen = set()
+        for item in open_items[:max(1, int(open_limit))]:
+            out.append(item)
+            seen.add(int(item["id"]))
+        if query:
+            try:
+                hits = self.search(query, tiers=["L3"], top_k=max(1, int(recall_limit)),
+                                   log=False)
+            except Exception:
+                hits = []
+            ids = [int(h.id) for h in hits if int(h.id) not in seen]
+            if ids:
+                marks = ",".join("?" for _ in ids)
+                rows = self.conn.execute(
+                    f"SELECT id,text,summary,thread_title,thread_aliases,thread_status,"
+                    f"thread_opened_at,thread_last_seen_at,thread_closed_at,source_ids "
+                    f"FROM memory WHERE id IN ({marks}) AND tier='L3' "
+                    f"AND (merged_into IS NULL OR merged_into=0)",
+                    ids,
+                ).fetchall()
+                for r in rows:
+                    if int(r["id"]) in seen:
+                        continue
+                    seen.add(int(r["id"]))
+                    out.append({
+                        "id": int(r["id"]),
+                        "text": r["text"],
+                        "summary": r["summary"] or r["text"],
+                        "title": r["thread_title"] or (str(r["text"]).splitlines()[0][:60] if r["text"] else ""),
+                        "aliases": json.loads(r["thread_aliases"] or "[]"),
+                        "status": r["thread_status"],
+                        "opened_at": float(r["thread_opened_at"] or 0),
+                        "last_seen_at": float(r["thread_last_seen_at"] or 0),
+                        "closed_at": float(r["thread_closed_at"] or 0),
+                        "source_ids": json.loads(r["source_ids"] or "[]"),
+                    })
+        return out
+
+    def lifecycle_candidates(self, limit: int = 20) -> list[dict]:
+        now = time.time()
+        rows = self.conn.execute(
+            "SELECT id,text,summary,thread_title,thread_status,thread_opened_at,"
+            "thread_last_seen_at,thread_closed_at FROM memory "
+            "WHERE tier='L3' AND thread_status IN ('open','dormant') "
+            "AND (merged_into IS NULL OR merged_into=0) "
+            "ORDER BY thread_last_seen_at ASC, id ASC LIMIT ?",
+            (max(1, min(int(limit), 50)),),
+        ).fetchall()
+        out = []
+        for r in rows:
+            last = float(r["thread_last_seen_at"] or r["thread_opened_at"] or 0)
+            out.append({
+                "id": int(r["id"]),
+                "title": r["thread_title"] or (str(r["text"]).splitlines()[0][:60] if r["text"] else ""),
+                "summary": r["summary"] or r["text"],
+                "status": r["thread_status"],
+                "opened_at": float(r["thread_opened_at"] or 0),
+                "last_seen_at": last,
+                "silence_days": round(max(0.0, (now - last) / 86400.0), 1) if last else 9999,
+            })
+        return out
         q = str(query or "").strip()
         if not q:
             return None
         items = threads if threads is not None else self.open_threads(8)
+        best, best_score = None, 0.0
+        for item in items:
+            names = [str(item.get("title") or "")] + [str(a) for a in (item.get("aliases") or [])]
+            score = max((_title_score(q, name) for name in names), default=0.0)
+            if score > best_score:
+                best, best_score = item, score
+        return best if best_score >= 0.6 else None
+
+    def resolve_thread(self, query: str, threads: list[dict] | None = None) -> dict | None:
+        q = str(query or "").strip()
+        if not q:
+            return None
+        items = threads if threads is not None else self.find_threads(q, 8)
         best, best_score = None, 0.0
         for item in items:
             names = [str(item.get("title") or "")] + [str(a) for a in (item.get("aliases") or [])]
@@ -777,6 +859,7 @@ class MemoryStore:
             "SELECT id,text,summary,thread_title,thread_aliases,thread_status,"
             "thread_last_seen_at,source_ids FROM memory "
             "WHERE tier='L3' AND thread_status IN ('open','closed','standalone','dormant') "
+            "AND (merged_into IS NULL OR merged_into=0) "
             "ORDER BY CASE thread_status WHEN 'open' THEN 0 ELSE 1 END, "
             "thread_last_seen_at DESC LIMIT 200"
         ).fetchall()
@@ -795,6 +878,7 @@ class MemoryStore:
         out = []
         for _, r in scored[:max(1, min(int(limit), 8))]:
             out.append({
+                "id": int(r["id"]),
                 "title": r["thread_title"] or "",
                 "status": r["thread_status"],
                 "summary": r["summary"] or r["text"],
@@ -819,10 +903,13 @@ class MemoryStore:
                       last_seen_at: float | None = None,
                       relationship_impact: str | None = None,
                       memorability: float | None = None,
-                      dominant: str | None = None) -> bool:
+                      dominant: str | None = None,
+                      aliases: Sequence[str] | None = None,
+                      status_reason: str | None = None) -> bool:
         now = time.time()
         row = self.conn.execute(
-            "SELECT source_ids,source_status,thread_status,thread_opened_at FROM memory WHERE id=? AND tier='L3'",
+            "SELECT source_ids,source_status,thread_status,thread_opened_at,thread_aliases "
+            "FROM memory WHERE id=? AND tier='L3'",
             (int(mem_id),),
         ).fetchone()
         if row is None:
@@ -832,30 +919,94 @@ class MemoryStore:
             old = [int(x) for x in json.loads(row["source_ids"] or "[]")]
         except Exception:  # noqa: BLE001
             old = []
+        old_aliases = []
+        try:
+            old_aliases = [str(x) for x in json.loads(row["thread_aliases"] or "[]")]
+        except Exception:  # noqa: BLE001
+            old_aliases = []
+        for name in aliases or []:
+            name = str(name).strip()[:60]
+            if name and name not in old_aliases:
+                old_aliases.append(name)
         for sid in source_ids or []:
             if int(sid) not in old:
                 old.append(int(sid))
         closed = now if status == "closed" else None
         source_status = "verified" if source_ids else str(row["source_status"] or "legacy")
         self.conn.execute(
-            "UPDATE memory SET summary=?, text=?, source_ids=?, source_status=?, "
+            "UPDATE memory SET summary=?, text=?, source_ids=?, thread_aliases=?, source_status=?, "
             "thread_status=?, thread_last_seen_at=?, thread_closed_at=?, "
             "relationship_impact=COALESCE(?, relationship_impact), "
             "memorability=COALESCE(?, memorability), dominant=COALESCE(?, dominant), "
+            "status_reason=COALESCE(?, status_reason), "
             "stability_days=CASE WHEN ? IS NULL THEN stability_days "
             "ELSE (? + 0.5) * COALESCE(half_life_days, 90.0) END, "
             "updated_at=? WHERE id=?",
             (
                 str(summary)[:2000], str(summary)[:4000],
-                json.dumps(old, ensure_ascii=False), source_status, str(status),
+                json.dumps(old, ensure_ascii=False), json.dumps(old_aliases, ensure_ascii=False),
+                source_status, str(status),
                 float(last_seen_at or now), closed,
                 relationship_impact,
-                memorability, dominant,
+                memorability, dominant, status_reason,
                 memorability, memorability,
                 now, int(mem_id),
             ),
         )
         self.conn.commit()
+        return True
+
+    def merge_threads(self, primary_id: int, duplicate_ids: Sequence[int],
+                      summary: str = "", status_reason: str = "merged") -> bool:
+        primary = self.conn.execute(
+            "SELECT id,source_ids,thread_aliases FROM memory WHERE id=? AND tier='L3'",
+            (int(primary_id),),
+        ).fetchone()
+        if primary is None:
+            return False
+        sources = []
+        aliases = []
+        for value in (primary["source_ids"], primary["thread_aliases"]):
+            try:
+                data = json.loads(value or "[]")
+            except Exception:  # noqa: BLE001
+                data = []
+            if value == primary["source_ids"]:
+                sources = [int(x) for x in data]
+            else:
+                aliases = [str(x) for x in data]
+        for did in duplicate_ids:
+            if int(did) == int(primary_id):
+                continue
+            row = self.conn.execute(
+                "SELECT source_ids,thread_title FROM memory WHERE id=? AND tier='L3'",
+                (int(did),),
+            ).fetchone()
+            if row is None:
+                continue
+            try:
+                sources.extend(int(x) for x in json.loads(row["source_ids"] or "[]"))
+            except Exception:  # noqa: BLE001
+                pass
+            title = str(row["thread_title"] or "").strip()
+            if title and title not in aliases:
+                aliases.append(title)
+            self.conn.execute(
+                "UPDATE memory SET merged_into=?, thread_status='closed', status_reason=?, updated_at=? "
+                "WHERE id=?",
+                (int(primary_id), status_reason[:200], time.time(), int(did)),
+            )
+        sources = list(dict.fromkeys(sources))
+        if summary:
+            self.conn.execute(
+                "UPDATE memory SET summary=?, text=?, source_ids=?, thread_aliases=?, "
+                "status_reason=?, updated_at=? WHERE id=?",
+                (summary[:2000], summary[:4000], json.dumps(sources, ensure_ascii=False),
+                 json.dumps(aliases, ensure_ascii=False), status_reason[:200],
+                 time.time(), int(primary_id)),
+            )
+        self.conn.commit()
+        self._invalidate_caches()
         return True
 
     def link(self, child_id: int, parent_id: int, relation: str = "derived_from",
@@ -1112,12 +1263,13 @@ class MemoryStore:
             return self._light_cache
         rows = self.conn.execute(
             "SELECT id, ts, half_life_days, tier, subject, scope, stale_at, "
-            "stability_days, last_recalled_at, active_until FROM memory"
+            "stability_days, last_recalled_at, active_until, merged_into FROM memory"
         ).fetchall()
         self._light_cache = {
             int(r["id"]): (float(r["ts"]), r["half_life_days"], r["tier"], r["subject"],
                            (r["scope"] or "global"), r["stale_at"],
-                           r["stability_days"], r["last_recalled_at"], r["active_until"])
+                           r["stability_days"], r["last_recalled_at"], r["active_until"],
+                           r["merged_into"])
             for r in rows
         }
         return self._light_cache
@@ -1168,6 +1320,9 @@ class MemoryStore:
             stability = meta[6] if len(meta) > 6 else None
             last_recalled = meta[7] if len(meta) > 7 else None
             active_until = meta[8] if len(meta) > 8 else None
+            merged_into = meta[9] if len(meta) > 9 else None
+            if merged_into:
+                continue
             if tier_set is not None:
                 if tier not in tier_set:
                     continue
