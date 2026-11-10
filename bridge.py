@@ -691,7 +691,7 @@ async def extract_group_slang(dsh: Dsh, gid: str) -> None:
         "只返回 JSON 数组："
         '[{"term":"说法","meaning":"大概什么意思","example":"原话例子","occurrences":2}]; 没有就输出 []。不要输出别的。'
     )
-    reply = await maintenance_turn(dsh, chat_key, prompt)
+    reply = await maintenance_turn(dsh, chat_key, prompt, task="group_slang")
     match = re.search(r"\[.*\]", reply or "", re.S)
     if not match:
         return
@@ -805,7 +805,7 @@ async def review_lexicon(dsh: Dsh) -> bool:
         '{"updates":[{"term":"旧词","meaning":"新的解释","example":"原话"}],'
         '"new":[{"term":"新词","meaning":"解释","kind":"meme","aliases":[],"example":"原话"}]}'
     )
-    reply = await maintenance_turn(dsh, OWNER_CHAT_KEY, prompt)
+    reply = await maintenance_turn(dsh, OWNER_CHAT_KEY, prompt, task="lexicon")
     match = re.search(r"\{.*\}", reply or "", re.S)
     if not match:
         log.info("词库复盘：没有拿到 JSON")
@@ -1264,7 +1264,8 @@ async def review_sticker(dsh: Dsh, rel: str, occurrences: list[dict]) -> bool:
         "没有把握的字段留空；不要从标签拼名字；不要编造。"
     )
     try:
-        reply = await maintenance_turn(dsh, str((occurrences[0] or {}).get("chat_key") or ""), prompt, images=[str(path)])
+        reply = await maintenance_turn(dsh, str((occurrences[0] or {}).get("chat_key") or ""), prompt,
+                                        images=[str(path)], task="sticker")
         match = re.search(r"\{.*\}", reply or "", re.S)
         data = json.loads(match.group(0)) if match else {}
         if not isinstance(data, dict) or not any(
@@ -1345,48 +1346,72 @@ def mark_session_mode_off(sid: str) -> None:
         log.warning("写 session-modes 失败：%s", exc)
 
 
-async def maintenance_sid(dsh: Dsh) -> str:
-    if MAINT_SESSION["sid"]:
-        return MAINT_SESSION["sid"]
+# 维护类会话的上下文上限：快到就换新会话，靠换新而不是靠压缩。
+# 换新只付一次 6k 冷启动；压缩要读整段历史再重写前缀，越晚压越贵。
+ROTATE_TOKENS = int(CONFIG.get("maintenance_rotate_tokens") or 30000)
+
+
+def _task_state_file(kind: str, task: str) -> Path:
+    safe = re.sub(r"[^a-z0-9_]+", "-", str(task or "default").lower()).strip("-") or "default"
+    return DSH_HOME / f"{kind}-{safe}.json"
+
+
+def _read_task_sid(path: Path) -> str:
     try:
-        data = json.loads(MAINT_STATE_FILE.read_text(encoding="utf-8"))
-        sid = str(data.get("sid") or "")
+        return str(json.loads(path.read_text(encoding="utf-8")).get("sid") or "")
     except Exception:  # noqa: BLE001
-        sid = ""
+        return ""
+
+
+def _write_task_sid(path: Path, sid: str) -> None:
+    try:
+        path.write_text(json.dumps({"sid": sid}, ensure_ascii=False), encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("写会话状态失败 %s：%s", path.name, exc)
+
+
+async def _pressure_tokens(dsh: Dsh, sid: str) -> int:
+    """会话当前上下文占用。取不到就返回 0，绝不因为探测失败换会话。"""
+    try:
+        proj = await dsh.projections(sid)
+        pressure = ((proj or {}).get("values") or {}).get("contextPressure") or {}
+        return int(pressure.get("pressureTokens") or 0)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+async def task_sid(dsh: Dsh, cache: dict[str, str], kind: str, task: str) -> str:
+    """每个维护流程一个独立会话；占用到 ROTATE_TOKENS 就换新的。"""
+    sid = cache.get(task) or ""
+    path = _task_state_file(kind, task)
+    if not sid:
+        sid = _read_task_sid(path)
+    if sid and ROTATE_TOKENS > 0:
+        used = await _pressure_tokens(dsh, sid)
+        if used >= ROTATE_TOKENS:
+            log.info("维护会话 %s/%s 已 %s tok，换新的", kind, task, used)
+            sid = ""
     if not sid:
         sid = await dsh.create_session()
-        try:
-            MAINT_STATE_FILE.write_text(json.dumps({"sid": sid}, ensure_ascii=False), encoding="utf-8")
-        except Exception:  # noqa: BLE001
-            pass
+        _write_task_sid(path, sid)
     mark_session_mode_off(sid)
-    MAINT_SESSION["sid"] = sid
+    cache[task] = sid
     return sid
 
 
-async def maintenance_turn(dsh: Dsh, chat_key: str, prompt: str, images: list[str] | None = None) -> str:
-    sid = await maintenance_sid(dsh)
+async def maintenance_sid(dsh: Dsh, task: str = "default") -> str:
+    return await task_sid(dsh, MAINT_SESSION, "maint", task)
+
+
+async def maintenance_turn(dsh: Dsh, chat_key: str, prompt: str,
+                           images: list[str] | None = None, task: str = "default") -> str:
+    sid = await maintenance_sid(dsh, task)
     async with MAINT_LOCK:
         return await internal_turn(dsh, sid, chat_key, prompt, images=images)
 
 
-async def activity_sid(dsh: Dsh) -> str:
-    if ACTIVITY_SESSION["sid"]:
-        return ACTIVITY_SESSION["sid"]
-    try:
-        data = json.loads(ACTIVITY_SESSION_FILE.read_text(encoding="utf-8"))
-        sid = str(data.get("sid") or "")
-    except Exception:  # noqa: BLE001
-        sid = ""
-    if not sid:
-        sid = await dsh.create_session()
-        try:
-            ACTIVITY_SESSION_FILE.write_text(json.dumps({"sid": sid}, ensure_ascii=False), encoding="utf-8")
-        except Exception:  # noqa: BLE001
-            pass
-    mark_session_mode_off(sid)
-    ACTIVITY_SESSION["sid"] = sid
-    return sid
+async def activity_sid(dsh: Dsh, task: str = "default") -> str:
+    return await task_sid(dsh, ACTIVITY_SESSION, "activity", task)
 
 
 IMPORTANT_BEGIN = "<!-- persona-important:begin -->"
@@ -1443,7 +1468,7 @@ async def run_persona_reflect(dsh: Dsh) -> bool:
     if not users:
         return False
     chat_key = f"private:{int(users[0])}"
-    return await growth_reflect.run(lambda prompt: maintenance_turn(dsh, chat_key, prompt))
+    return await growth_reflect.run(lambda prompt: maintenance_turn(dsh, chat_key, prompt, task="reflect"))
 
 
 async def persona_reflect_loop(dsh: Dsh) -> None:
@@ -1568,7 +1593,7 @@ async def internal_turn(dsh: Dsh, sid: str, chat_key: str, prompt: str, images: 
 
 async def extract_interests(dsh: Dsh, chat_key: str, text: str) -> None:
     await autonomy_interests.extract(
-        lambda prompt: maintenance_turn(dsh, chat_key, prompt), chat_key, text
+        lambda prompt: maintenance_turn(dsh, chat_key, prompt, task="interests"), chat_key, text
     )
 
 
@@ -1628,8 +1653,8 @@ async def recent_scene(chat_key: str, limit: int = 6) -> str:
 def _autonomy_deps(dsh: Dsh, onebot: OneBot) -> autonomy_round.Deps:
     users = [int(x) for x in (CONFIG.get("allowed_users") or [])]
 
-    async def activity_sid_cb() -> str:
-        return await activity_sid(dsh)
+    async def activity_sid_cb(task: str = "default") -> str:
+        return await activity_sid(dsh, task)
 
     async def internal(sid: str, chat_key: str, prompt: str) -> str:
         return await internal_turn(dsh, sid, chat_key, prompt)
@@ -1644,7 +1669,8 @@ def _autonomy_deps(dsh: Dsh, onebot: OneBot) -> autonomy_round.Deps:
         users=users,
         activity_sid=activity_sid_cb,
         internal_turn=internal,
-        maintenance_turn=lambda prompt: maintenance_turn(dsh, f"private:{users[0] if users else 0}", prompt),
+        maintenance_turn=lambda prompt: maintenance_turn(dsh, f"private:{users[0] if users else 0}", prompt,
+                                                          task="autonomy"),
         recent_scene=recent_scene,
         recent_text=RECENT_TEXT,
         last_share=LAST_SHARE,
@@ -1663,7 +1689,7 @@ async def run_autonomy_round(dsh: Dsh, onebot: OneBot) -> dict | None:
 
 async def consolidate_interests(dsh: Dsh, chat_key: str) -> None:
     await autonomy_interests.consolidate(
-        lambda prompt: maintenance_turn(dsh, chat_key, prompt), chat_key
+        lambda prompt: maintenance_turn(dsh, chat_key, prompt, task="interests"), chat_key
     )
 
 
@@ -2138,7 +2164,7 @@ async def proactive_say(dsh: Dsh, onebot: OneBot, kind: str, extra: str = "") ->
         return None
     uid = int(users[0])
     chat_key = f"private:{uid}"
-    sid = await activity_sid(dsh)
+    sid = await activity_sid(dsh, "proactive")
 
     try:
         persona = (await full_persona_text()).strip()
@@ -2364,7 +2390,7 @@ async def group_proactive_say(dsh: Dsh, onebot: OneBot) -> str | None:
     chat_key = f"group:{gid}"
 
     async def turn(prompt: str) -> str:
-        sid = await activity_sid(dsh)
+        sid = await activity_sid(dsh, "group_proactive")
         async with ACTIVITY_LOCK:
             return await ask(dsh, sid, prompt)
 
@@ -2385,7 +2411,7 @@ async def group_proactive_loop(dsh: Dsh, onebot: OneBot) -> None:
     await group_proactive.loop(
         cfg=group_proactive_cfg(),
         groups=CONFIG.get("allowed_groups") or [],
-        turn=lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt),
+        turn=lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt, task="group_proactive"),
         send=lambda text: onebot.send("group", int((CONFIG.get("allowed_groups") or [0])[0]), text),
         add_l0=lambda text: add_l0_message(f"group:{int((CONFIG.get('allowed_groups') or [0])[0])}", text),
         history=lambda key: GROUP_HISTORY.get(key) or [],
@@ -2429,7 +2455,7 @@ PROFILE_STATE_FILE = DSH_HOME / "persona-roles" / "state" / "profile-refresh-sta
 
 async def refresh_user_profile(dsh: Dsh) -> bool:
     return await growth_profile.run(
-        lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt)
+        lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt, task="profile")
     )
 
 
@@ -2473,13 +2499,13 @@ def style_block(constitution: str) -> str:
 
 async def run_style_review(dsh: Dsh, chat_key: str) -> bool:
     return await growth_style.run(
-        lambda prompt: maintenance_turn(dsh, chat_key, prompt), chat_key
+        lambda prompt: maintenance_turn(dsh, chat_key, prompt, task="style"), chat_key
     )
 
 
 async def run_persona_review(dsh: Dsh) -> bool:
     return await growth_review.run(
-        lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt)
+        lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt, task="review")
     )
 
 
@@ -2570,7 +2596,7 @@ async def inject_watch(dsh: Dsh, onebot: OneBot) -> None:
 async def qzone_loop(dsh: Dsh, onebot: OneBot) -> None:
     await qzone_publish.loop(
         CONFIG.get("qzone") or {},
-        lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt),
+        lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt, task="qzone"),
         onebot.post_qzone,
         add_l1_event,
         lambda: [str(i.get("topic")) for i in load_interests()],
@@ -2686,7 +2712,7 @@ async def emotion_idle_loop(dsh: Dsh) -> None:
                 _save_emotion_idle_state(state)
                 continue
             await growth_emotion.review_turn(
-                lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt),
+                lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt, task="emotion"),
                 transcript,
                 ts_start=window_start,
                 ts_end=window_end,
@@ -2703,7 +2729,7 @@ async def emotion_idle_loop(dsh: Dsh) -> None:
 
 async def important_check_loop(dsh: Dsh) -> None:
     await growth_important.loop(
-        lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt),
+        lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt, task="important"),
         CONFIG.get("important_check") or {},
     )
 

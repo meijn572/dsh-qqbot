@@ -35,7 +35,7 @@ log = logging.getLogger("qqbot.autonomy.round")
 @dataclass
 class Deps:
     users: list[int]
-    activity_sid: Callable[[], Awaitable[str]]
+    activity_sid: Callable[[str], Awaitable[str]]
     internal_turn: Callable[[str, str, str], Awaitable[str]]  # sid, chat_key, prompt
     maintenance_turn: Callable[[str], Awaitable[str]]
     recent_scene: Callable[[str], Awaitable[str]]
@@ -76,7 +76,7 @@ async def run_round(deps: Deps) -> dict | None:
         return None
     uid = int(deps.users[0])
     chat_key = f"private:{uid}"
-    sid = await deps.activity_sid()
+    sid = await deps.activity_sid("bili")
     topic, mode = pick_topic(cfg)
     interests = load_interests()[:8]
     listing = "\n".join(f"- {i.get('topic')}（权重 {i.get('weight')}）" for i in interests) or "（清单还是空的）"

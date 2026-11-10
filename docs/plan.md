@@ -31,6 +31,7 @@ L3：标题支持模糊匹配
 主动说：已统一到 proactive（完整人格 + L0/L1/L3 + activity）；活跃 9:00–次日 2:00
 B站：autonomy 只负责看，分享由 proactive 决定（已接）
 B站感悟：已接（activity 存 summary/insight，L3 存 insight + 类型 + 短上下文）
+维护会话：按流程分会话（maint-*/activity-*），占用到 30k 换新，配置项 maintenance_rotate_tokens
 DSH 工具裁剪：qqbot2 已禁用 pwsh/fs/fs_search/jobs/schedule/skill/goal/planning/delegation/ask_user/todo/present
 DSH 上下文压缩：qqbot2 profile 已设 thresholdRatio=0.02（约 21k）、retainTokens=5000、maxTokens=3000
 忘记机制：第一版已接（L3 memorability + dominant；12h 活跃期；间隔召回强化；未解决/old data 后调）
