@@ -32,6 +32,7 @@ L3：标题支持模糊匹配
 B站：autonomy 只负责看，分享由 proactive 决定（已接）
 B站感悟：已接（activity 存 summary/insight，L3 存 insight + 类型 + 短上下文）
 忘记机制：第一版已接（L3 memorability + dominant；12h 活跃期；间隔召回强化；未解决/old data 后调）
+L3 生命周期：设计稿见 l3-lifecycle.md（open 上限 10、7 天复盘、merge_into，未实现）
 关系系统：v3 已上线（L3 文本影响 + 模型自由写关系，无固定阶段）
 短时偏好：明说→L1，推断→L2，长期→画像；L2 第一版已接
 L2：字段/生成/confirmed 升 L1/面板已接
