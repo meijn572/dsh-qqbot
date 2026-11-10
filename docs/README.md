@@ -20,6 +20,7 @@
 ### 1.2 记忆
 
 - [记忆分层](memory-layers.md)
+- [L1/L3 写法与例子](memory-writing.md)
 - [L3 生命周期与合并](l3-lifecycle.md)
 - [忘记机制](forgetting.md)
 - [提取规则](extraction-rules.md)
