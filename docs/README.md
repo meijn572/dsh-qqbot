@@ -31,6 +31,7 @@
 ### 1.3 人格
 
 - [人格分层](persona-layers.md)
+- [人格与情绪重构](persona-refactor.md)
 
 ### 1.4 情绪与日记
 

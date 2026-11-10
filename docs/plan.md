@@ -2,7 +2,7 @@
 
 状态：进行中。
 
-最后更新：2026-11-07。
+最后更新：2026-11-10。
 
 ## 1. 已完成
 
@@ -34,6 +34,7 @@ B站感悟：已接（activity 存 summary/insight，L3 存 insight + 类型 + �
 维护会话：按流程分会话（maint-*/activity-*），占用到 30k 换新，配置项 maintenance_rotate_tokens
 DSH 工具裁剪：qqbot2 已禁用 pwsh/fs/fs_search/jobs/schedule/skill/goal/planning/delegation/ask_user/todo/present
 DSH 上下文压缩：qqbot2 profile 已设 thresholdRatio=0.02（约 21k）、retainTokens=5000、maxTokens=3000
+人格结构：核心设定已改六小节；情绪并入 L1、删 emotion_log、加偏好栏待做（见 persona-refactor.md）
 忘记机制：第一版已接（L3 memorability + dominant；12h 活跃期；间隔召回强化；未解决/old data 后调）
 L3 生命周期：第一版已接（open 上限 10、候选池带 id、7 天复盘、merge_into）
 关系系统：v3 已上线（L3 文本影响 + 模型自由写关系，无固定阶段）
@@ -213,3 +214,4 @@ L4 复盘是否只在 3 天后触发
 - [提取规则](extraction-rules.md)
 - [日记](diary.md)
 - [情绪分层](emotion-layers.md)
+- [人格与情绪重构](persona-refactor.md)
