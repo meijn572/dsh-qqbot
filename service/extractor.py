@@ -201,9 +201,12 @@ status：
 - 没有明显影响就留空，不要硬编。
 
 感悟（insight）：
+- 先看候选里的「已有感悟」。
+- 旧感悟仍然成立：保留原句，不要因为 summary 变了就重写它。
+- 旧感悟被新理解取代：可以重写，但要保留旧句里仍然成立的意思。
 - 只有这次对话真的产生了关于自我、说话方式、关系的理解/变化时才写。
 - 一句第一人称，最多 200 字；没有就空。
-- 已有的 insight 不要覆盖；如果只是同一句的补充，留空让系统保留旧句。
+- 只是补充同一句：留空，让系统保留旧句。
 - insight_kind 用 self / style / relation，没有就空。
 
 难忘性（memorability）：
@@ -1081,7 +1084,8 @@ class Extractor:
                 blocks.append(
                     f"- id={item.get('id')} [{item.get('status')}] {item.get('title')}"
                     f"（最后 {time.strftime('%m-%d %H:%M', time.localtime(float(item.get('last_seen_at') or 0)))}）\n"
-                    f"  {str(item.get('summary') or '')[:300]}"
+                    f"  摘要：{str(item.get('summary') or '')[:300]}\n"
+                    f"  已有感悟：{str(item.get('insight_text') or '（无）')[:300]}"
                 )
         else:
             blocks.append("【最近相关事件】\n（空）")

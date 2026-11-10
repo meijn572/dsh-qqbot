@@ -739,7 +739,7 @@ class MemoryStore:
     def open_threads(self, limit: int = 10) -> list[dict]:
         rows = self.conn.execute(
             "SELECT id,tier,text,summary,thread_title,thread_aliases,thread_status,"
-            "thread_opened_at,thread_last_seen_at,thread_closed_at,source_ids "
+            "thread_opened_at,thread_last_seen_at,thread_closed_at,source_ids,insight_text,insight_kind "
             "FROM memory WHERE tier='L3' AND thread_status='open' "
             "AND (merged_into IS NULL OR merged_into=0) "
             "ORDER BY thread_last_seen_at DESC, id DESC LIMIT ?",
@@ -758,6 +758,8 @@ class MemoryStore:
                 "last_seen_at": float(r["thread_last_seen_at"] or 0),
                 "closed_at": float(r["thread_closed_at"] or 0),
                 "source_ids": json.loads(r["source_ids"] or "[]"),
+                "insight_text": str(r["insight_text"] or ""),
+                "insight_kind": str(r["insight_kind"] or ""),
             })
         return out
 
@@ -781,7 +783,7 @@ class MemoryStore:
                 marks = ",".join("?" for _ in ids)
                 rows = self.conn.execute(
                     f"SELECT id,text,summary,thread_title,thread_aliases,thread_status,"
-                    f"thread_opened_at,thread_last_seen_at,thread_closed_at,source_ids "
+                    f"thread_opened_at,thread_last_seen_at,thread_closed_at,source_ids,insight_text,insight_kind "
                     f"FROM memory WHERE id IN ({marks}) AND tier='L3' "
                     f"AND (merged_into IS NULL OR merged_into=0)",
                     ids,
@@ -801,6 +803,8 @@ class MemoryStore:
                         "last_seen_at": float(r["thread_last_seen_at"] or 0),
                         "closed_at": float(r["thread_closed_at"] or 0),
                         "source_ids": json.loads(r["source_ids"] or "[]"),
+                        "insight_text": str(r["insight_text"] or ""),
+                        "insight_kind": str(r["insight_kind"] or ""),
                     })
         return out
 
@@ -944,6 +948,11 @@ class MemoryStore:
             history = []
         current_insight = str(row["insight_text"] or "")
         current_kind = str(row["insight_kind"] or "")
+        if current_insight and not any(
+            isinstance(x, dict) and str(x.get("text") or "").strip() == current_insight
+            for x in history
+        ):
+            history.append({"text": current_insight[:1200], "kind": current_kind[:80], "ts": now})
         new_insight = str(insight_text or "").strip()
         new_kind = str(insight_kind or "").strip()
         if new_insight and (not current_insight or new_insight != current_insight):
