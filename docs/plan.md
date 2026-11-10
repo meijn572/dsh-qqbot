@@ -31,6 +31,7 @@ L3：标题支持模糊匹配
 主动说：已统一到 proactive（完整人格 + L0/L1/L3 + activity）；活跃 9:00–次日 2:00
 B站：autonomy 只负责看，分享由 proactive 决定（已接）
 B站感悟：已接（activity 存 summary/insight，L3 存 insight + 类型 + 短上下文）
+DSH 上下文压缩：qqbot2 profile 已设 thresholdRatio=0.02（约 21k）、retainTokens=5000、maxTokens=3000
 忘记机制：第一版已接（L3 memorability + dominant；12h 活跃期；间隔召回强化；未解决/old data 后调）
 L3 生命周期：第一版已接（open 上限 10、候选池带 id、7 天复盘、merge_into）
 关系系统：v3 已上线（L3 文本影响 + 模型自由写关系，无固定阶段）
