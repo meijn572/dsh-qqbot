@@ -1,5 +1,7 @@
 const $=(s)=>document.querySelector(s);
 const DOMINANT_LABEL={importance:'重要',emotion:'情绪',distinctiveness:'独特',self_relevance:'自我',relationship:'关系',none:'无'};
+const INSIGHT_KIND_LABEL={self:'自我认知',style:'说话风格',relation:'关系'};
+const insightKindLabel=(kind)=>String(kind||'').split(',').map(x=>INSIGHT_KIND_LABEL[x.trim()]||x.trim()).filter(Boolean).join('、');
 const esc=(s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
 const attr=(s)=>esc(s).replace(/"/g,'&quot;');
 function inlineMd(s){return esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');}
@@ -80,8 +82,9 @@ function renderMem(){
     const src=it.source_count?`<span class="mut">来源 ${it.source_count} 条</span> `:'';
     const rel=it.relationship_impact?`<div class="mut" style="margin-top:3px">关系影响：${esc(it.relationship_impact)}</div>`:'';
     const l2=it.type==='L2'?`<div class="mut" style="margin-top:3px">${it.confidence!=null?`置信 ${(Number(it.confidence)*100).toFixed(0)}%`:''}${it.expires_at?` · 过期 ${new Date(Number(it.expires_at)*1000).toLocaleDateString('zh-CN')}`:''}</div>`:'';
-    const memo=it.type==='L3'?`<div class="mut" style="margin-top:3px">难忘 ${it.memorability!=null?(Number(it.memorability)*100).toFixed(0)+'%':'—'}${it.dominant?(' · 主导 '+esc(DOMINANT_LABEL[it.dominant]||it.dominant)):''}${it.stability_days?(' · 稳定 '+Math.round(Number(it.stability_days))+' 天'):''}${it.recall_count?(' · 召回 '+it.recall_count+' 次'):''}${it.active_until&&Number(it.active_until)>Date.now()/1000?(' · 活跃至 '+new Date(Number(it.active_until)*1000).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})):''}</div>`:'';
-    const insight=it.insight_text?`<div class="mut" style="margin-top:3px">感悟：${esc(it.insight_text)}</div>`:'';
+    const memo=it.type==='L3'?`<div class="mut" style="margin-top:3px">难忘 ${it.memorability!=null?(Number(it.memorability)*100).toFixed(0)+'%':'—'}${it.dominant&&it.dominant!=='none'?`（${esc(DOMINANT_LABEL[it.dominant]||it.dominant)}）`:''}${it.stability_days?(' · 稳定 '+Math.round(Number(it.stability_days))+' 天'):''}${it.recall_count?(' · 召回 '+it.recall_count+' 次'):''}${it.active_until&&Number(it.active_until)>Date.now()/1000?(' · 活跃至 '+new Date(Number(it.active_until)*1000).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})):''}</div>`:'';
+    const ik=insightKindLabel(it.insight_kind);
+    const insight=it.insight_text?`<div class="mut" style="margin-top:3px">感悟${ik?`（${esc(ik)}）`:''}：${esc(it.insight_text)}</div>`:'';
     h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${status} ${stale}${title}<span class="mut">${esc(t)}</span><div style="margin-top:3px">${esc(it.content)}</div>${memo}${insight}${rel}${l2}<div style="margin-top:3px">${src}</div></div>`;
   }
   const box=document.getElementById('memlist'); if(box) box.innerHTML=h||'<div class="mut">没有匹配的记忆</div>';
@@ -465,7 +468,7 @@ async function load(){
         h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:6px"><span class="mut">${esc(t)}</span> <span class="badge ok">B站</span> ${esc(a.detail||'')}`;
         if(a.summary) h+=`<div class="mut" style="margin-top:3px">讲了什么：${esc(a.summary)}</div>`;
         if(a.thought) h+=`<div class="mut" style="margin-top:3px">想法：${esc(a.thought)}</div>`;
-        if(a.insight) h+=`<div style="margin-top:3px">感悟${a.insight_kind?`（${esc(a.insight_kind)}）`:''}：${esc(a.insight)}</div>`;
+        if(a.insight) h+=`<div style="margin-top:3px">感悟${a.insight_kind?`（${esc(insightKindLabel(a.insight_kind))}）`:''}：${esc(a.insight)}</div>`;
         if(a.l3_id) h+=`<div class="mut" style="margin-top:3px">已生成 L3 #${a.l3_id}</div>`;
         h+='</div>';
       }
