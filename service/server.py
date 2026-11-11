@@ -3206,7 +3206,7 @@ class Handler(BaseHTTPRequestHandler):
                 memorability=_memo(item), dominant=_dominant(item),
                 aliases=_aliases(item),
                 insight_text=str(item.get("insight") or ""),
-                insight_kind=str(item.get("insight_kind") or ""),
+                insight_target=str(item.get("insight_target") or ""),
             )
             if not ref_pairs:
                 ref_pairs = [("L1", x) for x in l1_ids] + [("L0", x) for x in l0_ids]
@@ -3248,7 +3248,7 @@ class Handler(BaseHTTPRequestHandler):
                 thread_closed_at=now if status == "closed" else None,
                 relationship_impact=_impact(item),
                 insight_text=str(item.get("insight") or ""),
-                insight_kind=str(item.get("insight_kind") or ""),
+                insight_target=str(item.get("insight_target") or ""),
                 memorability=_memo(item) if _memo(item) is not None else 0.5,
                 dominant=_dominant(item) or "",
             ))
@@ -3263,9 +3263,9 @@ class Handler(BaseHTTPRequestHandler):
         current = store.get_relationship()
         since = float(current.get("updated_at") or 0)
         rows = store.conn.execute(
-            "SELECT id,text,thread_title,relationship_impact,insight_text,insight_kind,ts FROM memory "
+            "SELECT id,text,thread_title,relationship_impact,insight_text,insight_target,ts FROM memory "
             "WHERE tier='L3' AND ts>? AND ("
-            "(insight_kind LIKE '%relation%' AND insight_text!='') OR relationship_impact!=''"
+            "(insight_target='us' AND insight_text!='') OR relationship_impact!=''"
             ") ORDER BY ts ASC LIMIT 20",
             (since,),
         ).fetchall()
@@ -3416,11 +3416,13 @@ class Handler(BaseHTTPRequestHandler):
             target = next((x for x in threads if x["title"] == title), None)
             if target is None:
                 continue
+            # L4 是重写过的版本，不是 L3 的复制
+            rewritten = str(item.get("text") or "").strip() or str(target["summary"])
             mid = store.add(MemoryInput(
-                text=str(target["summary"])[:4000],
+                text=rewritten[:4000],
                 tier="L4",
                 subject="self",
-                summary=str(target["summary"])[:2000],
+                summary=rewritten[:2000],
                 tags=["core", "review"],
                 source_ids=target["source_ids"] or None,
                 source_status=target["source_status"] if target["source_ids"] else "unverified",

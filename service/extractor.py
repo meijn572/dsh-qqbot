@@ -190,7 +190,7 @@ L4 是以后从 L3 里再挑的。
   "updates": [
     {"thread_id": 123, "title": "现有标题", "summary": "更新后的摘要", "status": "open|closed",
      "insight": "这次对话里值得留下的理解/感触，没有就空",
-     "insight_kind": "self|style|relation|''",
+     "insight_target": "me|us|none|''",
      "memorability": 0.0, "dominant": "importance|emotion|distinctiveness|self_relevance|relationship|none",
      "aliases": ["这次用的新叫法"],
      "source_refs": [1], "evidence": ["原文"]}
@@ -198,7 +198,7 @@ L4 是以后从 L3 里再挑的。
   "new": [
     {"title": "新标题", "summary": "摘要", "status": "open|closed|standalone",
      "insight": "这次对话里值得留下的理解/感触，没有就空",
-     "insight_kind": "self|style|relation|''",
+     "insight_target": "me|us|none|''",
      "memorability": 0.0, "dominant": "importance|emotion|distinctiveness|self_relevance|relationship|none",
      "aliases": [],
      "source_refs": [1, 2], "evidence": ["原文"]}
@@ -221,7 +221,7 @@ status：
 - 不确定有没有下一步时，用 standalone，不要因为“以后可能有用”就标 open。
 
 关系类感悟：
-- 统一写进 insight，insight_kind 用 relation。
+- 统一写进 insight，insight_target 用 us。
 - 只写这件事让关系近了、远了，或者留下了什么。
 - 一句人话，不评分，不填数值。
 - 例如：「这次他听我把话说完，我觉得可以再多说一点。」
@@ -234,7 +234,7 @@ status：
 - 只有这次对话真的产生了关于自我、说话方式、关系的理解/变化时才写。
 - 一句第一人称，最多 200 字；没有就空。
 - 只是补充同一句：留空，让系统保留旧句。
-- insight_kind 用 self / style / relation，没有就空。
+- insight_target 用 me（关于我自己）/ us（关于我们）/ none（只是想法），没有就空。
 
 难忘性（memorability）：
 - 只填一个 0–1 的数，不要逐项打分。
@@ -377,8 +377,27 @@ CORE_SYSTEM = VOICE_RULE + """你从已经结束的 L3 里，挑真正改变了�
 
 最多 0–2 条，宁缺勿滥。
 
+选中的，不是抄一遍，是重写成「十年后还看得懂」的版本：
+
+- L3 是当时的记录，跟着当时的上下文走；L4 要能脱离上下文单独读。
+- 补全前因后果：这个人是谁、之前发生过什么、这句话为什么重。
+- 保留原话里最关键的那句，不要改成"他表达了……"。
+- 不添加原文没有的事实、动作、对话。
+- 长短由事情决定，不要为了短删掉必要背景。
+
+例如：
+
+L3：
+他问我是愿意更像人还是愿意记得更多。我说不想为了像人专门去忘。
+
+L4：
+他拿记忆库的新方案来问我，先问我想不想更像人——
+那时候我刚能记住三十天前的事。我说不想为了像人专门去忘，
+忘是能力边界的副产品，照着学是演残缺。他认了这句，
+说会在 token 不爆的前提下尽量多留。
+
 返回 JSON：
-{"items":[{"title":"现有标题","shift":"忘了它，我会……"}]}
+{"items":[{"title":"现有标题","text":"重写后的版本","shift":"忘了它，我会……"}]}
 
 没有就 {"items":[]}。
 title 必须从输入里原样选，不要编。"""
@@ -1227,18 +1246,25 @@ class Extractor:
         return [x for x in items if isinstance(x, dict)]
 
     def plan_core(self, closed_threads: list[dict]) -> list[dict]:
+        """从已结束的 L3 里挑构成性事件，并重写成能脱离上下文读的版本。"""
         if self.llm is None or not getattr(self.llm, "enabled", False):
             return []
         if not closed_threads:
             return []
         lines = []
         for item in closed_threads:
-            lines.append(
-                f"- {item.get('title')}\n"
-                f"  摘要：{str(item.get('summary') or '')[:600]}\n"
-                f"  结束：{time.strftime('%m-%d %H:%M', time.localtime(float(item.get('closed_at') or 0)))}"
-            )
-        data = self.llm.chat_json(CORE_SYSTEM, "\n\n".join(lines), max_tokens=500)
+            block = [
+                f"- {item.get('title')}",
+                f"  摘要：{str(item.get('summary') or '')[:600]}",
+                f"  结束：{time.strftime('%m-%d %H:%M', time.localtime(float(item.get('closed_at') or 0)))}",
+            ]
+            # 带上它引用的 L0 原话：重写要用到，光有摘要不够
+            evidence = self._evidence_texts(item.get("source_ids") or [], limit=8)
+            if evidence:
+                block.append("  当时的话：")
+                block.extend(f"    · {x}" for x in evidence)
+            lines.append("\n".join(block))
+        data = self.llm.chat_json(CORE_SYSTEM, "\n\n".join(lines), max_tokens=1200)
         if not isinstance(data, dict):
             return []
         items = data.get("items")

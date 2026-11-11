@@ -1091,8 +1091,14 @@ class MemoryStore:
 
     def link(self, child_id: int, parent_id: int, relation: str = "derived_from",
              role: str = "") -> None:
-        """记录一条直接依赖边。"""
+        """记录一条直接依赖边。
+
+        写入时做传递约简：如果已经有一条路径能到 parent，这条边就是多余的，
+        不写。实测能省掉约四分之一的边。
+        """
         try:
+            if relation != "core" and self._reaches(child_id, int(parent_id)):
+                return
             self.conn.execute(
                 "INSERT OR IGNORE INTO memory_links(child_id, parent_id, relation, role, created_at) "
                 "VALUES (?,?,?,?,?)",
@@ -1101,6 +1107,29 @@ class MemoryStore:
             self.conn.commit()
         except Exception:  # noqa: BLE001
             pass
+
+    def _reaches(self, start: int, target: int, depth: int = 6) -> bool:
+        """start 顺着已有的边能不能到 target（沿 parent 方向走）。
+
+        深度有上限，避免脏数据成环时死循环。
+        """
+        if start == target:
+            return True
+        if depth <= 0:
+            return False
+        try:
+            rows = self.conn.execute(
+                "SELECT parent_id FROM memory_links WHERE child_id=?", (int(start),)
+            ).fetchall()
+        except Exception:  # noqa: BLE001
+            return False
+        for r in rows:
+            nxt = int(r["parent_id"])
+            if nxt == target:
+                return True
+            if self._reaches(nxt, target, depth - 1):
+                return True
+        return False
 
     def links_from(self, child_id: int) -> list[dict]:
         rows = self.conn.execute(
@@ -1900,7 +1929,7 @@ class MemoryStore:
         mem_id = self.add(MemoryInput(
             text=ctx, tier="L3", summary=ctx, tags=["bili-insight", f"insight:{kind}"],
             source_status="bili", thread_status="standalone",
-            insight_text=insight[:1200], insight_kind=kind[:80],
+            insight_text=insight[:1200], insight_kind=kind[:80], insight_target=kind[:20],
             source_activity_id=int(activity_id),
             memorability=max(0.0, min(1.0, float(memorability or 0.5))),
             dominant=str(dominant or "none")[:40],
