@@ -964,3 +964,69 @@ L3  我刷了「深海热泉」那条…
 会话自动换新（人格指纹）
   逻辑在，未制造人格变更去触发
 ```
+
+## 15. 接口对齐与遗留清理（2026-11-12 凌晨）
+
+### 修掉的不对齐
+
+```text
+/state 的 emotion_recent   还在调已删的 emotion_log_list（被 except 兜住，永远空）
+                           改成从带情绪的 L1 取
+/activity                  还留着「bili 感悟直接造 L3」的分支
+                           删掉，B站 只走 L0 → L1 → L3
+/bili/insights             按 insight_kind（self/style/relation）过滤
+                           改成按 insight_target 过滤，老名字自动翻译
+关系复盘查询                 依赖 relationship_impact（全库为空，拿不到素材）
+                           改用 insight_text
+面板线程/活动                 暴露 insight_kind、relationship_impact
+                           改成 insight_target；活动行不再显示分类
+前端标签                     self/style/relation → me/us/none
+set_emotion 工具            插件还在注册，打到已废弃的 /emotion（410）
+                           注销并从三份副本里删除
+插件工具速查                 还写着「有真实情绪：set_emotion(...)」
+                           删掉
+插件设置页                   还有「情绪记多细（emotion_log）」滑杆
+                           删掉
+全局 valence / arousal      设计上已退役，代码还留着 get/set_emotion
+                           删除，/state 不再返回这两项
+L2 过期上限                  文档写 7 天，代码还是 30
+                           改成 7
+服务端分段配置                config.json 写到 D:\QQBot\dshbot，服务实际读
+                           remembers-data/config.json，等于没生效
+                           补写到正确路径
+```
+
+### 三份插件副本
+
+之前散在三处，各改一半：
+
+```text
+D:\QQBot\dshbot\plugins\dsh-remembers                     仓库（源头）
+C:\Users\12152\.dsh-qqbot\plugins\dsh-remembers          旧位置
+C:\Users\12152\.dsh\profiles\qqbot2\node_modules\...   DSH 实际加载
+```
+
+现在以仓库那份为准，app.mjs / client.js / hooks 两份都已同步，hash 一致。
+**以后改 hook 要改仓库那份再同步，否则不生效。**
+
+### 保留的兼容层（有意为之）
+
+```text
+memory.insight_kind      老数据还靠它分类，bili_insights 会同时查两列
+memory.relationship_impact 列留着，代码不再写
+activity_log.insight/insight_kind 历史活动数据还在
+```
+
+### 还没做的
+
+```text
+source_ids 改名 evidence_ids + 展开成传递闭包   文档已按现状改成 source_ids
+ask_him 进对话上下文                            字段有了，还没接渲染
+日记三段真实产出                                等 reflect 跑
+```
+
+### 生效需要重启 DSH
+
+插件改动（注销 set_emotion、state.mjs 去掉情绪块）要等 60773 那个进程重启才生效。
+在此之前，模型若调用 set_emotion 会拿到 410。
+
