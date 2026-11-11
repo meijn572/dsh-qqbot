@@ -21,14 +21,14 @@ async def cmem_call(method: str, path: str, body: dict | None = None) -> dict:
 
 
 async def expand_persona_links(constitution: str) -> str:
-    """把人格里的 {{L3:123}} 展开成「标题 · 状态 + 正文」，给复盘看。
+    """把人格里的 【L3:123】 展开成「标题 · 状态 + 正文」，给复盘看。
 
     日常注入走 persona.mjs，那边是直接抹掉的——模型不需要知道来处。
     复盘要判断这条还成不成立，才需要看见当时发生了什么。
     """
     import re as _re
     text = str(constitution or "")
-    ids = sorted({int(x) for x in _re.findall(r"\{\{L3:(\d+)\}\}", text)})
+    ids = sorted({int(x) for x in _re.findall(r"【L3:(\d+)】", text)})
     if not ids:
         return text
     info: dict[int, dict] = {}
@@ -67,7 +67,7 @@ async def expand_persona_links(constitution: str) -> str:
     for mid in ids:
         item = info.get(mid)
         if not item:
-            text = text.replace(" {{L3:%d}}" % mid, "").replace("{{L3:%d}}" % mid, "")
+            text = text.replace(" 【L3:%d】" % mid, "").replace("【L3:%d】" % mid, "")
             continue
         title = str(item.get("thread_title") or "").strip() or "（无标题）"
         status = str(item.get("thread_status") or "").strip() or "?"
@@ -76,7 +76,7 @@ async def expand_persona_links(constitution: str) -> str:
         quotes = evidence.get(mid) or []
         if quotes:
             lines.append("当时的话：" + " / ".join(quotes[:3]))
-        text = text.replace("{{L3:%d}}" % mid, "\n    ".join(lines))
+        text = text.replace("【L3:%d】" % mid, "\n    ".join(lines))
     return text
 
 
