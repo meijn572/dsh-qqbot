@@ -759,3 +759,74 @@ review.py 一次判断四类
 6-7 依赖 4-5 的数据
 8 最后做，因为要在真数据上验证
 ```
+
+## 12. 实现进度
+
+最后更新：2026-11-11 21:15。
+
+### 已完成
+
+```text
+第一步 数据库
+  memory + emotion_label / emotion_valence / emotion_arousal
+         + want_more / ask_him / want_used / insight_target
+  diary  + changes / open_questions / tasks
+  insight_kind 的存量数据回填到 insight_target（me 10 / us 26 / none 1）
+
+第二步 L1
+  每条便签带自己的情绪，不再整批只挑一条
+  prompt 加 want_more / ask_him
+  分段 30 分钟 → 10 分钟
+
+第三步 B 站
+  bili 改成写 L0（tags 带 bili），走统一管线
+  对话上下文排除 bili 的 L0
+
+第四步 L3 / L4
+  insight_kind → insight_target
+  写入时做传递约简（_reaches 检查）
+  删掉 41 条 role=legacy 的 L3→L3 边
+  L4 改成重写：输入 L3 正文 + 展开的 L0
+
+第五步 清理
+  emotion_log 表删除（94 条导出到 docs/emotion-log-archive.json）
+  set_emotion / emotion_log_add / emotion_log_list 删除
+  qqbot/domains/growth/emotion.py 删除
+  state.mjs 去掉情绪段（mood 保留）
+  emotion_idle_loop 删除
+
+第六步 中间层
+  diary 加三段，diary_add 只更新传了的字段
+  reflect.py 读日记、写 changes / open_questions
+  review.py 读最近 7 天日记
+
+第七步 兴趣
+  选材顺序：L1 未用的 want_more → 权重 → 自由探索
+  权重只在自由探索撞到新话题时 +0.2
+
+第八步 人格
+  核心设定加「偏好」段（七小节）
+  画像改四段：他是谁 / 他平时什么样子 / 他的偏好 / 他的价值取向
+  review.py 一次判断四类：preference / judgment / relationship / weakness
+  「约定」不再由 review 产出，只由 important.py 新增
+```
+
+### 还没做
+
+```text
+[ ] {{L3:id}} 关联机制（存储 / 三层渲染 / 面板跳转）
+[ ] 复盘时带 L3 正文（人格条目 → source L3 → 全部 L0）
+[ ] notes 与中间层的关系（暂时并列）
+[ ] 面板显示 diary 的 changes / open_questions / tasks
+```
+
+### 验证过的
+
+```text
+66 → 60 个测试全过（删掉 emotion idle 那个）
+人格边界检查 OK
+B 站 L0 写入后，对话上下文仍只含聊天 L0
+want_more 选材实测：优先级生效，用掉后标记 want_used
+L4 重写实测：输出比原 L3 完整，带了前因和落点
+传递约简实测：冗余边被拒，真需要的边照写
+```
