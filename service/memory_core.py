@@ -138,6 +138,13 @@ class MemoryInput:
     relationship_impact: str = ""
     insight_text: str = ""
     insight_kind: str = ""
+    insight_target: str = ""
+    emotion_label: str = ""
+    emotion_valence: float | None = None
+    emotion_arousal: float | None = None
+    want_more: str = ""
+    ask_him: str = ""
+    want_used: int = 0
     source_activity_id: int | None = None
     memorability: float = 0.5
     dominant: str = ""
@@ -527,13 +534,15 @@ class MemoryStore:
                thread_opened_at, thread_last_seen_at, thread_closed_at,
                stale_at,
                relationship_impact,
-               insight_text, insight_kind, source_activity_id,
+               insight_text, insight_kind, insight_target, source_activity_id,
+               emotion_label, emotion_valence, emotion_arousal,
+               want_more, ask_him, want_used,
                memorability, dominant, last_recalled_at, active_until,
                recall_count, stability_days,
                confidence, expires_at, l2_status, promoted_to,
                tags, ts, half_life_days,
                vec, vec_dim, vec_model, created_at, updated_at, user_id, scope)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 item.tier,
@@ -552,7 +561,14 @@ class MemoryStore:
                 str(item.relationship_impact or "")[:2000],
                 str(item.insight_text or "")[:2000],
                 str(item.insight_kind or "")[:80],
+                str(item.insight_target or "")[:20],
                 item.source_activity_id,
+                str(item.emotion_label or "")[:40],
+                item.emotion_valence,
+                item.emotion_arousal,
+                str(item.want_more or "")[:500],
+                str(item.ask_him or "")[:500],
+                int(item.want_used or 0),
                 max(0.0, min(1.0, float(item.memorability if item.memorability is not None else 0.5))),
                 str(item.dominant or "")[:40],
                 item.last_recalled_at,

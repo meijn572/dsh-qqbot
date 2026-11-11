@@ -533,12 +533,36 @@ reason     一句由头
 - 不要用「主人说……我问……」把整段对话串起来；只留关键原话，其他转成叙述。
 - 抽出来 0 条时，再回头确认一次：真的什么都没说吗？
 
+## 这段留下了什么没说完的
+
+除了发生的事，每条便签还可以带两样「未完成」：
+
+```text
+want_more   看完/聊完，我自己还想接着弄明白的
+ask_him     想问主人的一句话
+```
+
+两样都可以空。判断标准：
+
+```text
+want_more   能拿去搜的一句问题
+            像「CoreWeave 那种拿显卡抵押的借钱方式还有谁在用」
+            不要写「深入了解 AI 泡沫」
+
+ask_him     一句我会顺口问出来的话
+            像「你明天到底几点起」
+            不要写「询问主人作息」
+```
+
+只有真的想继续的时候才写，不要为了填满硬编。
+
 ## 输出格式
 
 text 直接写内容本身，不要加「我记得 / 我记住」前缀；主人可以写「主人」或「他」，自己写「我」。
 严格 JSON 数组，不要任何其他文字：
 [{"text": "一句话", "tier": "L1", "source_refs": [1, 2],
-  "emotion": {"label": "难过", "valence": -0.7, "arousal": 0.4, "reason": "..."} | null}]
+  "emotion": {"label": "难过", "valence": -0.7, "arousal": 0.4, "reason": "..."} | null,
+  "want_more": "想接着弄明白的，没有就空", "ask_him": "想问他的，没有就空"}]
 """
 
 
@@ -919,8 +943,7 @@ class Extractor:
 
             details.append({"fact": text[:60], "op": op, "reason": decision.get("reason")})
 
-        # 一次抽取只记一条情感（取强度最高的那条）——避免同一件事刷好几条
-        self._log_best_emotion(facts)
+        # 情绪已随每条 L1 落库，不再额外写 emotion_log（该表待删）
 
         return {"ok": True, "facts": len(facts), "applied": applied, "details": details, "ids": ids}
 
@@ -1439,6 +1462,9 @@ class Extractor:
         if self.embedder is not None and getattr(self.embedder, "enabled", False):
             vec = self.embedder.embed_one(text)
             vec_model = self.embedder.model if vec else None
+        # 情绪跟着 L1 走：每条便签带自己的情绪，不再整批只挑一条进 emotion_log
+        emo_label, emo_valence, emo_arousal, _reason = self._emotion_values(
+            fact.get("emotion"), fact)
         return MemoryInput(
             text=text,
             tier=tier,
@@ -1446,6 +1472,11 @@ class Extractor:
             tags=["extracted"] + [str(k) for k in (fact.get("keywords") or [])][:8],
             source_ids=fact.get("source_ids") or None,
             source_status=str(fact.get("source_status") or "unverified"),
+            emotion_label=emo_label,
+            emotion_valence=emo_valence if emo_label else None,
+            emotion_arousal=emo_arousal if emo_label else None,
+            want_more=str(fact.get("want_more") or "").strip()[:500],
+            ask_him=str(fact.get("ask_him") or "").strip()[:500],
             vec=vec,
             vec_model=vec_model,
             user_id=getattr(self, "_cur_user_id", ""),
