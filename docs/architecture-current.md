@@ -871,3 +871,52 @@ want_more 选材实测：优先级生效，用掉后标记 want_used
 L4 重写实测：输出比原 L3 完整，带了前因和落点
 传递约简实测：冗余边被拒，真需要的边照写
 ```
+
+## 13. 提示词归属
+
+规则：**提示词跟着领域走，bridge 只管收发和调度。**
+
+### 现在的位置
+
+```text
+service/extractor.py          所有抽取类提示词（L1/L2/L3/L4/生命周期/压缩）
+qqbot/domains/growth/         人格复盘：review / reflect / profile / style
+qqbot/domains/autonomy/       B站：round（看视频）、interests（兴趣提取）
+qqbot/domains/proactive/render.py   主动说、群内搭话、B站链接提示
+qqbot/domains/group/slang.py        群黑话抽取
+qqbot/domains/group/lexicon.py      词库复盘
+qqbot/domains/media/stickers.py     表情复盘
+qqbot/domains/qzone/publish.py      说说
+```
+
+### 从 bridge 里搬走的
+
+```text
+proactive_say           → proactive/render.py   render_prompt
+topic_relevant          → proactive/render.py   group_topic_prompt
+bili_link_hint          → proactive/render.py   bili_link_hint
+extract_group_slang     → group/slang.py        render_group_slang_prompt
+review_lexicon          → group/lexicon.py      render_review_prompt
+review_sticker          → media/stickers.py     render_sticker_review_prompt
+```
+
+bridge.py 从 2768 行降到 2668 行，剩下的中文都是状态判断、日志和字段名，不是提示词。
+
+### 为什么这么分
+
+```text
+提示词是领域知识    改提示词不该碰网络层
+bridge 是传输层     只负责取数据、调模型、发消息
+```
+
+判断方式：如果改这句话会影响「她怎么看这件事」，它属于领域；如果只影响「怎么发出去」，留在 bridge。
+
+### 还没搬的
+
+```text
+_process_locked       session 生命周期，暂时留在 bridge
+inject_watch          注入监听，跟传输耦合
+session_watch         会话状态监控
+```
+
+这三个跟 DSH 会话的生命周期绑着，搬出去反而要多传参数，先留着。

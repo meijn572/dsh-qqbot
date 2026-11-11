@@ -249,3 +249,40 @@ def search_entries(query: str, *, scope: str | None = None, kind: str | None = N
         result.append((score, entry))
     result.sort(key=lambda pair: pair[0], reverse=True)
     return [entry for _, entry in result]
+
+LEXICON_REVIEW_PROMPT = """（内部词库维护，不要回复用户，不要调用工具。）
+
+下面是最近 24 小时的私聊原文。
+
+{text}
+
+【本段命中的旧词】
+{hits}
+
+请判断两件事：
+1. 对旧词有没有新的理解、修正或更具体的用法？没有就空。
+2. 有没有出现新的梗/黑话/热词/缩写/角色称呼？没有就空。
+
+例子：
+旧词新解：
+美女潘：群里给本人起的称呼，从「猛男潘」被当场改成「美女潘」，带自嘲和反串的调侃。
+这次多了「必须是美女潘啊」这种接自嘲的用法。
+
+新词：
+奶蛋：黄色圆圆的，跟奶蛙一个系列。
+
+只写这段里真的出现过的词。
+新词必须有明确 meaning，拿不准就不写。
+旧词没有新理解，不要为了有输出硬改。
+普通词、语气词、地名、游戏名不算。
+只返回 JSON：
+{{"updates":[{{"term":"旧词","meaning":"新的解释","example":"原话"}}],
+"new":[{{"term":"新词","meaning":"解释","kind":"meme","aliases":[],"example":"原话"}}]}}"""
+
+
+def render_review_prompt(text: str, hits: list[str]) -> str:
+    """词库复盘用的提示词。数据在外面取，模板留在这里。"""
+    return LEXICON_REVIEW_PROMPT.format(
+        text=text,
+        hits="\n".join(hits) if hits else "（没有）",
+    )

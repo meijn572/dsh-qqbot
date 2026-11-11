@@ -76,3 +76,27 @@ def network_meme_hint(text: str) -> str:
     if not hits:
         return ""
     return "（网络梗：" + "；".join(hits) + "。按语境自然理解，别逐条解释。）"
+
+GROUP_SLANG_PROMPT = """（内部记录，不要回复用户）下面是群里最近的聊天：
+
+{convo}
+
+已有黑话表：
+{existing}
+
+找出聊天里反复出现的黑话、口癖、梗或特定称呼（出现 2 次以上）。
+重要：如果这次看到的说法就是表里已有某条（哪怕叫法略有不同），**必须直接复用表里的名字**，不要另起新名；
+表里已有、这次聊天里又出现的，也要列出来（同名，occurrences 填这次出现的次数），用来刷新它的次数和最后出现时间。
+如果这次看到了更准确的意思或更好的原话例子，就把 meaning/example 一起更新（名字保持不变）。
+只有确实是全新的说法才给新名字。
+只返回 JSON 数组：
+[{{"term":"说法","meaning":"大概什么意思","example":"原话例子","occurrences":2}}]; 没有就输出 []。不要输出别的。"""
+
+
+def render_group_slang_prompt(convo: str, existing: list[dict]) -> str:
+    """群黑话抽取的提示词。日志读取和合并逻辑留在调用方。"""
+    listing = "\n".join(
+        f"- {i.get('term')}：{i.get('meaning') or '（未记）'}（已见 {i.get('count')} 次）"
+        for i in existing[:40]
+    ) or "（还没有）"
+    return GROUP_SLANG_PROMPT.format(convo=convo[:4000], existing=listing)

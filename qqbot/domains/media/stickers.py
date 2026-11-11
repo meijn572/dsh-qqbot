@@ -82,3 +82,27 @@ async def collect_sticker(source: Path, override: str | None = None, note: str =
     remember_sticker_info(source, str(target.relative_to(MEME_DIR)))
     remember_sticker_meta(source, str(target.relative_to(MEME_DIR)))
     return category
+
+STICKER_REVIEW_CATEGORIES = (
+    "happy|angry|sad|confused|surprised|shy|sleep|affection|food|money|greeting|work|"
+    "entertainment|teasing|reply"
+)
+
+
+def render_sticker_review_prompt(rel: str, status: str, existing: str, memory: str) -> str:
+    """表情复盘提示词：图由调用方传入，这里只管怎么问。"""
+    return (
+        "（内部表情复盘，不要回复用户，不要调用任何工具。）\n"
+        f"表情：{rel}\n"
+        f"当前状态：{status}\n"
+        f"已有语义：{existing}\n"
+        "下面是与这张表情相关的原始对话记忆，按时间排列：\n"
+        f"{memory}\n\n"
+        "请结合图片和记忆，更新表情语义。只返回 JSON（不要解释）：\n"
+        '{"changed":true|false,'
+        '"label":"2-10字短名，认不出就空",'
+        f'"category":"{STICKER_REVIEW_CATEGORIES}",'
+        '"caption":"一句话描述，80字以内",'
+        '"identity":["角色/IP"],"action":["动作"],"expression":["表情/情绪"],"generic":["泛词"]}\n'
+        "没有把握的字段留空；不要从标签拼名字；不要编造。"
+    )
