@@ -141,7 +141,7 @@ L3  为什么这件事值得记久
 
 ```text
 memory_links   派生关系：谁从谁来的
-evidence_ids   完整证据：这条引用了哪些 L0，展开成闭包
+source_ids   完整证据：这条引用了哪些 L0，展开成闭包
 ```
 
 两者不重复：前者说明结构，后者提供内容。
@@ -151,7 +151,7 @@ evidence_ids   完整证据：这条引用了哪些 L0，展开成闭包
 ```text
 text           便签
 ts             时间
-evidence_ids   指向 L0（见 3.5）
+source_ids   指向 L0（见 3.5）
 tags           来源标记
 
 emotion_label / emotion_valence / emotion_arousal
@@ -181,40 +181,31 @@ recall_* / lifecycle_*
 
 ```text
 text            重写后的版本（不是复制 L3）
-evidence_ids    它引用的全部 L0
+source_ids    它引用的全部 L0
 来源            memory_links 里 L3 --core--> L4
 ```
 
-### 3.5 source_ids 改名 evidence_ids，存传递闭包
+### 3.5 source_ids 的现行语义（改名与闭包未做）
 
-语义固定为「这条记忆引用的全部 L0 原话」。
+代码里仍是 `source_ids`，存的是**这条记忆直接引用的 L0 id**：
 
 ```text
-L1    自己的 L0
-L3    自己的 L0 + 它 L1 的 L0（展开后全部）
-L4    它 L3 的全部 + 自己新增的 L0
+L1    它自己那些 L0
+L3    模型挑出来的 L0（不一定是全部）
+L4    继承源 L3 的 L0
 ```
 
-写入时就排好时间顺序，读的时候直接用，不用再排。
+计划过改成 `source_ids` 并展开成传递闭包，但因为涉及 schema、接口和 58 处引用，
+一直没动。文档里凡是写 `source_ids` 的地方都按 `source_ids` 理解。
 
-现在各层长度：
-
-```text
-L1  平均 3.0   最大 12
-L2  平均 1.6   最大 4
-L3  平均 3.3   最大 14
-```
-
-展开后会更长，渲染时按需截断。
-
-### 3.6 图和 evidence_ids 的分工
+### 3.6 图和 source_ids 的分工
 
 ```text
-evidence_ids   完整证据清单，扁平，随时可用
+source_ids   完整证据清单，扁平，随时可用
 memory_links   派生结构，说明谁从谁来的
 ```
 
-有了 evidence_ids，L4 复盘只需要「L3 正文 + 它的 evidence_ids 展开的原话」，不用遍历图。
+有了 source_ids，L4 复盘只需要「L3 正文 + 它的 source_ids 展开的原话」，不用遍历图。
 
 ### 3.7 图的传递约简
 
@@ -257,7 +248,7 @@ archived 的流水账实体保留
 ### 3.9 L4 改为重写
 
 ```text
-输入    源 L3 正文 + 该 L3 的 evidence_ids 展开的原话
+输入    源 L3 正文 + 该 L3 的 source_ids 展开的原话
 输出    重写后的版本
 ```
 
@@ -524,12 +515,12 @@ B站 的 L1    只写：看了什么 / 什么感受 / 留下什么问题
 [ ] 删 set_emotion / state.emotion / emotion.py
 [ ] state.mjs 去掉情绪段
 [ ] B站 改写成 L0
-[ ] L3 批处理改为顺 evidence_ids 找 L0
+[ ] L3 批处理改为顺 source_ids 找 L0
 [ ] L1 分段 30 分钟 → 5 分钟
 [ ] insight_kind → insight_target（me / us / none）
 
-[ ] source_ids 改名 evidence_ids
-[ ] evidence_ids 改成传递闭包（写入时展开并按时间排序）
+[ ] source_ids 改名 source_ids
+[ ] source_ids 改成传递闭包（写入时展开并按时间排序）
 [ ] 写入时做传递约简（间接可达就不写直接边）
 [ ] 删掉 41 条 role=legacy 的 L3→L3 边
 [ ] L4 改成重写（输入 L3 正文 + 展开的 L0）
@@ -684,7 +675,7 @@ D:\QQBot\SnowLuma\config\runtime.json.bak-20261111-123100
 memory 表
   + emotion_label / emotion_valence / emotion_arousal
   + want_more / ask_him / want_used
-  source_ids → evidence_ids（改名）
+  source_ids → source_ids（改名）
 
 diary 表
   + changes / open_questions / tasks
@@ -697,7 +688,7 @@ diary 表
 ```text
 整批写情绪（不再只挑一条）
 写 want_more / ask_him
-evidence_ids 写传递闭包，按时间排好
+source_ids 写传递闭包，按时间排好
 分段 30 分钟 → 5 分钟
 ```
 
@@ -706,7 +697,7 @@ evidence_ids 写传递闭包，按时间排好
 ```text
 bili 改成写 L0（不是 activity）
 L1 批处理统一处理
-L3 批处理顺 evidence_ids 找 L0
+L3 批处理顺 source_ids 找 L0
 ```
 
 前三步做完，B 站内容才算真的进了记忆。

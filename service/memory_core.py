@@ -1915,20 +1915,28 @@ class MemoryStore:
             "insight_kind": r["insight_kind"] or "",
         } for r in rows]
 
+    # 感悟现在按 insight_target 分类（me / us / none），
+    # 老调用还在传 self / relation / style，这里统一翻译。
+    _TARGET_ALIASES = {"self": "me", "relation": "us", "style": "none",
+                       "me": "me", "us": "us", "none": "none"}
+
     def bili_insights(self, kind: str = "", limit: int = 20, days: int = 90) -> list[dict]:
         since = time.time() - max(1, int(days)) * 86400
-        sql = ("SELECT id,ts,text,insight_text,insight_kind,source_activity_id "
+        sql = ("SELECT id,ts,text,insight_text,insight_kind,insight_target,source_activity_id "
                "FROM memory WHERE tier='L3' AND insight_text!='' AND ts>=?")
         args: list = [since]
-        if kind:
-            sql += " AND insight_kind LIKE ?"
-            args.append(f"%{kind}%")
+        target = self._TARGET_ALIASES.get(str(kind or "").strip(), "")
+        if target:
+            # 兼容改造前落的老数据：那时候分类写在 insight_kind 里
+            sql += " AND (insight_target=? OR insight_kind LIKE ?)"
+            args.extend([target, f"%{kind}%"])
         sql += " ORDER BY ts DESC LIMIT ?"
         args.append(max(1, min(int(limit), 50)))
         rows = self.conn.execute(sql, args).fetchall()
         return [{
             "id": int(r["id"]), "ts": float(r["ts"]), "text": r["text"],
             "insight_text": r["insight_text"], "insight_kind": r["insight_kind"],
+            "insight_target": str(r["insight_target"] or ""),
             "source_activity_id": r["source_activity_id"],
         } for r in rows]
 
@@ -1980,35 +1988,6 @@ class MemoryStore:
         self.conn.commit()
         return bool(cur.rowcount)
 
-
-
-    # -- 情绪双轴：valence（效价）/ arousal（唤醒度） --------------------------
-    #
-    # mood 是粗档（开心/累/烦...），valence+arousal 是连续值，更接近人。
-    # 情绪会自然衰减：没事干的时候慢慢回中性，不会一直high。
-    #   衰减规则：valence 和 arousal 按 8 小时半衰期向中性收。
-    #   旧规则是线性 20%/小时，5 小时就归零，情绪还没被下一次自检看到就没了。
-
-    def get_emotion(self) -> dict:
-        cur = self.get_state()
-        now = time.time()
-        updated = float(cur.get("mood_updated") or 0) or now
-        hours = max(0.0, (now - updated) / 3600.0)
-        decay = 0.5 ** (hours / 8.0)
-        # clamp 在这里也做一遍：库里可能还留着 clamp 上线之前的超界值
-        valence = max(-1.0, min(1.0, float(cur.get("valence") or 0) * decay))
-        arousal = max(0.0, min(1.0, 0.5 + (float(cur.get("arousal") or 0.5) - 0.5) * decay))
-        return {"valence": round(valence, 3), "arousal": round(arousal, 3)}
-
-    def set_emotion(self, valence: float, arousal: float) -> dict:
-        v = max(-1.0, min(1.0, float(valence)))
-        a = max(0.0, min(1.0, float(arousal)))
-        self.set_state(valence=v, arousal=a)
-        return {"valence": v, "arousal": a}
-
-    def bump_emotion(self, dv: float = 0.0, da: float = 0.0) -> dict:
-        e = self.get_emotion()
-        return self.set_emotion(e["valence"] + dv, e["arousal"] + da)
 
 
     # -- 学说话 / 亲和度 / 任务 / 便签 / 睡眠 --------------------------------

@@ -265,8 +265,6 @@ def health() -> dict:
 
 def mood_payload() -> dict:
     state = cmem_get("/state")
-    valence = float(state.get("valence") or 0)
-    arousal = float(state.get("arousal") or 0.5)
     rel = state.get("relationship") or {}
     if not isinstance(rel, dict):
         rel = {}
@@ -280,8 +278,6 @@ def mood_payload() -> dict:
                 dims[str(key)] = round(float(value) * 100)
             except (TypeError, ValueError):
                 continue
-    dims.setdefault("心情值", round((valence + 1) * 50))
-    dims.setdefault("唤醒", round(arousal * 100))
     timeline = []
     for item in (state.get("emotion_recent") or [])[-12:]:
         if isinstance(item, dict):
@@ -293,6 +289,8 @@ def mood_payload() -> dict:
             })
     # 服务返回的 emotion_recent 是最新在前；最近一次应取第一条
     last_emotion = timeline[0] if timeline else {}
+    # 情绪只来自 L1：取最近一条的 valence 当心情条位置，没有就中性
+    last_v = float((state.get("emotion_recent") or [{}])[0].get("valence") or 0)
     return {
         "configured": bool(state),
         "owner": "九歌",
@@ -300,7 +298,7 @@ def mood_payload() -> dict:
         "inject_mode": "dsh-remembers",
         "auto_judge": True,
         "per_day": 0,
-        "mood": round((valence + 1) * 50),
+        "mood": round((last_v + 1) * 50),
         "dims": dims,
         "reason": str(last_emotion.get("reason") or state.get("activity") or ""),
         "emotion_label": str(last_emotion.get("mood") or ""),
@@ -310,8 +308,7 @@ def mood_payload() -> dict:
         "active": state.get("mood") or "",
         "relationship": rel,
         "activity": state.get("activity", ""),
-        "valence": valence,
-        "arousal": arousal,
+        "valence": last_v,
     }
 
 
@@ -520,9 +517,8 @@ def memory_payload() -> dict:
                 "last_seen": item.get("thread_last_seen_at") or "",
                 "stale": bool(item.get("stale_at")),
                 "source_count": len(item.get("source_ids") or []),
-                "relationship_impact": str(item.get("relationship_impact") or ""),
                 "insight_text": str(item.get("insight_text") or ""),
-                "insight_kind": str(item.get("insight_kind") or ""),
+                "insight_target": str(item.get("insight_target") or ""),
                 "memorability": item.get("memorability"),
                 "dominant": str(item.get("dominant") or ""),
                 "last_recalled_at": item.get("last_recalled_at") or "",
@@ -922,7 +918,6 @@ def bili_feed_payload() -> dict:
                 "summary": str(item.get("summary") or ""),
                 "thought": str(item.get("thought") or ""),
                 "insight": str(item.get("insight") or ""),
-                "insight_kind": str(item.get("insight_kind") or ""),
                 "l3_id": item.get("l3_id"),
                 "shared": bool(item.get("shared")),
             })

@@ -174,18 +174,3 @@ async def ingest(text: str, tier: str = "L0", tags: list[str] | None = None) -> 
     return int(mid) if mid is not None else None
 
 
-async def set_emotion(label: str, valence: float, arousal: float, reason: str = "", source: str = "self-check",
-                      ts_start: float | None = None, ts_end: float | None = None) -> None:
-    await cmem_call("POST", "/state", {"valence": valence, "arousal": arousal})
-    body = {
-        "label": label,
-        "valence": valence,
-        "arousal": arousal,
-        "trigger": reason,
-        "source": source,
-    }
-    if ts_start is not None:
-        body["ts_start"] = float(ts_start)
-    if ts_end is not None:
-        body["ts_end"] = float(ts_end)
-    await cmem_call("POST", "/emotion", body)

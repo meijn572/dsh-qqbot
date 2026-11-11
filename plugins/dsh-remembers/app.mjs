@@ -32,7 +32,6 @@ import { loadRecall } from "./hooks/recall.mjs";
 import { recordTurn } from "./hooks/turn_end.mjs";
 import { renderState } from "./hooks/state.mjs";
 import { renderOtherProfile, renderOwnerProfile, renderPersona, renderSpeakerNote } from "./hooks/persona.mjs";
-import { registerEmotionTool as registerEmotionToolModule } from "./tools/emotion.mjs";
 import { registerImportantTool as registerImportantToolModule } from "./tools/important.mjs";
 import { registerMemeTools as registerMemeToolsModule } from "./tools/memes.mjs";
 import { registerCompanionTools as registerCompanionToolsModule } from "./tools/companion.mjs";
@@ -861,7 +860,6 @@ const soft = (key) => {
   void registerPersonaToolModule({ registerTool, log, client, config, persona, refreshPersona });
   void registerThreadToolsModule({ registerTool, log, endpoint: config.endpoint });
   void registerActivityToolModule({ registerTool, log, endpoint: config.endpoint });
-  void registerEmotionToolModule({ registerTool, log, endpoint: config.endpoint });
   void registerImportantToolModule({ registerTool, log, endpoint: config.endpoint });
   void registerCompanionToolsModule({ registerTool, log, endpoint: config.endpoint });
   void registerMemeToolsModule({ registerTool, log, endpoint: config.endpoint, memeDir: config.memeDir });

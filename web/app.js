@@ -1,6 +1,6 @@
 const $=(s)=>document.querySelector(s);
 const DOMINANT_LABEL={importance:'重要',emotion:'情绪',distinctiveness:'独特',self_relevance:'自我',relationship:'关系',none:'无'};
-const INSIGHT_KIND_LABEL={self:'自我认知',style:'说话风格',relation:'关系'};
+const INSIGHT_KIND_LABEL={me:'关于我',us:'关于我们',none:'想法'};
 const insightKindLabel=(kind)=>String(kind||'').split(',').map(x=>INSIGHT_KIND_LABEL[x.trim()]||x.trim()).filter(Boolean).join('、');
 function fmtUntil(ts){
   const d=new Date(Number(ts)*1000);
@@ -92,7 +92,7 @@ function renderMem(){
     const src=it.source_count?`<span class="mut">来源 ${it.source_count} 条</span> `:'';
     const l2=it.type==='L2'?`<div class="mut" style="margin-top:3px">${it.confidence!=null?`置信 ${(Number(it.confidence)*100).toFixed(0)}%`:''}${it.expires_at?` · 过期 ${new Date(Number(it.expires_at)*1000).toLocaleDateString('zh-CN')}`:''}</div>`:'';
     const memo=it.type==='L3'?`<div class="mut" style="margin-top:3px">难忘 ${it.memorability!=null?(Number(it.memorability)*100).toFixed(0)+'%':'—'}${it.dominant&&it.dominant!=='none'?`（${esc(DOMINANT_LABEL[it.dominant]||it.dominant)}）`:''}${it.stability_days?(' · 稳定 '+Math.round(Number(it.stability_days))+' 天'):''}${it.recall_count?(' · 召回 '+it.recall_count+' 次'):''}${it.active_until&&Number(it.active_until)>Date.now()/1000?(' · 活跃至 '+fmtUntil(it.active_until)):''}</div>`:'';
-    const ik=insightKindLabel(it.insight_kind);
+    const ik=insightKindLabel(it.insight_target);
     const insight=it.insight_text?`<div class="mut" style="margin-top:3px">感悟${ik?`（${esc(ik)}）`:''}：${esc(it.insight_text)}</div>`:'';
     const id=Number(it.id)||0;
     const editing=window.__memEdit===id;
@@ -516,7 +516,7 @@ async function load(){
         h+=`<div style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:6px"><span class="mut">${esc(t)}</span> <span class="badge ok">B站</span> ${esc(a.detail||'')}`;
         if(a.summary) h+=`<div class="mut" style="margin-top:3px">讲了什么：${esc(a.summary)}</div>`;
         if(a.thought) h+=`<div class="mut" style="margin-top:3px">想法：${esc(a.thought)}</div>`;
-        if(a.insight) h+=`<div style="margin-top:3px">感悟${a.insight_kind?`（${esc(insightKindLabel(a.insight_kind))}）`:''}：${esc(a.insight)}</div>`;
+if(a.insight) h+=`<div style="margin-top:3px">感悟：${esc(a.insight)}</div>`;
         if(a.l3_id) h+=`<div class="mut" style="margin-top:3px">已生成 L3 #${a.l3_id}</div>`;
         h+='</div>';
       }

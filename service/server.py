@@ -168,7 +168,6 @@ def _rebuild(cfg: dict) -> dict:
         enabled=_pick_flag(cfg, "extract", "CMEM_EXTRACT"),
         max_facts=int(_pick(cfg, "extract_max_facts", "CMEM_EXTRACT_MAX_FACTS", "20")),
         neighbor_k=int(_pick(cfg, "extract_neighbors", "CMEM_EXTRACT_NEIGHBORS", "5")),
-        emotion_threshold=float(_pick(cfg, "emotion_threshold", "CMEM_EMOTION_THRESHOLD", "0.2")),
     ), embedder=embedder)
     gate = SurprisalGate(
         embedder=embedder,
@@ -507,14 +506,7 @@ class Handler(BaseHTTPRequestHandler):
         if body.get("reset_chat"):
             with _lock:
                 store.reset_chat()
-        if "bump_valence" in body or "bump_arousal" in body:
-            cur_e = store.get_emotion()
-            kwargs["valence"] = cur_e["valence"] + float(body.get("bump_valence") or 0)
-            kwargs["arousal"] = cur_e["arousal"] + float(body.get("bump_arousal") or 0)
-        if "valence" in body:
-            kwargs["valence"] = float(body.get("valence") or 0)
-        if "arousal" in body:
-            kwargs["arousal"] = float(body.get("arousal") or 0.5)
+        # 全局 valence/arousal 已退役：情绪跟着 L1 走，不再挂运行时状态。
         if "activity" in body:
             kwargs["activity"] = str(body.get("activity") or "")
         if "game_score" in body:
@@ -2512,25 +2504,7 @@ class Handler(BaseHTTPRequestHandler):
                 insight=insight,
                 insight_kind=insight_kind,
             )
-            l3_id = None
-            if kind == "bili" and mid and insight.strip() and insight_kind.strip():
-                try:
-                    memo = max(0.0, min(1.0, float(body.get("memorability") or 0.5)))
-                except (TypeError, ValueError):
-                    memo = 0.5
-                dominant = str(body.get("dominant") or "none").strip()
-                if dominant not in ("importance", "emotion", "distinctiveness",
-                                    "self_relevance", "relationship", "none"):
-                    dominant = "none"
-                l3_id = store.add_bili_insight(
-                    mid,
-                    context=str(body.get("insight_context") or ""),
-                    insight=insight,
-                    insight_kind=insight_kind,
-                    memorability=memo,
-                    dominant=dominant,
-                )
-        self._json(200, {"ok": True, "id": mid, "l3_id": l3_id})
+        self._json(200, {"ok": True, "id": mid})
 
     def _mark_activity_shared(self) -> None:
         body = self._body()
@@ -2815,8 +2789,7 @@ class Handler(BaseHTTPRequestHandler):
                 "embed_key_env": bool(os.environ.get("CMEM_EMBED_KEY")),
                 "extract": _pick_flag(cfg, "extract", "CMEM_EXTRACT"),
                 "surprisal_threshold": float(_pick(cfg, "surprisal_threshold", "CMEM_SURPRISAL_THRESHOLD", "0.35")),
-                "emotion_threshold": float(_pick(cfg, "emotion_threshold", "CMEM_EMOTION_THRESHOLD", "0.2")),
-                "diary_enabled": bool(cfg.get("diary_enabled", True)),
+                        "diary_enabled": bool(cfg.get("diary_enabled", True)),
                 "evolve_enabled": bool(cfg.get("evolve_enabled", True)),
                 "episode_enabled": bool(cfg.get("episode_enabled", True)),
             },
@@ -2859,11 +2832,6 @@ class Handler(BaseHTTPRequestHandler):
         if "surprisal_threshold" in body:
             try:
                 cfg["surprisal_threshold"] = max(0.0, min(1.0, float(body["surprisal_threshold"])))
-            except (TypeError, ValueError):
-                pass
-        if "emotion_threshold" in body:
-            try:
-                cfg["emotion_threshold"] = max(0.0, min(1.0, float(body["emotion_threshold"])))
             except (TypeError, ValueError):
                 pass
 
@@ -3093,7 +3061,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 confidence = 0.5
             try:
-                days = max(1, min(30, int(item.get("expires_in_days") or 14)))
+                days = max(1, min(7, int(item.get("expires_in_days") or 7)))
             except Exception:
                 days = 14
             l2_id = store.add(MemoryInput(
@@ -3236,10 +3204,9 @@ class Handler(BaseHTTPRequestHandler):
         current = store.get_relationship()
         since = float(current.get("updated_at") or 0)
         rows = store.conn.execute(
-            "SELECT id,text,thread_title,relationship_impact,insight_text,insight_target,ts FROM memory "
-            "WHERE tier='L3' AND ts>? AND ("
-            "(insight_target='us' AND insight_text!='') OR relationship_impact!=''"
-            ") ORDER BY ts ASC LIMIT 20",
+            "SELECT id,text,thread_title,insight_text,insight_target,ts FROM memory "
+            "WHERE tier='L3' AND ts>? AND insight_target='us' AND insight_text!='' "
+            "ORDER BY ts ASC LIMIT 20",
             (since,),
         ).fetchall()
         impacts = [{

@@ -810,7 +810,6 @@ class ExtractConfig:
     # episode 摘要的输入上限：超了留后面那段，近况比开头重要
     episode_max_chars: int = 12000
     episode_per_turn_chars: int = 800
-    emotion_threshold: float = 0.2     # 情绪强度下限：低于这个不记 emotion_log
 
 
 class Extractor:
@@ -1059,7 +1058,7 @@ class Extractor:
 
             details.append({"fact": text[:60], "op": op, "reason": decision.get("reason")})
 
-        # 情绪已随每条 L1 落库，不再额外写 emotion_log（该表待删）
+        # 情绪已随每条 L1 落库，没有单独的日志表
 
         return {"ok": True, "facts": len(facts), "applied": applied, "details": details, "ids": ids}
 
@@ -1499,7 +1498,7 @@ class Extractor:
         if self.embedder is not None and getattr(self.embedder, "enabled", False):
             vec = self.embedder.embed_one(text)
             vec_model = self.embedder.model if vec else None
-        # 情绪跟着 L1 走：每条便签带自己的情绪，不再整批只挑一条进 emotion_log
+        # 情绪跟着 L1 走：每条便签带自己的情绪
         emo_label, emo_valence, emo_arousal, _reason = self._emotion_values(
             fact.get("emotion"), fact)
         return MemoryInput(

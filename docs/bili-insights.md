@@ -1,5 +1,8 @@
 # B 站视频与复盘感悟
 
+> 本文描述的机制已被 [当前架构与待办](architecture-current.md) 取代，其中涉及 emotion_log / 全局 valence 的部分已删除，只作历史记录。
+
+
 状态：第一版已实现。activity 存全量；L3 存短上下文、感悟和类型；summary 不进 L3。
 
 ## 1. 要解决的问题

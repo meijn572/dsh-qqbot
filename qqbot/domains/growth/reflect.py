@@ -38,7 +38,7 @@ async def run(turn: Turn) -> bool:
     recent = await recent_dialogue(30)
     ev = await collect(l1=50, l3=30, l0=50)
     memories = format_block(ev)
-    insights = await bili_insights("self", limit=12, days=90)
+    insights = await bili_insights("me", limit=12, days=90)
     insight_block = "\n".join(f"- {x.get('insight_text')}" for x in insights if x.get("insight_text"))
     # 中间层：最近几天的日记，含之前写下的变化和没想清
     try:

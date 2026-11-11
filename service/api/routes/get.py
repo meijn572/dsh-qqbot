@@ -1,6 +1,8 @@
 """GET 路由逻辑：只做协议适配，返回是否已处理。"""
 from __future__ import annotations
 
+import time
+
 
 def handle_get(handler, path: str, query: dict, store) -> bool:
         if path.startswith("/memes/file/"):
@@ -103,10 +105,28 @@ def handle_get(handler, path: str, query: dict, store) -> bool:
             handler._guard(lambda: handler._get_qq_config())
         elif path == "/state":
             st = store.get_state()
+            # 全局情绪已退役：情绪只存在于 L1
+            for k in ("valence", "arousal"):
+                st.pop(k, None)
             try:
-                # 多取几条：渲染时要滤掉「没标签又中性」的记录，
-                # 只取 3 条的话过滤完可能一条不剩。
-                st["emotion_recent"] = store.emotion_log_list(limit=10, days=7)
+                # 情绪已并入 L1：从带情绪的便签里取最近几条
+                since = time.time() - 7 * 86400
+                st["emotion_recent"] = [
+                    {
+                        "ts": float(r["ts"] or 0),
+                        "label": str(r["emotion_label"] or ""),
+                        "valence": float(r["emotion_valence"] or 0),
+                        "arousal": float(r["emotion_arousal"] or 0),
+                        "trigger": str(r["text"] or ""),
+                        "source": "L1",
+                    }
+                    for r in store.conn.execute(
+                        "SELECT ts,emotion_label,emotion_valence,emotion_arousal,text "
+                        "FROM memory WHERE tier='L1' AND emotion_label!='' AND ts>=? "
+                        "ORDER BY ts DESC LIMIT 10",
+                        (since,),
+                    )
+                ]
             except Exception:
                 st["emotion_recent"] = []
             try:
@@ -142,7 +162,6 @@ def handle_get(handler, path: str, query: dict, store) -> bool:
             st["activity"] = store.current_activity(hour)
             fetch_weather = str((query.get("weather") or ["0"])[0]).lower() in ("1", "true", "yes")
             st["weather"] = store.current_weather(fetch=fetch_weather)
-            st["emotion"] = store.get_emotion()
             try:
                 st["slang"] = store.slang_list(8)
                 st["affinity"] = store.affinity_get("owner")

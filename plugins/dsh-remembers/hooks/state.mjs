@@ -47,45 +47,13 @@ export function renderState(state, prev, selfModel, proactive, thinkCn) {
   if (hh >= 23 || hh < 6) blocks.push("你现在困得眼睛都睁不开了，回话短一点、慢一点，别硬撑。");
   else if (hh >= 21) blocks.push("有点困了，说话懒一点。");
 
-  // ---------- 3. 心情 + 情绪（变了才加） ----------
+  // ---------- 3. 心情（情绪已并入 L1，这里只剩粗档 mood） ----------
   const moodMap = { happy: "开心", tired: "累", annoyed: "烦", bored: "无聊", normal: "平常" };
-  let moodText = `心情：${moodMap[state.mood] || "平常"}`;
-  if (state.emotion) {
-    const v = Number(state.emotion.valence) || 0;
-    const a = Number(state.emotion.arousal) || 0.5;
-    const vDesc = v > 0.4 ? "很开心" : v > 0.1 ? "还不错" : v < -0.4 ? "很难过" : v < -0.1 ? "有点低落" : "";
-    const aDesc = a > 0.7 ? "很兴奋" : a > 0.55 ? "有点激动" : a < 0.25 ? "很安静" : a < 0.4 ? "有点安静" : "";
-    const extras = [vDesc, aDesc].filter(Boolean).join("，");
-    if (extras) moodText += `（${extras}）`;
-  }
+  const moodText = `心情：${moodMap[state.mood] || "平常"}`;
   const moodHash = hash(moodText);
   if (hashes.mood !== moodHash) {
     hashes.mood = moodHash;
     blocks.push(moodText + "。");
-    const recent = Array.isArray(state.emotion_recent) ? state.emotion_recent : [];
-    if (recent.length) {
-      const items = [];
-      for (const e of recent) {
-        if (items.length >= 3) break;
-        const v = Number(e.valence) || 0;
-        const label = String(e.label || "").trim();
-        const trig = String(e.trigger || "").trim();
-        if (!trig) continue;
-        // 没标签、情绪又在中性的记录没有信息量。老版本的 auto 分支会写这种，
-        // 且和 LLM 抽出的同一条情绪撞车 → 同一句话显示两遍。
-        if (!label && Math.abs(v) < 0.2) continue;
-        const w = label || (v > 0.4 ? "挺开心" : v > 0.1 ? "还不错" : v < -0.4 ? "很难过" : v < -0.1 ? "有点低落" : "");
-        const ts = Number(e.ts || 0) * 1000;
-        let day = "";
-        if (ts) {
-          const dd = new Date(ts);
-          const diff = Math.floor((new Date().setHours(0, 0, 0, 0) - new Date(dd).setHours(0, 0, 0, 0)) / 86400000);
-          day = diff === 0 ? "今天" : diff === 1 ? "昨天" : diff === 2 ? "前天" : `${diff}天前`;
-        }
-        items.push(`· ${day}${w ? "（" + w + "）" : ""}${trig.slice(0, 40)}`);
-      }
-      if (items.length) blocks.push("【最近让你有情绪的事】（别生硬复述，自然带出来）\n" + items.join("\n"));
-    }
   }
 
   // ---------- 3.5 还没完的事（全部 open，只给标题和状态） ----------
