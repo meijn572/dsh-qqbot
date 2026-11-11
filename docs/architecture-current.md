@@ -420,28 +420,33 @@ bili    我自己刷出来的
 想自己刷的   → want_more
 ```
 
-### 6.5 选材顺序（待定）
+### 6.5 选材顺序
 
 ```text
-1. questions 里没答的    优先
-2. 没有就按权重抽
-3. 权重池也空             自由探索
+1. 最近 L1 里 want_more 非空且未用的   优先
+2. 没有就按兴趣权重抽
+3. 权重池也空                          自由探索
 ```
+
+want_more 用掉后在 L1 上标记，不新建表。
 
 ### 6.6 权重只说明「她自己给了意义」
 
 ```text
-question 驱动的轮次     不加权重
+want_more 驱动的轮次    不加权重
 chat 来源的话题         被抽中也不加权重
-只有自己写了 care 的     才加
+只有她自己在 L1 里写了在意什么的  才加
 ```
 
-### 6.7 未定
+### 6.7 长期兴趣不在这层判
 
 ```text
-长期兴趣怎么识别
-（倾向：不在这层判，交给人格复查）
+兴趣池只回答「下一轮看什么」
+长期兴趣由人格复查判断（review.py）
 ```
+
+理由：30 天一次的人格复查本来就在读长期记忆，让它顺带看兴趣池，
+比在兴趣系统里加一套阶段判断简单。
 
 ## 7. B 站
 
@@ -668,3 +673,89 @@ D:\QQBot\SnowLuma\config\runtime.json.bak-20261111-123100
 - [OISE: Hidi 的兴趣研究](https://www.oise.utoronto.ca/about/news/08-05-24-exploring-interest-education-understanding-core-dr-suzanne-hidis-psychological)：四阶段模型
 - [OISE: 兴趣的应用](https://www.oise.utoronto.ca/about/news/08-05-24-application-interest-suzanne-hidis-educational-research-sparks-questions)：好奇 ≠ 兴趣
 - [APS: 好奇的刚好区间](https://www.psychologicalscience.org/news/to-spark-curiosity-dont-tell-preschoolers-too-much-or-too-little.html)
+
+## 11. 实现顺序
+
+依赖关系决定顺序，前三步铺完，后面才能动。
+
+### 第一步：数据库
+
+```text
+memory 表
+  + emotion_label / emotion_valence / emotion_arousal
+  + want_more / ask_him / want_used
+  source_ids → evidence_ids（改名）
+
+diary 表
+  + changes / open_questions / tasks
+
+一次迁移跑完，不动逻辑
+```
+
+### 第二步：L1 抽取
+
+```text
+整批写情绪（不再只挑一条）
+写 want_more / ask_him
+evidence_ids 写传递闭包，按时间排好
+分段 30 分钟 → 5 分钟
+```
+
+### 第三步：B 站写 L0
+
+```text
+bili 改成写 L0（不是 activity）
+L1 批处理统一处理
+L3 批处理顺 evidence_ids 找 L0
+```
+
+前三步做完，B 站内容才算真的进了记忆。
+
+### 第四步：L3 / L4
+
+```text
+insight_kind → insight_target
+写入时做传递约简
+L4 改成重写（输入 L3 正文 + 展开的 L0）
+删 41 条 legacy 边
+```
+
+### 第五步：清理
+
+```text
+删 emotion_log（先导出 93 条）
+删 set_emotion / state.emotion / emotion.py
+state.mjs 去掉情绪段
+```
+
+### 第六步：中间层
+
+```text
+review.py 读最近 7 天日记
+reflect.py 写 diary.changes
+```
+
+### 第七步：兴趣
+
+```text
+选材顺序改「want_more → 权重 → 自由探索」
+权重只在写了 care 时增加
+```
+
+### 第八步：人格
+
+```text
+核心设定加「偏好」栏
+review.py 一次判断四类
+画像对齐五格
+关联机制 {{L3:id}}
+```
+
+### 为什么这个顺序
+
+```text
+1-3 都在数据层，一次迁移铺开
+4-5 依赖 1-3 的字段
+6-7 依赖 4-5 的数据
+8 最后做，因为要在真数据上验证
+```
