@@ -20,6 +20,43 @@ async def cmem_call(method: str, path: str, body: dict | None = None) -> dict:
             return await resp.json(content_type=None)
 
 
+async def expand_persona_links(constitution: str) -> str:
+    """把人格里的 {{L3:123}} 展开成「标题 · 状态 + 正文」，给复盘看。
+
+    日常注入走 persona.mjs，那边是直接抹掉的——模型不需要知道来处。
+    复盘要判断这条还成不成立，才需要看见当时发生了什么。
+    """
+    import re as _re
+    text = str(constitution or "")
+    ids = sorted({int(x) for x in _re.findall(r"\{\{L3:(\d+)\}\}", text)})
+    if not ids:
+        return text
+    info: dict[int, dict] = {}
+    for tier in ("L3", "L4"):
+        try:
+            data = await cmem_call("GET", f"/memories?tier={tier}&limit=200")
+            for item in (data.get("items") or []):
+                try:
+                    mid = int(item.get("id"))
+                except (TypeError, ValueError):
+                    continue
+                if mid in ids:
+                    info[mid] = item
+        except Exception:  # noqa: BLE001
+            continue
+    for mid in ids:
+        item = info.get(mid)
+        if not item:
+            text = text.replace("{{L3:%d}}" % mid, "")
+            continue
+        title = str(item.get("thread_title") or "").strip() or "（无标题）"
+        status = str(item.get("thread_status") or "").strip() or "?"
+        body = str(item.get("summary") or item.get("text") or "").strip().replace("\n", " ")[:200]
+        rendered = f"〔{title} · {status}〕{body}"
+        text = text.replace("{{L3:%d}}" % mid, rendered)
+    return text
+
+
 async def diary_recent(days: int = 7) -> list[dict]:
     """中间层：最近几天的日记（含 text / changes / open_questions）。"""
     data = await cmem_call("GET", "/diary")

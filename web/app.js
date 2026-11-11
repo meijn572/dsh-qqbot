@@ -333,7 +333,7 @@ async function load(){
         <button onclick="applyStyle()">应用</button> <button onclick="dismissStyle()">忽略</button></div>`;
     }
     h+=`<div class="card"><div class="k">核心设定 <button style="float:right" onclick="editCore()">编辑</button></div>
-      <div id="corePreview">${p.constitution?mdToHtml(p.constitution):'<div class="mut">（空）</div>'}</div>
+      <div id="corePreview">${p.constitution_display?mdToHtml(p.constitution_display):(p.constitution?mdToHtml(p.constitution):'<div class="mut">（空）</div>')}</div>
       <div id="coreEditWrap" hidden>
         <textarea id="coreText" onfocus="window.__coreLock=true" oninput="window.__coreLock=true" style="width:100%;height:340px;background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.6">${esc(p.constitution||'')}</textarea>
         <div style="margin-top:8px"><button onclick="saveCore()">保存</button> <button onclick="cancelCore()">取消</button> <span id="coreMsg" class="mut"></span></div>

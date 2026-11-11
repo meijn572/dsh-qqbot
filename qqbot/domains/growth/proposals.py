@@ -67,6 +67,8 @@ def add_proposals(target: str, ops: list[dict], reason: str, evidence: list[str]
                 "text": text[:300],
                 **({"from": str(op.get("from") or "")[:300]} if op.get("from") else {}),
                 **({"reason": str(op.get("reason") or reason or "")[:200]} if (op.get("reason") or reason) else {}),
+                # 这条改的依据是哪条 L3；指不到具体事件就留空
+                **({"source": int(op.get("source"))} if str(op.get("source") or "").strip().isdigit() else {}),
             }],
             "reason": str(reason or "")[:300],
             "evidence": (evidence or [])[:8],

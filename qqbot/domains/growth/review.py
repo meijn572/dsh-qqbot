@@ -7,7 +7,8 @@ import re
 import time
 from typing import Awaitable, Callable
 
-from qqbot.clients.memory import cmem_call, diary_recent, format_diary, recent_dialogue
+from qqbot.clients.memory import (cmem_call, diary_recent, expand_persona_links,
+                                  format_diary, recent_dialogue)
 from qqbot.domains.growth.evidence import collect, format_block
 from qqbot.domains.growth.proposals import (
     add_proposals,
@@ -56,7 +57,8 @@ def _clean_ops(raw, target: str) -> list[dict]:
 
 async def run(turn: Turn) -> bool:
     persona = await cmem_call("GET", "/persona")
-    constitution = str(persona.get("constitution") or "")
+    # 复盘要看见每条格的来处，所以这里用展开版（日常注入不展开）
+    constitution = await expand_persona_links(str(persona.get("constitution") or ""))
     self_model = str(persona.get("self_model") or "")
     user_profile = str(persona.get("user_profile") or "")
     recent = await recent_dialogue(30)
@@ -95,11 +97,14 @@ async def run(turn: Turn) -> bool:
         "- 怎么对待他 → relationship\n"
         "- 自己会在哪儿失准 → weakness\n"
         '只返回 JSON，不要解释，不要代码块：\n'
-        '{"preference":[{"op":"add|modify|remove","text":"新内容","from":"旧内容","reason":"依据"}],'
-        '"judgment":[{"op":"add|modify|remove","text":"新内容","from":"旧内容","reason":"依据"}],'
-        '"relationship":[{"op":"add|modify|remove","text":"新内容","from":"旧内容","reason":"依据"}],'
-        '"weakness":[{"op":"add|modify|remove","text":"新内容","from":"旧内容","reason":"依据"}]}\n'
-        "每块最多 3 条；没有就 []。"
+        '{"preference":[{"op":"add|modify|remove","text":"新内容","from":"旧内容",'
+        '"reason":"依据","source":123}],'
+        '"judgment":[...],"relationship":[...],"weakness":[...]}\n'
+        "每块最多 3 条；没有就 []。\n"
+        "\n"
+        "source 填这条改的依据是哪条现有事件（输入里 [L3:123] 那个数字）。\n"
+        "依据来自日记或长期对话、指不到具体事件时，source 留空。\n"
+        "有 source 的，以后能追回原话；没有的，就只是你现在的判断。"
     )
     reply = await turn(prompt)
     match = re.search(r"\{.*\}", reply or "", re.S)

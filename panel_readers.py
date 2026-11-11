@@ -378,14 +378,17 @@ def _apply_section_ops(constitution: str, heading: str, ops: list[dict]) -> str:
         old = str(op.get("from") or "").strip()
         if not text:
             continue
+        # 关联事件：写成 {{L3:123}}，日常渲染时抹掉，面板/复盘才用
+        src = str(op.get("source") or "").strip()
+        suffix = f" {{{{L3:{src}}}}}" if src.isdigit() else ""
         if kind == "add":
-            bullets.append("- " + text)
+            bullets.append("- " + text + suffix)
         elif kind == "modify":
             target = "- " + old if old else ""
             hit = next((i for i, line in enumerate(bullets) if line.strip() == target), None)
             if hit is None:
                 raise ValueError(f"找不到要修改的旧句：{old}")
-            bullets[hit] = "- " + text
+            bullets[hit] = "- " + text + suffix
         elif kind == "remove":
             target = "- " + (old or text)
             bullets = [line for line in bullets if line.strip() != target]
@@ -623,6 +626,39 @@ def update_memory_text(mem_id, text) -> dict:
     return cmem_post("/memories/update_text", {"id": mid, "text": body})
 
 
+def _render_links(constitution: str) -> str:
+    """把 {{L3:123}} 换成「标题」，面板点得开。
+
+    查不到的就抹掉，不留一串数字在界面上。
+    """
+    text = str(constitution or "")
+    ids = sorted({int(x) for x in re.findall(r"\{\{L3:(\d+)\}\}", text)})
+    if not ids:
+        return text
+    titles: dict[int, str] = {}
+    # 关联既能指 L3（事件）也能指 L4（核心事件）
+    for tier in ("L3", "L4"):
+        try:
+            data = cmem_get(f"/memories?tier={tier}&limit=200")
+            for item in (data.get("items") or []):
+                try:
+                    mid = int(item.get("id"))
+                except (TypeError, ValueError):
+                    continue
+                if mid in ids:
+                    titles[mid] = str(item.get("thread_title") or "").strip()
+        except Exception:  # noqa: BLE001
+            continue
+    for mid in ids:
+        title = titles.get(mid) or ""
+        if not title:
+            # 查不到标题（迁移过的旧记录）就抹掉，不留「旧事件」这种噪音
+            text = text.replace(" {{L3:%d}}" % mid, "").replace("{{L3:%d}}" % mid, "")
+        else:
+            text = text.replace("{{L3:%d}}" % mid, f"〔{title}〕")
+    return text
+
+
 def persona_payload() -> dict:
     persona = cmem_get("/persona")
     if not persona:
@@ -630,19 +666,22 @@ def persona_payload() -> dict:
                 "important": [], "proposals": {}, "history": [], "role": "大肥鱼"}
     constitution = str(persona.get("constitution") or "")
     self_model = str(persona.get("self_model") or "")
-    text = constitution
+    # 面板里把 {{L3:123}} 换成能点开的标题
+    display = _render_links(constitution)
+    text = display
     if self_model:
         text += "\n\n## 自我认知\n\n" + self_model
     return {
         "text": text,
         "role": "大肥鱼",
-        "sections": {"identity": constitution, "style": "", "relationship": ""},
+        "sections": {"identity": display, "style": "", "relationship": ""},
         "growth": self_model,
         "growth_chars": len(self_model),
         "important": [],
         "proposals": {},
         "history": [],
         "constitution": constitution,
+        "constitution_display": display,
         "self_model": self_model,
         "user_profile": str(persona.get("user_profile") or ""),
         "identity": str(persona.get("identity") or "大肥鱼"),

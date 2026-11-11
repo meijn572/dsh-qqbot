@@ -24,10 +24,14 @@ def format_block(ev: dict, l1_chars: int = 240, l3_chars: int = 400, l0_chars: i
         text = str(item.get("text") or "").strip().replace("\n", " ")
         if not text:
             continue
-        if str(item.get("tier")) == "L1":
-            l1_lines.append(text[:l1_chars])
-        elif str(item.get("tier")) == "L3":
-            l3_lines.append(text[:l3_chars])
+        tier = str(item.get("tier"))
+        # 带上 id：复盘要能给回 source，人格条目才能指回具体事件
+        mid = item.get("id")
+        tag = f"[{tier}:{mid}]" if mid else f"[{tier}]"
+        if tier == "L1":
+            l1_lines.append(f"{tag} {text[:l1_chars]}")
+        elif tier == "L3":
+            l3_lines.append(f"{tag} {text[:l3_chars]}")
 
     l0_lines = []
     seen = set()
@@ -44,8 +48,8 @@ def format_block(ev: dict, l1_chars: int = 240, l3_chars: int = 400, l0_chars: i
     if not l1_lines and not l3_lines and not l0_lines:
         return ""
     lines = ["【长期记忆】"]
-    lines.extend(f"[L1] {x}" for x in l1_lines)
-    lines.extend(f"[L3] {x}" for x in l3_lines)
+    lines.extend(x for x in l1_lines)
+    lines.extend(x for x in l3_lines)
     lines.append("【对应原话】")
     lines.extend(f"- {x}" for x in l0_lines)
     text = "\n".join(lines)
