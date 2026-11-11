@@ -811,13 +811,30 @@ review.py 一次判断四类
   「约定」不再由 review 产出，只由 important.py 新增
 ```
 
+### 关联机制（已完成）
+
+```text
+存储     人格条目行尾带 {{L3:123}}，指向 L3 或 L4
+日常     persona.mjs 正则抹掉，模型看不到
+复盘     expand_persona_links 展开成「〔标题 · 状态〕正文」
+面板     _render_links 展开成「〔标题〕」，查不到就抹掉
+写入     review 输出带 source，apply 时自动补链接
+```
+
+三种渲染的用途：
+
+```text
+日常抹掉   保住 system prompt 缓存；避免「你那次说过……」式复述
+复盘展开   判断这条还成不成立，要看当时具体说了什么
+面板展开   人要知道这条判断从哪来
+```
+
 ### 还没做
 
 ```text
-[ ] {{L3:id}} 关联机制（存储 / 三层渲染 / 面板跳转）
-[ ] 复盘时带 L3 正文（人格条目 → source L3 → 全部 L0）
 [ ] notes 与中间层的关系（暂时并列）
 [ ] 面板显示 diary 的 changes / open_questions / tasks
+[ ] 复盘时把人格条目的 L0 原话一并摊开（现在只到 L3/L4 正文）
 ```
 
 ### 验证过的
