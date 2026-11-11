@@ -191,7 +191,6 @@ async function saveCore(){
   load();
 }
 const PERSONA_FIELDS={
-  self_model:{preview:'selfPreview',wrap:'selfEditWrap',text:'selfText',msg:'selfMsg'},
   user_profile:{preview:'profilePreview',wrap:'profileEditWrap',text:'profileText',msg:'profileMsg'}
 };
 function editPersonaField(field){
@@ -221,7 +220,7 @@ async function savePersonaField(field){
   const data=await r.json();
   if(!data.ok){ if(msg) msg.textContent=data.error||'保存失败'; return; }
   window.__coreLock=false;
-  alert(data.field==='self_model'?'自我认知已保存':'用户画像已保存');
+  alert('已保存');
   load();
 }
 async function lexAdd(){
@@ -325,8 +324,8 @@ async function load(){
     const st=await j('/api/style');
     let h=`<div class="card"><div class="k">人格设定</div>
       <div class="grid" style="margin-top:8px">
-        <div><div class="k">核心设定</div><div class="v">${(p.chars||{}).constitution||0} 字</div></div>
-        <div><div class="k">自我认知</div><div class="v">${(p.chars||{}).self_model||0} 字</div></div>
+        <div><div class="k">我自己</div><div class="v">${((p.blocks||{}).self||[]).length} 小节</div></div>
+        <div><div class="k">我和他</div><div class="v">${((p.blocks||{}).other||[]).length} 小节</div></div>
       </div></div>`;
     if(st.proposal && st.proposal.style){
       h+=`<div class="card" style="border-color:#d29922"><div class="k">风格提议（待确认）</div>
@@ -335,26 +334,23 @@ async function load(){
         <div class="section-title">提议</div>${mdToHtml(st.proposal.style||'')}
         <button onclick="applyStyle()">应用</button> <button onclick="dismissStyle()">忽略</button></div>`;
     }
-    h+=`<div class="card"><div class="k">核心设定 <button style="float:right" onclick="editCore()">编辑</button></div>
-      <div id="corePreview">${p.constitution_display?mdToHtml(p.constitution_display):(p.constitution?mdToHtml(p.constitution):'<div class="mut">（空）</div>')}</div>
+    const blk=(p.blocks||{});
+    const secHtml=(list)=>(list||[]).map(x=>`<div class="section-title">${esc(x.title)}</div>${x.body?mdToHtml(x.body):'<div class="mut">（空）</div>'}`).join('');
+    h+=`<div class="card"><div class="k">我自己 <button style="float:right" onclick="editCore()">编辑</button></div>
+      ${secHtml(blk.self)||'<div class="mut">（空）</div>'}
       <div id="coreEditWrap" hidden>
         <textarea id="coreText" onfocus="window.__coreLock=true" oninput="window.__coreLock=true" style="width:100%;height:340px;background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.6">${esc(p.constitution||'')}</textarea>
         <div style="margin-top:8px"><button onclick="saveCore()">保存</button> <button onclick="cancelCore()">取消</button> <span id="coreMsg" class="mut"></span></div>
-        <div class="mut" style="margin-top:6px">“非常重要的事”也可以在这里直接改；保存后会同步到 important.md。</div>
+        <div class="mut" style="margin-top:6px">「我和他」那几节也在这份文档里，保存会一起写回。</div>
       </div></div>`;
-    h+=`<div class="card"><div class="k">自我认知（会随相处变化）<button style="float:right" onclick="editPersonaField('self_model')">编辑</button></div>
-      <div id="selfPreview">${p.self_model?mdToHtml(p.self_model):'<div class="mut">（空）</div>'}</div>
-      <div id="selfEditWrap" hidden>
-        <textarea id="selfText" style="width:100%;height:280px;background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.6">${esc(p.self_model||'')}</textarea>
-        <div style="margin-top:8px"><button onclick="savePersonaField('self_model')">保存</button> <button onclick="cancelPersonaField('self_model')">取消</button> <span id="selfMsg" class="mut"></span></div>
-        <div class="mut" style="margin-top:6px">只会改自我认知，不会动核心设定和身份。</div>
-      </div></div>`;
-    h+=`<div class="card"><div class="k">用户画像<button style="float:right" onclick="editPersonaField('user_profile')">编辑</button></div>
+    h+=`<div class="card"><div class="k">我和他</div>
+      ${secHtml((blk.other||[]).filter(x=>x.title!=='我眼中的他'))||'<div class="mut">（空）</div>'}
+      <div class="section-title">我眼中的他 <button style="float:right" onclick="editPersonaField('user_profile')">编辑</button></div>
       <div id="profilePreview">${p.user_profile?mdToHtml(p.user_profile):'<div class="mut">（还没形成）</div>'}</div>
       <div id="profileEditWrap" hidden>
         <textarea id="profileText" style="width:100%;height:280px;background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.6">${esc(p.user_profile||'')}</textarea>
         <div style="margin-top:8px"><button onclick="savePersonaField('user_profile')">保存</button> <button onclick="cancelPersonaField('user_profile')">取消</button> <span id="profileMsg" class="mut"></span></div>
-        <div class="mut" style="margin-top:6px">只改「我眼中的主人」，不会动核心设定。</div>
+        <div class="mut" style="margin-top:6px">只改「我眼中的他」，不会动核心设定。</div>
       </div></div>`;
     const rv=await j('/api/review');
     if((rv.items||[]).length){

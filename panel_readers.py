@@ -662,6 +662,28 @@ def _render_links(constitution: str) -> str:
     return text
 
 
+SELF_SECTIONS = ("我是谁", "表现", "偏好", "价值取向", "弱点")
+OTHER_SECTIONS = ("我们怎么过", "我们怎么对彼此", "我们之间有什么")
+
+
+def _split_constitution(text: str) -> dict[str, str]:
+    """把核心设定按 ## 切成 {标题: 正文}。"""
+    out: dict[str, str] = {}
+    cur = None
+    buf: list[str] = []
+    for line in str(text or "").splitlines():
+        if line.startswith("## "):
+            if cur is not None:
+                out[cur] = "\n".join(buf).strip()
+            cur = line[3:].strip()
+            buf = []
+        elif cur is not None:
+            buf.append(line)
+    if cur is not None:
+        out[cur] = "\n".join(buf).strip()
+    return out
+
+
 def persona_payload() -> dict:
     persona = cmem_get("/persona")
     if not persona:
@@ -674,8 +696,18 @@ def persona_payload() -> dict:
     text = display
     if self_model:
         text += "\n\n## 自我认知\n\n" + self_model
+    # 面板按「我自己 / 我和他」两大块展示，每块里再分小节
+    parts = _split_constitution(display)
+    blocks = {
+        "self": [{"title": k, "body": parts.get(k, "")}
+                 for k in SELF_SECTIONS if parts.get(k)],
+        "other": ([{"title": "我眼中的他", "body": str(persona.get("user_profile") or "")}]
+                  + [{"title": k, "body": parts.get(k, "")}
+                     for k in OTHER_SECTIONS if parts.get(k)]),
+    }
     return {
         "text": text,
+        "blocks": blocks,
         "role": "大肥鱼",
         "sections": {"identity": display, "style": "", "relationship": ""},
         "growth": self_model,
