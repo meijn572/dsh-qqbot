@@ -26,11 +26,18 @@ CREATE TABLE IF NOT EXISTS memory (
   thread_last_seen_at REAL DEFAULT NULL,
   thread_closed_at REAL DEFAULT NULL,
   stale_at       REAL DEFAULT NULL,          -- L1 过期标记，不删除
-  relationship_impact TEXT DEFAULT '',       -- L3 对关系的影响，一句人话
-  insight_text   TEXT DEFAULT '',             -- L3：B 站等来源的感悟正文
-  insight_kind   TEXT DEFAULT '',             -- L3：self/style/relation
+  relationship_impact TEXT DEFAULT '',       -- 废弃：已并入 insight_*
+  insight_text   TEXT DEFAULT '',             -- L3：感悟正文（只在 L3）
+  insight_kind   TEXT DEFAULT '',             -- 废弃：改用 insight_target
+  insight_target TEXT DEFAULT '',             -- me / us / none
   insight_history TEXT DEFAULT '[]',          -- L3：历次感悟，JSON 数组
   source_activity_id INTEGER DEFAULT NULL,    -- L3：来源 activity
+  emotion_label  TEXT DEFAULT '',             -- L1：这段当时的情绪
+  emotion_valence REAL DEFAULT NULL,
+  emotion_arousal REAL DEFAULT NULL,
+  want_more      TEXT DEFAULT '',             -- L1：想自己接着弄明白的
+  ask_him        TEXT DEFAULT '',             -- L1：想问他的
+  want_used      INTEGER DEFAULT 0,           -- want_more 是否已被选材消费
   lifecycle_reviewed_at REAL DEFAULT NULL,   -- L3：上次生命周期复盘
   status_reason TEXT DEFAULT '',             -- L3：状态变更原因
   merged_into INTEGER DEFAULT NULL,          -- L3：被合并到哪条
@@ -186,8 +193,11 @@ INSERT OR IGNORE INTO relationship_state(id) VALUES (1);
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS diary (
   date       TEXT PRIMARY KEY,          -- YYYY-MM-DD
-  text       TEXT NOT NULL DEFAULT '',
+  text       TEXT NOT NULL DEFAULT '',  -- 今天怎么样了
   mood       TEXT NOT NULL DEFAULT '',
+  changes    TEXT NOT NULL DEFAULT '',  -- 最近在变什么
+  open_questions TEXT NOT NULL DEFAULT '', -- 还没想清
+  tasks      TEXT NOT NULL DEFAULT '',  -- 正在做的事
   created_at REAL NOT NULL DEFAULT 0
 );
 

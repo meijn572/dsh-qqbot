@@ -342,7 +342,20 @@ class MemoryStore:
                         ("stability_days", "REAL"),
                         ("lifecycle_reviewed_at", "REAL"),
                         ("status_reason", "TEXT DEFAULT ''"),
-                        ("merged_into", "INTEGER")]),
+                        ("merged_into", "INTEGER"),
+                        # 情绪跟着 L1 走：抽取时整批写，不再只挑一条进 emotion_log
+                        ("emotion_label", "TEXT DEFAULT ''"),
+                        ("emotion_valence", "REAL"),
+                        ("emotion_arousal", "REAL"),
+                        # 这段留下的未完成：想自己弄明白的 / 想问他的
+                        ("want_more", "TEXT DEFAULT ''"),
+                        ("ask_him", "TEXT DEFAULT ''"),
+                        ("want_used", "INTEGER DEFAULT 0"),
+                        # insight_kind 的替代：me / us / none
+                        ("insight_target", "TEXT DEFAULT ''")]),
+            ("diary", [("changes", "TEXT DEFAULT ''"),
+                       ("open_questions", "TEXT DEFAULT ''"),
+                       ("tasks", "TEXT DEFAULT ''")]),
             ("slang", [("meaning", "TEXT DEFAULT ''"),
                        ("example", "TEXT DEFAULT ''"),
                        ("source", "TEXT DEFAULT 'chat'"),
