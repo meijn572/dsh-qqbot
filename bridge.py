@@ -335,6 +335,26 @@ class Dsh:
         )
         return value.get("records") or []
 
+    async def last_turn_error(self, sid: str) -> dict:
+        """读会话里最后一轮 turn/end 的错误码；正常结束返回空 dict。"""
+        try:
+            proj = await self.projections(sid)
+            seq = int(proj.get("asOfSeq") or 0)
+            if seq < 2:
+                return {}
+            records = await self.page(sid, seq)
+        except Exception:  # noqa: BLE001
+            return {}
+        for rec in reversed(records):
+            ev = (rec or {}).get("event") or {}
+            if ev.get("type") != "turn/end":
+                continue
+            reason = (ev.get("data") or {}).get("reason") or {}
+            if reason.get("kind") == "error":
+                return reason.get("error") or {}
+            return {}
+        return {}
+
     async def wait_reply(self, sid: str, after_seq: int, timeout: float = 150.0) -> str:
         deadline = time.time() + timeout
         text = ""
@@ -532,21 +552,49 @@ def save_state(state: dict) -> None:
 def state_entry(chat_key: str) -> dict:
     raw = load_state().get(chat_key)
     if isinstance(raw, str):
-        return {"sid": raw, "seq": 0}
+        return {"sid": raw, "seq": 0, "ph": ""}
     if isinstance(raw, dict):
-        return {"sid": str(raw.get("sid") or ""), "seq": int(raw.get("seq") or 0)}
-    return {"sid": "", "seq": 0}
+        return {
+            "sid": str(raw.get("sid") or ""),
+            "seq": int(raw.get("seq") or 0),
+            "ph": str(raw.get("ph") or ""),
+        }
+    return {"sid": "", "seq": 0, "ph": ""}
 
 
-def set_state(chat_key: str, sid: str, seq: int | None = None) -> None:
+def set_state(chat_key: str, sid: str, seq: int | None = None,
+              ph: str | None = None) -> None:
     state = load_state()
     current = state_entry(chat_key)
     current["sid"] = sid or current["sid"]
     if seq is not None:
         current["seq"] = int(seq)
+    if ph is not None:
+        current["ph"] = str(ph)
     state[chat_key] = current
     save_state(state)
     save_session_scope(chat_key, current["sid"])
+
+
+async def persona_fingerprint() -> str:
+    """人格指纹：变了就必须换会话。
+
+    DSH 的 persona 是 system prompt 的一段。它一变，DSH 会往会话历史里插
+    一条 system 消息；DeepSeek 只接受「user 之后、assistant 之前」的 system
+    更新，插在 assistant 后面就永久非法，整个会话从此每轮都报
+    "system update without a preceding user or tool-result turn"。
+    """
+    try:
+        data = await cmem_call("GET", "/persona")
+    except Exception:  # noqa: BLE001
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    raw = json.dumps({
+        "constitution": str(data.get("constitution") or ""),
+        "user_profile": str(data.get("user_profile") or ""),
+    }, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 def split_chat(chat_key: str) -> tuple[str, int]:
@@ -1054,9 +1102,18 @@ async def _process_locked(dsh: Dsh, onebot: OneBot, mtype: str, target: int, cha
     RECENT_TEXT[chat_key] = (text or "")[:500]
     entry = state_entry(chat_key)
     sid = entry["sid"]
+    ph = await persona_fingerprint()
+    if sid and ph:
+        if not entry.get("ph"):
+            # 老状态没有指纹，补一次，不换会话
+            set_state(chat_key, sid, None, ph=ph)
+        elif entry["ph"] != ph:
+            # 人格变了：继续用会永久撞 system 更新错位，直接换新会话
+            log.warning("人格已变，换新会话 (%s): %s -> %s", chat_key, entry["ph"], ph)
+            sid = ""
     if not sid:
         sid = await dsh.create_session()
-        set_state(chat_key, sid, 0)
+        set_state(chat_key, sid, 0, ph=ph)
         log.info("new dsh session %s for %s", sid, chat_key)
     try:
         prompt_started = time.time()
@@ -1102,6 +1159,21 @@ async def _process_locked(dsh: Dsh, onebot: OneBot, mtype: str, target: int, cha
             payload = text + "\n[[bridge-note]]\n" + "\n".join(extras) + "\n[[/bridge-note]]"
         await dsh.prompt(sid, payload, images=images)
         reply = await dsh.wait_reply(sid, baseline)
+        if not (reply or "").strip():
+            err = await dsh.last_turn_error(sid)
+            code = str((err or {}).get("code") or "")
+            if code == "UNSUPPORTED_CONTENT":
+                # 历史里躺了一条错位的 system 更新，这个会话救不回来
+                log.warning("会话历史不可用（%s），换新会话重试 (%s)", code, chat_key)
+                sid = await dsh.create_session()
+                set_state(chat_key, sid, 0, ph=ph)
+                await dsh.ensure_title(sid, f"qqbot:{chat_key}")
+                proj = await dsh.projections(sid)
+                baseline = int(proj.get("asOfSeq") or 0)
+                await dsh.prompt(sid, payload, images=images)
+                reply = await dsh.wait_reply(sid, baseline)
+            elif code:
+                log.warning("本轮失败 (%s): %s", code, (err or {}).get("message", "")[:160])
         log.info("reply (%s): %s", chat_key, reply[:200])
         first_line = (reply or "").strip().splitlines()[0].strip().upper() if (reply or "").strip() else ""
         if mtype == "private" and (first_line in ("SKIP", "跳过") or first_line.startswith(("SKIP ", "跳过 "))):
