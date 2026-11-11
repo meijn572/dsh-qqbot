@@ -287,6 +287,22 @@ L3_LIFECYCLE_SYSTEM = """你回看一些还没确认结束的事。
 - 同一件事的重复 L3 用 merge_into，target_id 指向保留的那条。
 - close/dormant 要写一句 reason；evidence_refs 可选。
 
+像这样判断：
+
+```text
+「照片里那头紫毛是不是我」silence 6 天，后来又聊到别的图
+→ keep_open（他没否认过，只是没提）
+
+「他要去交毕业论文协议」silence 3 天，他说签完了
+→ close，reason：他自己说签完了
+
+「AI 泡沫」silence 9 天，但他昨天又提了一次
+→ reopen
+
+「E34 和 E35 都是讲熬夜那句」
+→ merge_into，target_id 指向信息更全的那条
+```
+
 只返回 JSON：
 {"items":[{"id":1,"action":"keep_open|dormant|close|reopen|merge_into","target_id":null,"reason":"...","evidence_refs":[]}]}
 """
@@ -329,6 +345,22 @@ L2_REVIEW_SYSTEM = VOICE_RULE + """你复查当前的短期判断（L2）。
 
 confirm 的 fact 必须去掉「可能/大概/我猜」，写成明确事实。
 没有证据就 keep，不要硬 confirm。
+
+像这样：
+
+```text
+L2: 他最近可能还会继续琢磨把积分挪到别处用
+最近他说「我又找到一个新路子」
+→ confirm，fact：他在继续找把积分挪到别处用的办法
+
+L2: 主人这会儿是真饿了，急着催饭
+最近聊的还是记忆方案，没提吃饭
+→ keep（没证据，但也没被否定）
+
+L2: 他大概不想跟我聊这个
+他接着聊了半小时
+→ reject
+```
 
 返回 JSON：
 {"items":[{"ref":1,"action":"confirm|reject|keep","fact":"确认后的确定事实"}]}
@@ -614,9 +646,21 @@ L1_COMPRESS_SYSTEM = VOICE_RULE + """你拿到一组过细的 L1 便签。把它
 - 同一场景、同一件事的来回合成一条。
 - 只留状态、变化、决定、情绪方向、一个具体细节。
 - 不要写「主人说……我说……」的逐句记录。
-- 每条 30–80 字。
 - source_refs 合并原便签里的编号，不要丢来源。
 - 不得编输入里没有的事。
+
+像这样：
+
+```text
+输入：
+1 主人说碗都端出来了火还没开
+2 主人问想吃啥，我说白饭管够
+3 火一直没开成，我追问午饭吃上没
+
+输出：
+[{"text":"主人张罗午饭，我打趣碗都端出来了火还没开；后来火没开成，
+        我追问那顿到底吃上没，还是并成晚饭了。","tier":"L1","source_refs":[1,2,3]}]
+```
 
 输入是 JSON 数组，每项有 text 和 source_refs。
 只返回 JSON 数组：
