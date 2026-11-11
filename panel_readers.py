@@ -519,6 +519,13 @@ def memory_payload() -> dict:
                 "source_count": len(item.get("source_ids") or []),
                 "insight_text": str(item.get("insight_text") or ""),
                 "insight_target": str(item.get("insight_target") or ""),
+                # L1 的新字段：情绪、留下没说完的两样
+                "emotion_label": str(item.get("emotion_label") or ""),
+                "emotion_valence": item.get("emotion_valence"),
+                "emotion_arousal": item.get("emotion_arousal"),
+                "want_more": str(item.get("want_more") or ""),
+                "ask_him": str(item.get("ask_him") or ""),
+                "want_used": bool(item.get("want_used")),
                 "memorability": item.get("memorability"),
                 "dominant": str(item.get("dominant") or ""),
                 "last_recalled_at": item.get("last_recalled_at") or "",

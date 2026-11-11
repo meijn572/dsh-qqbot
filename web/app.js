@@ -94,11 +94,14 @@ function renderMem(){
     const memo=it.type==='L3'?`<div class="mut" style="margin-top:3px">难忘 ${it.memorability!=null?(Number(it.memorability)*100).toFixed(0)+'%':'—'}${it.dominant&&it.dominant!=='none'?`（${esc(DOMINANT_LABEL[it.dominant]||it.dominant)}）`:''}${it.stability_days?(' · 稳定 '+Math.round(Number(it.stability_days))+' 天'):''}${it.recall_count?(' · 召回 '+it.recall_count+' 次'):''}${it.active_until&&Number(it.active_until)>Date.now()/1000?(' · 活跃至 '+fmtUntil(it.active_until)):''}</div>`:'';
     const ik=insightKindLabel(it.insight_target);
     const insight=it.insight_text?`<div class="mut" style="margin-top:3px">感悟${ik?`（${esc(ik)}）`:''}：${esc(it.insight_text)}</div>`:'';
+    const emo=it.emotion_label?`<span class="badge" style="background:#1f6feb;color:#fff">${esc(it.emotion_label)}${it.emotion_valence!=null?` ${Number(it.emotion_valence).toFixed(1)}`:''}</span> `:'';
+    const wants=it.want_more?`<div class="mut" style="margin-top:3px">想弄明白${it.want_used?'（已用）':''}：${esc(it.want_more)}</div>`:'';
+    const asks=it.ask_him?`<div class="mut" style="margin-top:3px">想问：${esc(it.ask_him)}</div>`:'';
     const id=Number(it.id)||0;
     const editing=window.__memEdit===id;
     const editBtn=it.type==='L3'&&!editing&&id?`<button style="float:right" onclick="editMemText(${id})">改字</button>`:'';
     const content=editing?`<div style="margin-top:6px"><textarea id="memEditText" style="width:100%;height:160px;background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:10px;font-size:13px;line-height:1.6">${esc(it.content)}</textarea><div style="margin-top:6px"><button onclick="saveMemText(${id})">保存</button> <button onclick="cancelMemText()">取消</button></div></div>`:`<div style="margin-top:3px">${esc(it.content)}</div>`;
-    h+=`<div id="mem-${id}" style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${status} ${stale}${title}<span class="mut">${esc(t)}</span>${editBtn}${content}${memo}${insight}${l2}<div style="margin-top:3px">${src}</div></div>`;
+    h+=`<div id="mem-${id}" style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${emo}${status} ${stale}${title}<span class="mut">${esc(t)}</span>${editBtn}${content}${wants}${asks}${memo}${insight}${l2}<div style="margin-top:3px">${src}</div></div>`;
   }
   const statusRow=document.getElementById('memstatus');
   if(statusRow) statusRow.style.display=memTier==='L3'?'block':'none';

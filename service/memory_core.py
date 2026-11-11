@@ -408,7 +408,9 @@ class MemoryStore:
         """管理用：列出记忆（按时间倒序），带 tier 过滤和关键词搜索。"""
         sql = ("SELECT id, tier, subject, text, summary, tags, source_ids, source_status, "
                "thread_status, thread_title, thread_aliases, thread_opened_at, thread_last_seen_at, thread_closed_at, "
-               "stale_at, relationship_impact, insight_text, insight_kind, source_activity_id, "
+               "stale_at, relationship_impact, insight_text, insight_kind, insight_target, "
+               "emotion_label, emotion_valence, emotion_arousal, want_more, ask_him, want_used, "
+               "source_activity_id, "
                "memorability, dominant, last_recalled_at, active_until, recall_count, stability_days, "
                "confidence, expires_at, l2_status, promoted_to, ts, half_life_days FROM memory")
         conds = []
@@ -452,6 +454,13 @@ class MemoryStore:
                 "relationship_impact": str(r["relationship_impact"] or ""),
                 "insight_text": str(r["insight_text"] or ""),
                 "insight_kind": str(r["insight_kind"] or ""),
+                "insight_target": str(r["insight_target"] or ""),
+                "emotion_label": str(r["emotion_label"] or ""),
+                "emotion_valence": float(r["emotion_valence"]) if r["emotion_valence"] is not None else None,
+                "emotion_arousal": float(r["emotion_arousal"]) if r["emotion_arousal"] is not None else None,
+                "want_more": str(r["want_more"] or ""),
+                "ask_him": str(r["ask_him"] or ""),
+                "want_used": bool(r["want_used"]),
                 "source_activity_id": int(r["source_activity_id"]) if r["source_activity_id"] else None,
                 "memorability": float(r["memorability"] or 0.5),
                 "dominant": str(r["dominant"] or ""),
