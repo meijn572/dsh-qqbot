@@ -939,11 +939,12 @@ class MemoryStore:
                       aliases: Sequence[str] | None = None,
                       status_reason: str | None = None,
                       insight_text: str | None = None,
-                      insight_kind: str | None = None) -> bool:
+                      insight_kind: str | None = None,
+                      insight_target: str | None = None) -> bool:
         now = time.time()
         row = self.conn.execute(
             "SELECT source_ids,source_status,thread_status,thread_opened_at,thread_aliases,"
-            "insight_text,insight_kind,insight_history "
+            "insight_text,insight_kind,insight_target,insight_history "
             "FROM memory WHERE id=? AND tier='L3'",
             (int(mem_id),),
         ).fetchone()
@@ -975,6 +976,7 @@ class MemoryStore:
             history = []
         current_insight = str(row["insight_text"] or "")
         current_kind = str(row["insight_kind"] or "")
+        current_target = str(row["insight_target"] or "")
         if current_insight and not any(
             isinstance(x, dict) and str(x.get("text") or "").strip() == current_insight
             for x in history
@@ -982,18 +984,21 @@ class MemoryStore:
             history.append({"text": current_insight[:1200], "kind": current_kind[:80], "ts": now})
         new_insight = str(insight_text or "").strip()
         new_kind = str(insight_kind or "").strip()
+        new_target = str(insight_target or "").strip()
         if new_insight and (not current_insight or new_insight != current_insight):
             history.append({"text": new_insight[:1200], "kind": new_kind[:80], "ts": now})
             history = history[-20:]
             current_insight = new_insight[:1200]
             if new_kind:
                 current_kind = new_kind[:80]
+            if new_target:
+                current_target = new_target[:20]
         self.conn.execute(
             "UPDATE memory SET summary=?, text=?, source_ids=?, thread_aliases=?, source_status=?, "
             "thread_status=?, thread_last_seen_at=?, thread_closed_at=?, "
             "relationship_impact=COALESCE(?, relationship_impact), "
             "memorability=COALESCE(?, memorability), dominant=COALESCE(?, dominant), "
-            "insight_text=?, insight_kind=?, insight_history=?, "
+            "insight_text=?, insight_kind=?, insight_target=?, insight_history=?, "
             "status_reason=COALESCE(?, status_reason), "
             "stability_days=CASE WHEN ? IS NULL THEN stability_days "
             "ELSE (? + 0.5) * COALESCE(half_life_days, 90.0) END, "
@@ -1005,7 +1010,8 @@ class MemoryStore:
                 float(last_seen_at or now), closed,
                 relationship_impact,
                 memorability, dominant,
-                current_insight, current_kind, json.dumps(history, ensure_ascii=False),
+                current_insight, current_kind, current_target,
+                json.dumps(history, ensure_ascii=False),
                 status_reason,
                 memorability, memorability,
                 now, int(mem_id),

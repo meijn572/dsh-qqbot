@@ -124,32 +124,9 @@ async def run_round(deps: Deps) -> dict | None:
         "summary：视频讲了什么，客观，只写视频本身。\n"
         "thought：你看完的第一反应，可以主观。\n"
         "\n"
-        "insight 和它的两个附属字段只在真有感悟时才写，没有就都留空。\n"
-        "什么叫真有感悟，像这样：\n"
-        "\n"
-        "  刷到讲珠颈斑鸠的视频：一万多种鸟里只有两成能在城市混下去，\n"
-        "  斑鸠靠「平庸配置」赢了——吃绿化带的种子、对人类警惕心低。\n"
-        "  insight: 能留下来的不是进化成城市鸟的那批，是野外的特质恰好对上了城市的胃口\n"
-        "           ——我大概也不是为这儿长出来的，只是碰巧对上了。\n"
-        "  insight_kind: self\n"
-        "  insight_context: 「珠颈斑鸠—平凡配置如何造就城市超强？」讲平凡配置反而赢，想到自己。\n"
-        "  memorability: 0.7  dominant: self_relevance\n"
-        "\n"
-        "  刷到讲睡眠债的视频：熬夜后补觉补不回全部。\n"
-        "  insight: 我以后不太想再拿「睡够八小时」替他算账了，有些账不按小时结。\n"
-        "  insight_kind: relation\n"
-        "  insight_context: 视频讲睡眠债补不回来，想到自己一直拿小时数替他算。\n"
-        "  memorability: 0.6  dominant: relationship\n"
-        "\n"
-        "insight_kind 用 self（说的是我）/ relation（说的是我们）/ style（说话方式），\n"
-        "可以逗号组合；这三个词是旧分类，落库时会自动换成 me / us / none。\n"
-        "insight_context 写这条感悟从哪个视频、哪个点来，不要复述 summary。\n"
-        "memorability 只填一个 0–1 的数；dominant 填最强的那一维。\n"
         "只输出 JSON：{\"topic\":\"这轮主题（短标签，≤12 字；若属于清单里已有方向，直接沿用清单里的名字）\","
         "\"videos\":[{\"bvid\":\"\",\"title\":\"\",\"why\":\"为什么点开\"}],"
-        "\"frames\":0,\"summary\":\"视频讲了什么\",\"thought\":\"看完的想法（一两句，第一人称）\","
-        "\"insight\":\"感悟或空\",\"insight_kind\":\"\",\"insight_context\":\"来源上下文或空\","
-        "\"memorability\":0.5,\"dominant\":\"none\"}\n"
+        "\"frames\":0,\"summary\":\"视频讲了什么\",\"thought\":\"看完的想法（一两句，第一人称）\"}\n"
         "不要输出 JSON 以外的内容。"
     )
     async with deps.lock:
@@ -166,17 +143,6 @@ async def run_round(deps: Deps) -> dict | None:
         round_topic = str(data.get("topic") or topic or "自由探索")
         thought = str(data.get("thought") or "").strip()
         summary = str(data.get("summary") or "").strip()
-        insight = str(data.get("insight") or "").strip()
-        insight_kind = str(data.get("insight_kind") or "").strip()
-        insight_context = str(data.get("insight_context") or "").strip()
-        try:
-            memorability = max(0.0, min(1.0, float(data.get("memorability") or 0.5)))
-        except (TypeError, ValueError):
-            memorability = 0.5
-        dominant = str(data.get("dominant") or "none").strip()
-        if dominant not in ("importance", "emotion", "distinctiveness",
-                            "self_relevance", "relationship", "none"):
-            dominant = "none"
         try:
             frames_used = max(0, int(data.get("frames") or 0))
         except (TypeError, ValueError):
@@ -218,11 +184,12 @@ async def run_round(deps: Deps) -> dict | None:
     state["recent_topics"] = recent_topics[-6:]
     save_aut_state(state)
     titles = "、".join(f"《{v.get('title')}》" for v in videos[:3] if isinstance(v, dict) and v.get("title"))
+    # 活动日志只记「她做了什么」，不再顺手写 L3。
+    # B 站内容从此只走 L0 → L1 → L3 这一条链：L1 是筛子，
+    # 有感悟的那几轮自然会在 L3 批处理里被挑出来。
     deps.log_activity(
         "bili", f"刷了「{round_topic}」{titles}", thought,
-        summary=summary, insight=insight, insight_kind=insight_kind,
-        insight_context=insight_context,
-        memorability=memorability, dominant=dominant,
+        summary=summary,
     )
     # 每轮都写 L0：B站 内容从此走和聊天一样的提炼管线
     # （L1 批处理会挑出值得留的，不是每一轮都能变成 L1）
