@@ -258,7 +258,6 @@ const soft = (key) => {
       persona.data = data;
       persona.proactive = proactive;
       persona.ownerManual = String(data?.user_profile ?? "").trim();
-      persona.selfModel = String(data?.self_model ?? "").trim();
 
       // 手编画像整份缓存：只有 manual_profile 进系统提示词，profile（自动累积）不进
       const map = {};
@@ -275,7 +274,6 @@ const soft = (key) => {
       const next = "";
       log("persona_refreshed", {
         constitution: Boolean(String(data.constitution || "").trim()),
-        selfModel: Boolean(String(data.self_model || "").trim()),
         profiles: Object.keys(map).length,
         manualProfiles: Object.values(map).filter((x) => x.manual).length,
       });

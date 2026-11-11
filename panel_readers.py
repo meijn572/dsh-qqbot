@@ -550,7 +550,7 @@ def memory_payload() -> dict:
             add(item)
         persona = cmem_get("/persona")
         chars = persona.get("chars") or {}
-        out["persona_chars"] = int(chars.get("constitution") or 0) + int(chars.get("self_model") or 0)
+        out["persona_chars"] = int(chars.get("constitution") or 0)
         # 层级总数用服务端 counts，不用“已加载条数”
         counts = data.get("counts") or {}
         if counts:
@@ -690,12 +690,9 @@ def persona_payload() -> dict:
         return {"text": "(记忆服务未连接)", "sections": {}, "growth": "", "growth_chars": 0,
                 "important": [], "proposals": {}, "history": [], "role": "大肥鱼"}
     constitution = str(persona.get("constitution") or "")
-    self_model = str(persona.get("self_model") or "")
     # 面板里把 【L3:123】 换成能点开的标题
     display = _render_links(constitution)
     text = display
-    if self_model:
-        text += "\n\n## 自我认知\n\n" + self_model
     # 面板按「我自己 / 我和他」两大块展示，每块里再分小节
     parts = _split_constitution(display)
     blocks = {
@@ -710,14 +707,11 @@ def persona_payload() -> dict:
         "blocks": blocks,
         "role": "大肥鱼",
         "sections": {"identity": display, "style": "", "relationship": ""},
-        "growth": self_model,
-        "growth_chars": len(self_model),
         "important": [],
         "proposals": {},
         "history": [],
         "constitution": constitution,
         "constitution_display": display,
-        "self_model": self_model,
         "user_profile": str(persona.get("user_profile") or ""),
         "identity": str(persona.get("identity") or "大肥鱼"),
         "self_image": str(persona.get("self_image") or ""),
@@ -741,18 +735,7 @@ def save_persona_field(field: str, text: str) -> dict:
     field = str(field or "")
     text = str(text or "").strip()
     if field == "self_model":
-        if not text:
-            return {"ok": False, "error": "自我认知不能为空"}
-        if len(text) > 4000:
-            return {"ok": False, "error": "自我认知最多 4000 字"}
-        try:
-            data = cmem_post("/persona/self", {"text": text})
-            if data.get("ok") is False:
-                return {"ok": False, "error": data.get("error") or "保存失败"}
-            return {"ok": True, "field": field, "chars": len(text),
-                    "self_model": data.get("self_model", text)}
-        except Exception as exc:  # noqa: BLE001
-            return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": "自我认知已退场，改用日记"}
     if field == "user_profile":
         if len(text) > 8000:
             return {"ok": False, "error": "用户画像最多 8000 字"}
