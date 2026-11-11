@@ -64,19 +64,6 @@ DIARY_SYSTEM = VOICE_RULE + """你写今天的日记。用洄的口吻，第一�
 西西弗斯那句还是没想透。先搁着吧，反正山也不会跑。"""
 
 
-EVOLVE_SYSTEM = VOICE_RULE + """你根据一段对话，判断你有没有产生新的自我认知变化。
-
-只在确实有变化时输出一条：
-- 第一人称，简短（不超过 30 字）
-- 具体，像自我觉察
-- 不要「我发现自己」前缀
-- 不要写用户、不要总结、不要给建议
-- 不要重复【完整人格】里已经有的自我认知
-
-没有新变化，只输出 SKIP。
-有变化，只输出这一句，不要引号，不要解释。"""
-
-
 THREAD_SYSTEM = VOICE_RULE + """你负责从这段对话里，留下那些过一阵子还会被想起的事。
 
 输入：
@@ -938,26 +925,6 @@ class Extractor:
         if not text:
             return None
         return str(text).strip()[:600]
-
-    def evolve(self, user_text: str, assistant_text: str = "", persona: str = "", memories: str = "") -> str | None:
-        """人设演化：从这段对话生一句「我发现自己……」（追加到自我认知区）。"""
-        if self.llm is None or not getattr(self.llm, "enabled", False):
-            return None
-        convo = f"主人：{user_text}\n我：{assistant_text}"
-        if persona:
-            convo += f"\n\n【完整人格】\n{persona[:6000]}"
-        if memories:
-            convo += f"\n\n【长期记忆】\n{memories[:8000]}"
-        try:
-            text = self.llm.chat(EVOLVE_SYSTEM, convo, max_tokens=80)
-        except Exception:
-            return None
-        if not text:
-            return None
-        line = str(text).strip().strip('"').strip("「」")[:80]
-        if line.upper() in ("SKIP", "跳过") or not line:
-            return None
-        return line
 
     def process_turn(self, user_text: str, assistant_text: str = "",
                      subject: str = "self", user_id: str = "", scope: str = "global",

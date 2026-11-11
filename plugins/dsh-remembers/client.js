@@ -556,12 +556,6 @@ window.__ModuleLoader__.load({
           ),
 
           h("div", { style: S.card },
-            h("div", { style: S.label }, "她对自己的认知"),
-            h("div", { style: S.desc },
-              persona && persona.self_model ? persona.self_model : "还没有——聊够 30 轮她会开始写。"),
-          ),
-
-          h("div", { style: S.card },
             h("div", { style: S.label }, "今天的时间线（她真的做了什么）"),
             activities.length === 0
               ? h("div", { style: S.muted }, "还没有记录——聊一句或等她主动找你。")

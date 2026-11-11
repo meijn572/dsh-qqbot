@@ -50,7 +50,6 @@ POST_ROUTES = {
     "/activity": "_log_activity",
     "/activity/shared": "_mark_activity_shared",
     "/diary": "_write_diary",
-    "/evolve": "_evolve",
     "/episode": "_episode",
     "/batch/run": "_batch_run",
     "/l3/review": "_l3_review",

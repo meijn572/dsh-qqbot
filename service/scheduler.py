@@ -92,8 +92,6 @@ class Scheduler:
             changed = True
         if self._tick_diary(st, now):
             changed = True
-        if self._tick_evolve(st, now):
-            changed = True
         if self._tick_l2(st, now):
             changed = True
         if self._tick_relationship(st, now):
@@ -276,38 +274,6 @@ class Scheduler:
         self._inject(msg, silent=True)
         _log("diary: nudged model to write")
         return True
-
-    # ---------- 4. 自我认知演化（7 点）----------
-    def _tick_evolve(self, st: dict, now: float) -> bool:
-        today = datetime.date.today().isoformat()
-        if st.get("evolve_date") == today:
-            return False
-        dt = datetime.datetime.now()
-        if dt.hour < 7:
-            return False
-        st["evolve_date"] = today
-        # 自我认知复盘按天做，不按轮数；LLM 调用要几十秒，放到后台线程，
-        # 不能卡住唤醒/日记/B站这些 30 秒一次的 tick。
-        threading.Thread(target=self._run_evolve, name="dsh-evolve", daemon=True).start()
-        _log("evolve: scheduled daily self-review")
-        return True
-
-    def _run_evolve(self) -> None:
-        import urllib.request
-        port = os.environ.get("CMEM_PORT", "8081")
-        body = json.dumps({}).encode()
-        req = urllib.request.Request(
-            f"http://127.0.0.1:{port}/evolve",
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                data = json.loads(resp.read().decode("utf-8") or "{}")
-            _log(f"evolve: {data.get('line') or data.get('skipped') or data.get('error')}")
-        except Exception as exc:  # noqa: BLE001
-            _log(f"evolve failed: {exc}")
 
     def _tick_l2(self, st: dict, now: float) -> bool:
         today = datetime.date.today().isoformat()

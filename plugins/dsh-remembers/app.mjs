@@ -36,7 +36,6 @@ import { registerImportantTool as registerImportantToolModule } from "./tools/im
 import { registerMemeTools as registerMemeToolsModule } from "./tools/memes.mjs";
 import { registerCompanionTools as registerCompanionToolsModule } from "./tools/companion.mjs";
 import { registerActivityTool as registerActivityToolModule } from "./tools/activity.mjs";
-import { registerPersonaTool as registerPersonaToolModule } from "./tools/persona.mjs";
 import { registerThreadTools as registerThreadToolsModule } from "./tools/threads.mjs";
 
 export const name = "dsh-remembers";
@@ -857,7 +856,6 @@ const soft = (key) => {
     });
   }
 
-  void registerPersonaToolModule({ registerTool, log, client, config, persona, refreshPersona });
   void registerThreadToolsModule({ registerTool, log, endpoint: config.endpoint });
   void registerActivityToolModule({ registerTool, log, endpoint: config.endpoint });
   void registerImportantToolModule({ registerTool, log, endpoint: config.endpoint });

@@ -1,4 +1,4 @@
-"""人格复盘：完整人格 + 最近对话 + 长期记忆 → 自我认知。"""
+"""人格复盘：完整人格 + 最近对话 + 日记 → 变化 / 还没想清，写回日记。"""
 from __future__ import annotations
 
 import json
@@ -66,7 +66,7 @@ async def run(turn: Turn) -> bool:
         "- 主人事实\n"
         "- 工具说明\n\n"
         "只返回 JSON，不要标题、不要解释、不要代码块：\n"
-        '{"changes":[],"learned":[],"open_questions":[]}\n'
+        '{"changes":[],"open_questions":[]}\n'
         "每块最多 4 条，每条一句话；没有就空数组。"
     )
     reply = await turn(prompt)
@@ -104,5 +104,5 @@ async def run(turn: Turn) -> bool:
     state["last_run_date"] = time.strftime("%Y-%m-%d")
     state["last_run_at"] = int(time.time())
     save_state(state)
-    log.info("人格复盘完成，自我认知 %s 字", total)
+    log.info("人格复盘完成，写进日记 %s 字", total)
     return True

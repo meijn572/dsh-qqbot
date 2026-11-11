@@ -59,7 +59,6 @@ async def run(turn: Turn) -> bool:
     persona = await cmem_call("GET", "/persona")
     # 复盘要看见每条格的来处，所以这里用展开版（日常注入不展开）
     constitution = await expand_persona_links(str(persona.get("constitution") or ""))
-    self_model = str(persona.get("self_model") or "")
     user_profile = str(persona.get("user_profile") or "")
     recent = await recent_dialogue(30)
     ev = await collect(l1=50, l3=30, l0=50)
@@ -74,7 +73,6 @@ async def run(turn: Turn) -> bool:
     prompt = (
         "（内部维护，不要回复用户）做一次核心人格复盘。\n\n"
         "【核心设定】\n" + (constitution or "（空）") + "\n\n"
-        "【自我认知】\n" + (self_model or "（空）") + "\n\n"
         "【用户画像】\n" + (user_profile or "（空）") + "\n\n"
         "【最近对话】\n" + (recent or "（最近没聊什么）") + "\n\n"
         + (("【最近几天的日记】\n" + diary_block + "\n\n") if diary_block else "")

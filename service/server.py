@@ -2688,62 +2688,6 @@ class Handler(BaseHTTPRequestHandler):
             )
         self._json(200, {"ok": True, **data})
 
-    def _evolve(self) -> None:
-        """人设演化：从这段对话生一句「我发现自己……」，追加到自我认知区。
-        没传对话时，自动取当天的 L0 原话当素材（cron 每天调一次用）。"""
-        body = self._body()
-        user_text = str(body.get("user_text") or "")
-        assistant_text = str(body.get("assistant_text") or "")
-        if not user_text:
-            # 早上 7 点复盘，取最近 24 小时，而不是当天 0 点后的几条
-            since = time.time() - 86400
-            try:
-                rows = store.conn.execute(
-                    "SELECT text FROM memory WHERE tier='L0' AND ts >= ? ORDER BY ts DESC LIMIT 20",
-                    (since,),
-                ).fetchall()
-                user_text = "\n".join(str(r["text"])[:300] for r in rows)
-            except Exception:
-                user_text = ""
-            if not user_text.strip():
-                self._json(200, {"ok": True, "skipped": "no-material"})
-                return
-        cfg = _load_config()
-        if not bool(cfg.get("evolve_enabled", True)):
-            self._json(200, {"ok": True, "skipped": "disabled"})
-            return
-        persona_obj = store.get_persona()
-        persona_text = "\n\n".join(
-            f"【{name}】\n{text}"
-            for name, text in (
-                ("核心设定", str(persona_obj.get("constitution") or "")),
-                ("自我认知", str(persona_obj.get("self_model") or "")),
-                ("我眼中的主人", str(persona_obj.get("user_profile") or "")),
-            )
-            if text.strip()
-        )
-        memory_lines = []
-        try:
-            rows = store.conn.execute(
-                "SELECT tier, text FROM memory WHERE tier IN ('L1','L3','L4') ORDER BY ts DESC LIMIT 100"
-            ).fetchall()
-            for row in rows:
-                memory_lines.append(f"[{row['tier']}] {str(row['text'])[:240]}")
-        except Exception:
-            pass
-        memory_text = "\n".join(memory_lines)
-        line = extractor.evolve(user_text, assistant_text, persona=persona_text, memories=memory_text)
-        if not line:
-            self._json(200, {"ok": True, "skipped": "no-change"})
-            return
-        cur = store.get_persona()["self_model"] or ""
-        new = add_self_change(cur, line)
-        if len(new) > 4000:
-            new = new[-4000:]
-        with _lock:
-            store.set_self_model(new)
-        self._json(200, {"ok": True, "line": line, "chars": len(new)})
-
     def _episode(self) -> None:
         """把一段对话压成一条 L3 事件记录（episode）。
 
