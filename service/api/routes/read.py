@@ -1,6 +1,8 @@
 """只读路由：简单查询直接返回 payload。"""
 from __future__ import annotations
 
+import time
+
 
 def simple_get(path: str, query: dict, store):
     if path == "/stats":
@@ -21,9 +23,26 @@ def simple_get(path: str, query: dict, store):
         days = int((query.get("days") or ["90"])[0])
         return store.bili_insights(kind=kind, limit=limit, days=days)
     if path == "/emotion":
+        # 情绪已并入 L1：这里读带情绪的 L1，接口形状保持不变
         days = int((query.get("days") or ["0"])[0])
         limit = int((query.get("limit") or ["50"])[0])
-        return store.emotion_log_list(limit=limit, days=days)
+        sql = ("SELECT id,ts,emotion_label,emotion_valence,emotion_arousal,text "
+               "FROM memory WHERE tier='L1' AND emotion_label!=''")
+        args: list = []
+        if days > 0:
+            sql += " AND ts>=?"
+            args.append(time.time() - days * 86400)
+        sql += " ORDER BY ts DESC LIMIT ?"
+        args.append(max(1, min(limit, 500)))
+        rows = store.conn.execute(sql, args).fetchall()
+        return [{
+            "id": int(r["id"]), "ts": float(r["ts"] or 0),
+            "label": str(r["emotion_label"] or ""),
+            "valence": float(r["emotion_valence"] or 0),
+            "arousal": float(r["emotion_arousal"] or 0),
+            "trigger": str(r["text"] or ""),
+            "source": "L1",
+        } for r in rows]
     if path == "/persona/user":
         return {"user_profile": store.get_user_profile()}
     if path == "/memories":

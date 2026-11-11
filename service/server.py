@@ -1269,50 +1269,8 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True, "mode": mode, "count": len(items), "action": action})
 
     def _post_emotion(self) -> None:
-        """记录情感。auto=true 时用当前 state 的情绪，且只在变化够大时记。"""
-        import math as _math
-        body = self._body()
-        if body.get("auto"):
-            cur = store.get_emotion()
-            v = float(cur.get("valence") or 0)
-            a = float(cur.get("arousal") or 0)
-            last = store.emotion_log_list(1)
-            if last:
-                dv = abs(v - last[0]["valence"])
-                da = abs(a - last[0]["arousal"])
-                if dv < 0.2 and da < 0.2:
-                    self._json(200, {"ok": True, "skipped": True, "dv": round(dv, 2), "da": round(da, 2)})
-                    return
-            label = ""
-            if v > 0.45:
-                label = "很开心" if a > 0.55 else "开心"
-            elif v < -0.45:
-                label = "很难过" if a < 0.4 else "难过"
-            elif v < -0.2:
-                label = "有点低落"
-            elif a > 0.65:
-                label = "兴奋"
-            elif a < 0.3:
-                label = "蔫"
-            if not label:
-                # 情绪还在中性区间（|v| < 0.2）。这种记录没有信息量，而且会和
-                # LLM 抽出来的同一条情绪撞车 —— 同一句话在「最近让你有情绪的事」
-                # 里显示两遍。所以不记。
-                self._json(200, {"ok": True, "skipped": True, "reason": "neutral"})
-                return
-            mid = store.emotion_log_add(v, a, label, str(body.get("trigger") or "")[:200], "auto")
-            self._json(200, {"ok": True, "id": mid, "label": label, "valence": round(v, 2), "arousal": round(a, 2)})
-            return
-        mid = store.emotion_log_add(
-            valence=float(body.get("valence") or 0),
-            arousal=float(body.get("arousal") or 0),
-            label=str(body.get("label") or ""),
-            trigger=str(body.get("trigger") or ""),
-            source=str(body.get("source") or "chat"),
-            ts_start=body.get("ts_start"),
-            ts_end=body.get("ts_end"),
-        )
-        self._json(200, {"ok": True, "id": mid})
+        """情绪只在 L1 抽取时写入，这个接口已停用。"""
+        self._json(410, {"ok": False, "error": "emotion_log 已删除，情绪随 L1 存储"})
 
     # -- B 站 CLI 工具白名单 ----------------------------------------------------
 
@@ -2614,13 +2572,23 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             scope = ""
 
+        # 情绪现在挂在 L1 上：日记直接从带情绪的 L1 取，不再读 emotion_log
         events = []
         try:
-            events = [
-                e for e in store.emotion_log_list(limit=200, since=today_start)
-                if float(e.get("ts") or 0) >= today_start
-            ]
-            events.sort(key=lambda e: float(e.get("ts") or 0))
+            for r in store.conn.execute(
+                "SELECT id,ts,emotion_label,emotion_valence,emotion_arousal,text "
+                "FROM memory WHERE tier='L1' AND emotion_label!='' AND ts>=? "
+                "ORDER BY ts ASC",
+                (today_start,),
+            ).fetchall():
+                events.append({
+                    "id": int(r["id"]),
+                    "ts": float(r["ts"] or 0),
+                    "label": str(r["emotion_label"] or ""),
+                    "trigger": str(r["text"] or ""),
+                    "valence": float(r["emotion_valence"] or 0),
+                    "arousal": float(r["emotion_arousal"] or 0),
+                })
         except Exception:
             events = []
 

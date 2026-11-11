@@ -290,28 +290,6 @@ class MemoryStore:
                 except Exception:
                     pass
 
-        emo_cols = cols("emotion_log")
-        if "target_user" not in emo_cols:
-            try:
-                self.conn.execute("ALTER TABLE emotion_log ADD COLUMN target_user TEXT DEFAULT ''")
-            except Exception:
-                pass
-        if "target_group" not in emo_cols:
-            try:
-                self.conn.execute("ALTER TABLE emotion_log ADD COLUMN target_group TEXT DEFAULT ''")
-            except Exception:
-                pass
-        if "ts_start" not in emo_cols:
-            try:
-                self.conn.execute("ALTER TABLE emotion_log ADD COLUMN ts_start REAL DEFAULT NULL")
-            except Exception:
-                pass
-        if "ts_end" not in emo_cols:
-            try:
-                self.conn.execute("ALTER TABLE emotion_log ADD COLUMN ts_end REAL DEFAULT NULL")
-            except Exception:
-                pass
-
         # profiles.manual_profile：你手编的画像。
         # 自动累积的 profile 每抽到 L2 就变，不能进系统提示词；手编这份才行。
         prof_cols = cols("profiles")
@@ -2434,53 +2412,6 @@ class MemoryStore:
 
 
     # -- 情感层：情绪轨迹 ------------------------------------------------------
-
-    def emotion_log_add(self, valence: float, arousal: float, label: str = "",
-                        trigger: str = "", source: str = "chat",
-                        memory_id: int | None = None,
-                        ts_start: float | None = None,
-                        ts_end: float | None = None) -> int:
-        cur = self.conn.execute(
-            "INSERT INTO emotion_log(ts, valence, arousal, label, trigger, source, memory_id, ts_start, ts_end) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
-            (
-                time.time(), float(valence), float(arousal), str(label)[:40],
-                str(trigger)[:200], str(source)[:20], memory_id,
-                None if ts_start is None else float(ts_start),
-                None if ts_end is None else float(ts_end),
-            ),
-        )
-        self.conn.commit()
-        return int(cur.lastrowid)
-
-    def emotion_log_list(self, limit: int = 50, days: int = 0,
-                         since: float | None = None) -> list[dict]:
-        sql = (
-            "SELECT id, ts, valence, arousal, label, trigger, source, memory_id, ts_start, ts_end "
-            "FROM emotion_log"
-        )
-        args: list = []
-        where = []
-        if days and days > 0:
-            where.append("ts >= ?")
-            args.append(time.time() - days * 86400)
-        if since is not None:
-            where.append("ts >= ?")
-            args.append(float(since))
-        if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY ts DESC LIMIT ?"
-        args.append(max(1, min(int(limit), 500)))
-        rows = self.conn.execute(sql, args).fetchall()
-        return [{
-            "id": int(r["id"]), "ts": float(r["ts"]),
-            "valence": float(r["valence"]), "arousal": float(r["arousal"]),
-            "label": r["label"], "trigger": r["trigger"], "source": r["source"],
-            "memory_id": int(r["memory_id"]) if r["memory_id"] else None,
-            "ts_start": float(r["ts_start"]) if r["ts_start"] is not None else None,
-            "ts_end": float(r["ts_end"]) if r["ts_end"] is not None else None,
-        } for r in rows]
-
 
 
     def bump_chat(self, delta: int = 1) -> int:
