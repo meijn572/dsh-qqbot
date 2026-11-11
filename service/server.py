@@ -2706,7 +2706,12 @@ class Handler(BaseHTTPRequestHandler):
         date = str(body.get("date") or time.strftime("%Y-%m-%d"))
         mood = str(body.get("mood") or "")
         with _lock:
-            data = store.diary_add(date, text, mood)
+            data = store.diary_add(
+                date, text, mood,
+                changes=str(body.get("changes") or ""),
+                open_questions=str(body.get("open_questions") or ""),
+                tasks=str(body.get("tasks") or ""),
+            )
         self._json(200, {"ok": True, **data})
 
     def _evolve(self) -> None:

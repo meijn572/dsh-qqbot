@@ -8,7 +8,8 @@ import time
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from qqbot.clients.memory import bili_insights, cmem_call, persona_context, recent_dialogue
+from qqbot.clients.memory import (bili_insights, cmem_call, diary_recent, format_diary,
+                                  persona_context, recent_dialogue)
 from qqbot.domains.growth.evidence import collect, format_block
 from settings import DSH_HOME
 
@@ -39,10 +40,16 @@ async def run(turn: Turn) -> bool:
     memories = format_block(ev)
     insights = await bili_insights("self", limit=12, days=90)
     insight_block = "\n".join(f"- {x.get('insight_text')}" for x in insights if x.get("insight_text"))
+    # 中间层：最近几天的日记，含之前写下的变化和没想清
+    try:
+        diary_block = format_diary(await diary_recent(7))
+    except Exception:  # noqa: BLE001
+        diary_block = ""
     prompt = (
         "（内部维护，不要回复用户）你写「我对我自己的理解」，不是规则，不是主人画像。\n\n"
         + (persona_text or "（空）") + "\n\n"
         + "【最近对话】\n" + (recent or "（最近没聊什么）") + "\n\n"
+        + (("【最近几天的日记】\n" + diary_block + "\n\n") if diary_block else "")
         + (memories or "（没有长期记忆）") + "\n\n"
         + (("【看视频时留下的自我感悟】\n" + insight_block + "\n\n") if insight_block else "")
         + "只写最近真的发生的变化，或者终于想清楚的事。\n"
@@ -83,10 +90,16 @@ async def run(turn: Turn) -> bool:
     if total < 80:
         log.warning("人格复盘：生成太短 %s 字", total)
         return False
-    result = await cmem_call("POST", "/persona/self", {"sections": sections})
-    if not result.get("self_model"):
-        log.warning("人格复盘：写入自我认知失败")
-        return False
+    # 变化和没想清写进今天的日记，不再单独存自我认知
+    try:
+        changes = "\n".join(f"- {x}" for x in (sections.get("changes") or []) if str(x).strip())
+        questions = "\n".join(f"- {x}" for x in (sections.get("open_questions") or []) if str(x).strip())
+        if changes or questions:
+            await cmem_call("POST", "/diary", {
+                "changes": changes, "open_questions": questions,
+            })
+    except Exception as exc:  # noqa: BLE001
+        log.warning("人格复盘：写日记失败 %s", exc)
     state = load_state()
     state["last_run_date"] = time.strftime("%Y-%m-%d")
     state["last_run_at"] = int(time.time())

@@ -9,7 +9,7 @@ import re
 from typing import Any
 
 SELF_SECTIONS = ("changes", "learned", "open_questions")
-PROFILE_SECTIONS = ("stable_facts", "preferences", "values", "interaction", "boundaries")
+PROFILE_SECTIONS = ("stable_facts", "appearance", "preferences", "values")
 
 SELF_TITLES = {
     "changes": "最近的变化",
@@ -17,11 +17,10 @@ SELF_TITLES = {
     "open_questions": "还没想清",
 }
 PROFILE_TITLES = {
-    "stable_facts": "稳定事实",
-    "preferences": "偏好",
-    "values": "价值与目标",
-    "interaction": "互动偏好",
-    "boundaries": "边界",
+    "stable_facts": "他是谁",
+    "appearance": "他平时什么样子",
+    "preferences": "他的偏好",
+    "values": "他的价值取向",
 }
 
 SELF_FORBIDDEN = re.compile(r"(回答时|默认要|必须|工具名|主人喜欢|主人是)")

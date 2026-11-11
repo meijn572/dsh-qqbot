@@ -7,7 +7,7 @@ import re
 import time
 from typing import Awaitable, Callable
 
-from qqbot.clients.memory import cmem_call, recent_dialogue
+from qqbot.clients.memory import cmem_call, diary_recent, format_diary, recent_dialogue
 from qqbot.domains.growth.evidence import collect, format_block
 from qqbot.domains.growth.proposals import (
     add_proposals,
@@ -63,21 +63,42 @@ async def run(turn: Turn) -> bool:
     ev = await collect(l1=50, l3=30, l0=50)
     memories = format_block(ev)
     history = recent_history()
+    # 中间层：最近 7 天的日记。它记的是「最近在变什么」，
+    # 正是人格该不该改的直接线索。
+    try:
+        diary_block = format_diary(await diary_recent(7))
+    except Exception:  # noqa: BLE001
+        diary_block = ""
     prompt = (
         "（内部维护，不要回复用户）做一次核心人格复盘。\n\n"
         "【核心设定】\n" + (constitution or "（空）") + "\n\n"
         "【自我认知】\n" + (self_model or "（空）") + "\n\n"
         "【用户画像】\n" + (user_profile or "（空）") + "\n\n"
         "【最近对话】\n" + (recent or "（最近没聊什么）") + "\n\n"
-        "【长期证据】\n" + (memories or "（没有长期记忆）") + "\n\n"
+        + (("【最近几天的日记】\n" + diary_block + "\n\n") if diary_block else "")
+        + "【长期证据】\n" + (memories or "（没有长期记忆）") + "\n\n"
         "【最近候选】\n" + history + "\n\n"
-        "只判断有没有需要修正核心设定里的「判断」「关系」「约定」。\n"
-        "不要改身份、性格、边界；不要直接写核心设定。\n"
-        "每条必须有最近对话或长期证据支撑；没有就空数组。\n"
+        "只判断这四类要不要改：\n"
+        "\n"
+        "preference   她长期稳定的喜好（喜欢什么、不爱什么）\n"
+        "judgment     她相信什么、怎么做判断\n"
+        "relationship 她和他怎么相处\n"
+        "weakness     她会栽在哪\n"
+        "\n"
+        "不要改身份、性格、说话风格、边界。\n"
+        "不要产出「约定」——那是另一条线管的。\n"
+        "每条必须有最近对话、日记或长期证据支撑；没有就空数组。\n"
+        "\n"
+        "四类的区别，看这条说的是什么：\n"
+        "- 喜欢某个具体的东西 → preference\n"
+        "- 相信某个道理 → judgment\n"
+        "- 怎么对待他 → relationship\n"
+        "- 自己会在哪儿失准 → weakness\n"
         '只返回 JSON，不要解释，不要代码块：\n'
-        '{"judgment":[{"op":"add|modify|remove","text":"新内容","from":"旧内容","reason":"依据"}],'
+        '{"preference":[{"op":"add|modify|remove","text":"新内容","from":"旧内容","reason":"依据"}],'
+        '"judgment":[{"op":"add|modify|remove","text":"新内容","from":"旧内容","reason":"依据"}],'
         '"relationship":[{"op":"add|modify|remove","text":"新内容","from":"旧内容","reason":"依据"}],'
-        '"commitment":[{"op":"add","text":"一句约定","reason":"依据"}]}\n'
+        '"weakness":[{"op":"add|modify|remove","text":"新内容","from":"旧内容","reason":"依据"}]}\n'
         "每块最多 3 条；没有就 []。"
     )
     reply = await turn(prompt)
@@ -95,7 +116,7 @@ async def run(turn: Turn) -> bool:
         return False
     evidence = _evidence_ids(ev)
     added = 0
-    for target in ("judgment", "relationship", "commitment"):
+    for target in ("preference", "judgment", "relationship", "weakness"):
         ops = _clean_ops(data.get(target), target)
         if ops:
             added += len(add_proposals(target, ops, "人格复盘", evidence))

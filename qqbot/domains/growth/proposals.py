@@ -12,7 +12,7 @@ from settings import DSH_HOME
 
 STATE = DSH_HOME / "persona-roles" / "state" / "review-state.json"
 PROPOSALS = DSH_HOME / "persona-roles" / "state" / "review-proposals.json"
-TARGETS = ("judgment", "relationship", "commitment")
+TARGETS = ("judgment", "relationship", "weakness", "preference")
 
 
 def _load(path: Path, default):

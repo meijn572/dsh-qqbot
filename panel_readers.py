@@ -408,11 +408,12 @@ def review_apply(proposal_id: str) -> dict:
             return {"ok": False, "error": result.get("error") or "写入失败"}
         growth_review.set_status(proposal_id, "applied")
         return {"ok": True, "target": target}
-    if target not in ("judgment", "relationship", "weakness"):
+    if target not in ("preference", "judgment", "relationship", "weakness"):
         return {"ok": False, "error": "未知目标"}
     persona = cmem_get("/persona")
     constitution = str(persona.get("constitution") or "")
     heading = {
+        "preference": "## 偏好",
         "judgment": "## 价值取向",
         "relationship": "## 我们怎么对彼此",
         "weakness": "## 弱点",

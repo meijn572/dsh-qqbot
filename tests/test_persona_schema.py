@@ -32,18 +32,17 @@ class PersonaSchemaTest(unittest.TestCase):
     def test_profile_sections_render(self):
         data = validate_profile_sections({
             "stable_facts": ["主人晚睡"],
+            "appearance": [],
             "preferences": [],
             "values": [],
-            "interaction": [],
-            "boundaries": [],
         })
         text = render_profile_sections(data)
-        self.assertIn("**稳定事实**", text)
+        self.assertIn("**他是谁**", text)
         self.assertIn("- 主人晚睡", text)
 
     def test_profile_rejects_instructions(self):
         with self.assertRaises(ValueError):
-            validate_profile_sections({"interaction": ["你应该默认贴来源"]})
+            validate_profile_sections({"appearance": ["你应该默认贴来源"]})
         with self.assertRaises(ValueError):
             validate_profile_sections({"persona": ["傲娇"]})
 

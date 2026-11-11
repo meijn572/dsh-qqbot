@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from settings import AGENTS, CMEM_BASE
 
-CORE_HEADINGS = ("## 我是谁", "## 表现", "## 价值取向", "## 弱点", "## 我们怎么对彼此", "## 我们之间有什么")
+CORE_HEADINGS = ("## 我是谁", "## 表现", "## 偏好", "## 价值取向", "## 弱点", "## 我们怎么对彼此", "## 我们之间有什么")
 CORE_FORBIDDEN = re.compile(r"(回答时|默认|你必须|工具名|主人喜欢|主人是|消息条数|\[\[meme)")
 AGENTS_FORBIDDEN = re.compile(r"(傲娇|口癖|不确定先查|来源|人格|情绪记录)")
 SELF_FORBIDDEN = re.compile(r"(回答时|默认|必须|不要|每次|主人喜欢|主人是)")

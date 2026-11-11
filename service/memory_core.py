@@ -1721,31 +1721,70 @@ class MemoryStore:
 
     # -- 日记本：每天一篇 ------------------------------------------------------
 
-    def diary_add(self, date: str, text: str, mood: str = "") -> dict:
+    def diary_add(self, date: str, text: str, mood: str = "",
+                  changes: str = "", open_questions: str = "", tasks: str = "") -> dict:
+        """中间层：日记带三个附段，都是可空的。
+
+        只更新传了的字段，没传的保留原值——每日日记和 reflect 写入的
+        变化/没想清是两条路径，不能互相覆盖。
+        """
         now = time.time()
-        self.conn.execute(
-            "INSERT INTO diary(date, text, mood, created_at) VALUES (?,?,?,?) "
-            "ON CONFLICT(date) DO UPDATE SET text=excluded.text, mood=excluded.mood, created_at=excluded.created_at",
-            (str(date), str(text), str(mood), now),
-        )
+        row = self.conn.execute("SELECT date FROM diary WHERE date=?", (str(date),)).fetchone()
+        if row is None:
+            self.conn.execute(
+                "INSERT INTO diary(date, text, mood, changes, open_questions, tasks, created_at) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (str(date), str(text), str(mood), str(changes),
+                 str(open_questions), str(tasks), now),
+            )
+        else:
+            sets, args = [], []
+            for col, val in (("text", text), ("mood", mood), ("changes", changes),
+                             ("open_questions", open_questions), ("tasks", tasks)):
+                if val:
+                    sets.append(f"{col}=?")
+                    args.append(str(val))
+            if sets:
+                sets.append("created_at=?")
+                args.extend([now, str(date)])
+                self.conn.execute(f"UPDATE diary SET {', '.join(sets)} WHERE date=?", args)
         self.conn.commit()
-        return {"date": date, "text": text, "mood": mood}
+        return {"date": date, "text": text, "mood": mood,
+                "changes": changes, "open_questions": open_questions, "tasks": tasks}
 
     def diary_list(self, limit: int = 60) -> list[dict]:
         rows = self.conn.execute(
-            "SELECT date, text, mood, created_at FROM diary ORDER BY date DESC LIMIT ?",
+            "SELECT date, text, mood, changes, open_questions, tasks, created_at "
+            "FROM diary ORDER BY date DESC LIMIT ?",
             (max(1, min(int(limit), 366)),),
         ).fetchall()
-        return [
-            {"date": r["date"], "text": r["text"], "mood": r["mood"], "created_at": float(r["created_at"] or 0)}
-            for r in rows
-        ]
+        return [self._diary_row(r) for r in rows]
 
     def diary_get(self, date: str) -> dict | None:
-        r = self.conn.execute("SELECT date, text, mood, created_at FROM diary WHERE date=?", (str(date),)).fetchone()
-        if r is None:
-            return None
-        return {"date": r["date"], "text": r["text"], "mood": r["mood"], "created_at": float(r["created_at"] or 0)}
+        r = self.conn.execute(
+            "SELECT date, text, mood, changes, open_questions, tasks, created_at "
+            "FROM diary WHERE date=?", (str(date),),
+        ).fetchone()
+        return self._diary_row(r) if r is not None else None
+
+    @staticmethod
+    def _diary_row(r) -> dict:
+        return {
+            "date": r["date"], "text": r["text"], "mood": r["mood"],
+            "changes": str(r["changes"] or ""),
+            "open_questions": str(r["open_questions"] or ""),
+            "tasks": str(r["tasks"] or ""),
+            "created_at": float(r["created_at"] or 0),
+        }
+
+    def diary_recent(self, days: int = 7) -> list[dict]:
+        """最近几天的中间层，按时间正序给复盘用。"""
+        n = max(1, min(int(days), 60))
+        rows = self.conn.execute(
+            "SELECT date, text, mood, changes, open_questions, tasks, created_at "
+            "FROM diary ORDER BY date DESC LIMIT ?", (n,),
+        ).fetchall()
+        return [self._diary_row(r) for r in reversed(rows)]
 
 
     # -- 活动日志：她真的做过什么 ----------------------------------------------

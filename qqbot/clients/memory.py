@@ -20,6 +20,33 @@ async def cmem_call(method: str, path: str, body: dict | None = None) -> dict:
             return await resp.json(content_type=None)
 
 
+async def diary_recent(days: int = 7) -> list[dict]:
+    """中间层：最近几天的日记（含 text / changes / open_questions）。"""
+    data = await cmem_call("GET", "/diary")
+    rows = data if isinstance(data, list) else (data.get("items") or [])
+    rows = [r for r in rows if isinstance(r, dict)]
+    return rows[:max(1, int(days))][::-1]
+
+
+def format_diary(rows: list[dict]) -> str:
+    """把中间层渲染成给复盘看的文本；没内容返回空串。"""
+    blocks = []
+    for r in rows:
+        parts = []
+        text = str(r.get("text") or "").strip()
+        if text:
+            parts.append(text)
+        changes = str(r.get("changes") or "").strip()
+        if changes:
+            parts.append("变化：\n" + changes)
+        questions = str(r.get("open_questions") or "").strip()
+        if questions:
+            parts.append("还没想清：\n" + questions)
+        if parts:
+            blocks.append(f"【{r.get('date')}】\n" + "\n".join(parts))
+    return "\n\n".join(blocks)
+
+
 async def persona_context() -> str:
     data = await cmem_call("GET", "/persona/context")
     return str(data.get("text") or "")
