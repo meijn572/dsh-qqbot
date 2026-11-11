@@ -44,16 +44,39 @@ async def expand_persona_links(constitution: str) -> str:
                     info[mid] = item
         except Exception:  # noqa: BLE001
             continue
+    # 按 id 精确取这些事件，连同它们的 L0 原话
+    evidence: dict[int, list[str]] = {}
+    try:
+        rows = await cmem_call("POST", "/context/evidence", {
+            "ids": ids, "tiers": ["L3", "L4"], "l0_limit": 300,
+        })
+        l0_rows = rows.get("l0") or []
+        for mid in ids:
+            item = next((x for x in (rows.get("items") or [])
+                         if int(x.get("id") or 0) == mid), None)
+            if item is None:
+                continue
+            src = {int(x) for x in (item.get("source_ids") or [])}
+            quotes = [str(r.get("text") or "").strip()[:200]
+                      for r in l0_rows if int(r.get("id") or 0) in src]
+            if quotes:
+                evidence[mid] = quotes[:3]
+    except Exception:  # noqa: BLE001
+        evidence = {}
+
     for mid in ids:
         item = info.get(mid)
         if not item:
-            text = text.replace("{{L3:%d}}" % mid, "")
+            text = text.replace(" {{L3:%d}}" % mid, "").replace("{{L3:%d}}" % mid, "")
             continue
         title = str(item.get("thread_title") or "").strip() or "（无标题）"
         status = str(item.get("thread_status") or "").strip() or "?"
         body = str(item.get("summary") or item.get("text") or "").strip().replace("\n", " ")[:200]
-        rendered = f"〔{title} · {status}〕{body}"
-        text = text.replace("{{L3:%d}}" % mid, rendered)
+        lines = [f"〔{title} · {status}〕{body}"]
+        quotes = evidence.get(mid) or []
+        if quotes:
+            lines.append("当时的话：" + " / ".join(quotes[:3]))
+        text = text.replace("{{L3:%d}}" % mid, "\n    ".join(lines))
     return text
 
 

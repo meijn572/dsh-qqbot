@@ -73,16 +73,31 @@ def _ids(value) -> list[int]:
 
 
 def evidence(store, body: dict) -> dict:
-    """最近 L1/L3 + 它们引用的 L0 证据（按 id/文本去重）。"""
+    """最近 L1/L3 + 它们引用的 L0 证据（按 id/文本去重）。
+
+    body 里带 ids 时改成「按 id 精确取」：人格条目挂着 {{L3:123}}，
+    复盘要把它展开成「标题 · 状态 + 正文 + 当时的话」。
+    """
+    want_ids = [int(x) for x in (body.get("ids") or []) if str(x).strip().isdigit()]
     tiers = [str(t).upper() for t in (body.get("tiers") or ["L1", "L3"])]
     limits = body.get("limits") or {"L1": 15, "L3": 10}
+    if want_ids:
+        limits = {t: max(int(limits.get(t, 10)), len(want_ids)) for t in limits}
     scope = str(body.get("scope") or "")
-    l0_limit = max(1, min(100, int(body.get("l0_limit") or 50)))
+    l0_limit = max(1, min(300, int(body.get("l0_limit") or 50)))
     items: list[dict] = []
     l1_ids: set[int] = set()
     l3_rows: list = []
 
     def fetch(tier: str) -> list:
+        if want_ids:
+            marks = ",".join("?" for _ in want_ids)
+            rows = store.conn.execute(
+                f"SELECT id,tier,text,ts,source_ids,scope FROM memory "
+                f"WHERE tier=? AND id IN ({marks}) ORDER BY ts DESC",
+                [tier, *want_ids],
+            ).fetchall()
+            return list(rows)
         limit = max(1, min(50, int(limits.get(tier, 10))))
         sql = "SELECT id,tier,text,ts,source_ids,scope FROM memory WHERE tier=?"
         args: list = [tier]
@@ -108,18 +123,20 @@ def evidence(store, body: dict) -> dict:
             elif tier == "L3":
                 l3_rows.append(item)
 
-    # L3 的 source_ids 是 L1；再展开这些 L1 的 source_ids 到 L0
-    l3_l1_ids = {sid for item in l3_rows for sid in item["source_ids"]}
-    if l3_l1_ids:
-        marks = ",".join("?" for _ in l3_l1_ids)
+    # L3 的 source_ids 可能直接是 L0，也可能指向 L1；两种都处理
+    src_ids = {sid for item in l3_rows for sid in item["source_ids"]}
+    l0_ids: set[int] = set()
+    if src_ids:
+        marks = ",".join("?" for _ in src_ids)
         for row in store.conn.execute(
-            f"SELECT id,tier,source_ids FROM memory WHERE id IN ({marks})",
-            list(l3_l1_ids),
+            f"SELECT id,tier FROM memory WHERE id IN ({marks})",
+            list(src_ids),
         ):
-            if str(row["tier"]) == "L1":
+            if str(row["tier"]) == "L0":
+                l0_ids.add(int(row["id"]))
+            elif str(row["tier"]) == "L1":
                 l1_ids.add(int(row["id"]))
 
-    l0_ids: set[int] = set()
     if l1_ids:
         marks = ",".join("?" for _ in l1_ids)
         for row in store.conn.execute(

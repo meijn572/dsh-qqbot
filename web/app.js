@@ -407,7 +407,14 @@ async function load(){
     h+='</div>';
     h+=`<div class="card"><div class="k">日记（${n.diary.length}）</div>`;
     if(!n.diary.length) h+='<div class="mut">今天还没写</div>';
-    for(const d of n.diary) h+=`<div style="margin:8px 0"><span class="mut">${esc(d.date||'')}</span> ${esc(d.text||'')}</div>`;
+    for(const d of n.diary){
+      h+=`<div style="margin:10px 0"><span class="mut">${esc(d.date||'')}</span>`;
+      if(d.text) h+=`<div style="margin-top:3px">${esc(d.text)}</div>`;
+      if(d.changes) h+=`<div class="mut" style="margin-top:4px">最近在变：${esc(d.changes)}</div>`;
+      if(d.open_questions) h+=`<div class="mut" style="margin-top:4px">还没想清：${esc(d.open_questions)}</div>`;
+      if(d.tasks) h+=`<div class="mut" style="margin-top:4px">正在做：${esc(d.tasks)}</div>`;
+      h+='</div>';
+    }
     h+='</div>';
     $('#notebook').innerHTML=h;
   }
