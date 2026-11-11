@@ -42,6 +42,7 @@ class Deps:
     recent_text: dict[str, str]
     last_share: dict[str, dict]
     add_l0: Callable[[str, str], None]
+    add_bili_l0: Callable[[str], None]   # 写完的视频写进 L0，走统一提炼管线
     add_event: Callable[[str], None]
     log_activity: Callable[..., dict | None]
     send_private: Callable[[int, str], Awaitable[None]]
@@ -191,6 +192,17 @@ async def run_round(deps: Deps) -> dict | None:
         insight_context=insight_context,
         memorability=memorability, dominant=dominant,
     )
+    # 每轮都写 L0：B站 内容从此走和聊天一样的提炼管线
+    # （L1 批处理会挑出值得留的，不是每一轮都能变成 L1）
+    l0_bits = [f"刷了「{round_topic}」{titles}"]
+    if summary:
+        l0_bits.append(summary[:600])
+    if thought:
+        l0_bits.append(f"我的反应：{thought[:300]}")
+    try:
+        deps.add_bili_l0("\n".join(l0_bits))
+    except Exception as exc:  # noqa: BLE001
+        log.warning("自主刷写 L0 失败：%s", exc)
     log.info("自主刷完成：%s（%s 条视频，%s 帧）", round_topic, len(videos), frames_used)
     return data
 

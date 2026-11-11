@@ -56,8 +56,10 @@ def build_context(store, body: dict, embedder) -> dict:
         for tier in tiers:
             limit = max(1, min(200, int(limits.get(tier, 10))))
             if tier == "L0" and session_id:
+                # 排除自主刷写的 L0（tags 带 bili）：那些不该出现在对话上下文里
                 rows = store.conn.execute(
-                    "SELECT id,text,ts FROM memory WHERE tier='L0' AND tags LIKE ? ORDER BY ts DESC LIMIT ?",
+                    "SELECT id,text,ts FROM memory WHERE tier='L0' AND tags LIKE ? "
+                    "AND tags NOT LIKE '%\"bili\"%' ORDER BY ts DESC LIMIT ?",
                     (f"%session:{session_id}%", limit),
                 ).fetchall()
             elif scope and tier != "L0":

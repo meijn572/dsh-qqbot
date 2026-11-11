@@ -1506,13 +1506,17 @@ def add_l1_event(content: str) -> None:
     log_activity("autonomy", text)
 
 
-def add_l0_message(chat_key: str, text: str) -> None:
+def add_l0_message(chat_key: str, text: str, tags_extra: list[str] | None = None) -> None:
     """把桥接自己发出去的话补进 L0，让 L0 成为完整对话。"""
     text = str(text or "").strip()
     if not text:
         return
     sid = str((state_entry(chat_key) or {}).get("sid") or "")
     tags = ["raw", "outbound"] + ([f"session:{sid}"] if sid else [])
+    for extra in tags_extra or []:
+        tag = str(extra or "").strip()
+        if tag and tag not in tags:
+            tags.append(tag)
     try:
         payload = json.dumps({
             "text": f"我：{text[:1000]}",
@@ -1665,6 +1669,10 @@ def _autonomy_deps(dsh: Dsh, onebot: OneBot) -> autonomy_round.Deps:
     async def consolidate(chat_key: str) -> None:
         await consolidate_interests(dsh, chat_key)
 
+    def add_bili_l0(text: str) -> None:
+        """自主刷的每一轮都写进 L0，走和聊天一样的提炼管线。"""
+        add_l0_message(f"private:{users[0] if users else 0}", text, ["bili"])
+
     return autonomy_round.Deps(
         users=users,
         activity_sid=activity_sid_cb,
@@ -1675,6 +1683,7 @@ def _autonomy_deps(dsh: Dsh, onebot: OneBot) -> autonomy_round.Deps:
         recent_text=RECENT_TEXT,
         last_share=LAST_SHARE,
         add_l0=add_l0_message,
+        add_bili_l0=add_bili_l0,
         add_event=add_l1_event,
         log_activity=log_activity,
         send_private=send_private,
