@@ -27,6 +27,8 @@ from qqbot.domains.autonomy.state import (
     mark_aut_seen,
     save_aut_state,
     similar_topic,
+    mark_want_used,
+    pending_want_more,
 )
 
 log = logging.getLogger("qqbot.autonomy.round")
@@ -79,6 +81,15 @@ async def run_round(deps: Deps) -> dict | None:
     chat_key = f"private:{uid}"
     sid = await deps.activity_sid("bili")
     topic, mode = pick_topic(cfg)
+    # mode == want_more 时，topic 就是 L1 上那句话；用掉要标记，别重复选
+    used_want_id = 0
+    if mode == "want_more":
+        try:
+            pend = pending_want_more(1)
+            if pend:
+                used_want_id = int(pend[0]["id"])
+        except Exception:  # noqa: BLE001
+            used_want_id = 0
     interests = load_interests()[:8]
     listing = "\n".join(f"- {i.get('topic')}（权重 {i.get('weight')}）" for i in interests) or "（清单还是空的）"
     recent = deps.recent_text.get(chat_key, "")[:300]
@@ -172,6 +183,10 @@ async def run_round(deps: Deps) -> dict | None:
         lines.append(f"\n> {thought}")
     with report.open("a", encoding="utf-8") as handle:
         handle.write("\n".join(lines) + "\n")
+    # 权重只在「她自己给了意义」时增加：
+    #   want_more 驱动的轮次是还账，不加
+    #   interest 驱动的本来就喜欢过，不加
+    #   只有自由探索撞到新东西才 +0.2
     if mode == "explore":
         if not any(similar_topic(round_topic, str(i.get("topic", ""))) for i in load_interests()):
             apply_interest(round_topic, 0.2, "自由探索发现", "bili")
@@ -203,6 +218,8 @@ async def run_round(deps: Deps) -> dict | None:
         deps.add_bili_l0("\n".join(l0_bits))
     except Exception as exc:  # noqa: BLE001
         log.warning("自主刷写 L0 失败：%s", exc)
+    if used_want_id:
+        mark_want_used(used_want_id)
     log.info("自主刷完成：%s（%s 条视频，%s 帧）", round_topic, len(videos), frames_used)
     return data
 

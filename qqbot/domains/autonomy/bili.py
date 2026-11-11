@@ -13,6 +13,8 @@ import aiohttp
 from qqbot.domains.autonomy.state import (
     load_aut_state,
     load_interests,
+    mark_want_used,
+    pending_want_more,
     save_interests,
     similar_topic,
 )
@@ -63,6 +65,24 @@ def decay_interests() -> None:
 
 
 def pick_topic(cfg: dict) -> tuple[str, str]:
+    """选这一轮看什么。返回 (主题, 驱动方式)。
+
+    顺序：
+      1. L1 上还没用掉的 want_more —— 她自己想接着弄明白的
+      2. 兴趣池里按权重抽
+      3. 都没有就自由探索
+
+    权重只反映「她自己给了意义」，被 want_more 驱动的轮次不加权重——
+    那是还账，不是又喜欢了一次。
+    """
+    try:
+        pending = pending_want_more(1)
+    except Exception:  # noqa: BLE001
+        pending = []
+    if pending:
+        item = pending[0]
+        return str(item["want_more"]), "want_more"
+
     items = load_interests()
     if not items:
         return "", "explore"

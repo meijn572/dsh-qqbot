@@ -45,6 +45,44 @@ def autonomy_cfg() -> dict:
     return merged
 
 
+def pending_want_more(limit: int = 3) -> list[dict]:
+    """最近还没被选材用掉的 want_more（存在 L1 上）。
+
+    这是「她自己想接着弄明白」的唯一去向：下一轮刷 B 站时优先拿它去搜。
+    """
+    import sqlite3
+    db = DSH_HOME / "remembers-data" / "memories.db"
+    if not db.exists():
+        return []
+    try:
+        conn = sqlite3.connect(str(db))
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT id,ts,want_more FROM memory "
+            "WHERE tier='L1' AND want_more!='' AND (want_used IS NULL OR want_used=0) "
+            "ORDER BY ts DESC LIMIT ?", (max(1, min(int(limit), 10)),),
+        ).fetchall()
+        out = [{"id": int(r["id"]), "want_more": str(r["want_more"]), "ts": float(r["ts"] or 0)}
+               for r in rows]
+        conn.close()
+        return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def mark_want_used(mem_id: int) -> None:
+    """用掉一条 want_more，标记一下，不再重复选。"""
+    import sqlite3
+    db = DSH_HOME / "remembers-data" / "memories.db"
+    try:
+        conn = sqlite3.connect(str(db))
+        conn.execute("UPDATE memory SET want_used=1 WHERE id=?", (int(mem_id),))
+        conn.commit()
+        conn.close()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def load_interests() -> list[dict]:
     if not AUT_INTERESTS.exists():
         return []
