@@ -1926,6 +1926,10 @@ class MemoryStore:
             "source_activity_id": r["source_activity_id"],
         } for r in rows]
 
+    # B 站用的是旧分类 self/style/relation，落到 insight_target 要换名字
+    _BILI_KIND_TO_TARGET = {"self": "me", "relation": "us", "style": "none",
+                            "me": "me", "us": "us", "none": "none"}
+
     def add_bili_insight(self, activity_id: int, context: str = "",
                          insight: str = "", insight_kind: str = "",
                          memorability: float = 0.5, dominant: str = "none") -> int | None:
@@ -1933,6 +1937,13 @@ class MemoryStore:
         kind = str(insight_kind or "").strip()
         if not insight or not kind:
             return None
+        # 旧分类可能是逗号组合（self,relation），取第一个能映射的
+        target = ""
+        for part in kind.replace("，", ",").split(","):
+            target = self._BILI_KIND_TO_TARGET.get(part.strip(), "")
+            if target:
+                break
+        target = target or "none"
         row = self.conn.execute(
             "SELECT id,l3_id,summary,detail FROM activity_log WHERE id=?",
             (int(activity_id),),
@@ -1946,7 +1957,7 @@ class MemoryStore:
         mem_id = self.add(MemoryInput(
             text=ctx, tier="L3", summary=ctx, tags=["bili-insight", f"insight:{kind}"],
             source_status="bili", thread_status="standalone",
-            insight_text=insight[:1200], insight_kind=kind[:80], insight_target=kind[:20],
+            insight_text=insight[:1200], insight_kind=kind[:80], insight_target=target[:20],
             source_activity_id=int(activity_id),
             memorability=max(0.0, min(1.0, float(memorability or 0.5))),
             dominant=str(dominant or "none")[:40],
