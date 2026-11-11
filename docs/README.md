@@ -14,6 +14,7 @@
 
 ### 1.1 总览
 
+- [当前架构与待办](architecture-current.md)
 - [架构说明](architecture.md)
 - [工作流与记忆逻辑](workflows.md)
 

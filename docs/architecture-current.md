@@ -1,0 +1,460 @@
+# 当前架构与待办
+
+状态：设计已定，大部分未实现。
+
+最后更新：2026-11-11。
+
+相关文档：
+
+- [人格分层](persona-layers.md)
+- [人格与情绪重构](persona-refactor.md)
+- [记忆分层](memory-layers.md)
+- [L1/L3 写法与例子](memory-writing.md)
+
+---
+
+## 1. 数据分层
+
+```text
+【稳定层】人格
+  核心设定        手编 + 半自动确认
+  用户画像        每 2 天自动重写
+  重要标记        优先级标记，不是独立类别
+
+【中间层】最近的我
+  日记            今天怎么样了
+  （原自我认知的变化、没想清，待并入）
+
+【记忆】
+  L0  原话
+  L1  这一段发生了什么
+  L2  我的判断（暂退）
+  L3  为什么值得记久
+  L4  核心记忆
+
+【其他】
+  activity_log   行为日志
+  browse（待建）  B站浏览记录
+```
+
+现库量：
+
+```text
+L0   551
+L1   290
+L2    93
+L3   130    open 10 / dormant 7 / closed 13 / standalone 84 / archived 16
+L4     4
+```
+
+## 2. 人格结构
+
+### 2.1 核心设定六小节（已落地）
+
+```text
+## 我是谁
+## 表现          style 标记在这里
+## 价值取向
+## 弱点
+## 我们怎么对彼此
+## 我们之间有什么   important 标记在这里
+```
+
+待加：
+
+```text
+## 偏好          长期稳定的喜欢/不喜欢
+```
+
+即最终七小节，对应「我自己」五格：
+
+```text
+我是谁 / 表现 / 偏好 / 价值取向 / 弱点
+```
+
+「我眼中的他」同样五格：
+
+```text
+他是谁 / 他平时什么样子 / 他的偏好 / 他的价值取向 / 他的软处
+```
+
+### 2.2 重要标记
+
+```text
+<!-- important:begin -->
+- ...
+<!-- important:end -->
+```
+
+含义只有一条：这几条可以盖过其他条目。
+
+`important.md` 是镜像，服务端靠标记同步。
+
+### 2.3 每条存「成了什么样」
+
+```text
+存：     - 被留的时候，我是当真的。
+不存：   - 他说想留住我那天，我话说一半就收了。
+```
+
+关联事件：
+
+```text
+- 被留的时候，我是当真的。{{L3:1245}}
+```
+
+三种渲染：
+
+| 场景 | 渲染成 | 用途 |
+| --- | --- | --- |
+| 面板 | 标题，可点 | 人看依据 |
+| 日常对话 | 抹掉 | 保住 system prompt 缓存 |
+| 复盘 | 标题 + 状态 + L3 正文 | 判断还成不成立 |
+
+### 2.4 画像与核心设定的关系
+
+```text
+存储分开    核心设定手编，画像 2 天一刷
+渲染合一    persona.mjs 先核心设定、再画像
+```
+
+合并存储会让画像重写把手编内容冲掉。
+
+## 3. 记忆层级边界
+
+### 3.1 判断规则
+
+```text
+L1  这一段发生了什么
+L3  为什么这件事值得记久
+```
+
+判断方法：
+
+```text
+这条不写，丢的是经历还是认识？
+丢经历 → L1
+丢认识 → L3
+```
+
+### 3.2 L1 字段
+
+```text
+text           便签
+ts             时间
+source_ids     指向 L0
+tags           来源标记
+
+emotion_label / emotion_valence / emotion_arousal
+               当时什么感受
+
+want_more      想自己接着弄明白的
+ask_him        想问他的
+```
+
+### 3.3 L3 字段
+
+```text
+summary / text      重写后的当前状态
+thread_*            生命周期
+
+insight_text / insight_kind
+                    这件事留下的认识
+
+memorability / dominant
+                    为什么难忘
+
+recall_* / lifecycle_*
+                    遗忘曲线、复盘状态
+```
+
+### 3.4 关键约束
+
+```text
+insight_* 只在 L3
+B站 的 L1 不写感悟
+感悟等 L3 批处理时再判断
+```
+
+否则两层分不开。
+
+## 4. 提取管线
+
+### 4.1 已定的输入
+
+```text
+L1 批处理      L0
+L3 批处理      L1 + L2 + 它们的来源 L0
+```
+
+L3 顺着 L1 的 `source_ids` 找来源，不需要在字段上标 origin。
+
+### 4.2 现状
+
+```text
+L1 批处理   只吃 L0，按时间切段（空闲 300s / 跨度 30min / 80 条）
+L3 批处理   只吃本批 L0 + 本批新 L1 + 本批新 L2
+```
+
+**B 站内容现在进不来**，因为：
+
+```text
+B站 不写 L0
+batch_run 只从 L0 取
+→ 永远扫不到
+```
+
+### 4.3 待改
+
+```text
+1. B站 改成写 L0，走同一条链
+2. L3 批处理改为顺 source_ids 找 L0
+```
+
+## 5. 情绪
+
+### 5.1 已定
+
+```text
+情绪跟着 L1 走
+memory 表加三个字段：emotion_label / emotion_valence / emotion_arousal
+L1 抽取时整批都写
+```
+
+模型本来就在每条 L1 上给情绪，代码现在整批只挑一条，改成全写。
+
+### 5.2 emotion_log 删除
+
+功能都能被替代：
+
+```text
+最近 3 条明细    → 从最近带情绪的 L1 挑
+历史统计         → 从 L1 按字段聚合
+复盘素材         → L1 / L3 已经带了
+```
+
+「当前心情」那两个数（valence / arousal）也删，那是上一段对话的情绪，挂在全局 state 上是错位。
+
+连带删除：
+
+```text
+set_emotion
+state.emotion
+state.mjs 里「心情（很开心，有点激动）」
+qqbot/domains/growth/emotion.py
+```
+
+`mood`（happy / tired / annoyed）是另一套，不动。
+
+### 5.3 情绪只在 L1 抽取时写
+
+不每句复盘，不空闲复盘。
+
+L1 抽取本来就在读那段对话，`EXTRACT_SYSTEM` 已经要求判断情绪。
+
+## 6. 兴趣系统
+
+### 6.1 现状
+
+`bili-autonomy/interests.json`，33 个话题：
+
+```json
+{"topic": "王者荣耀", "weight": 9.0, "evidence": "...", "source": "chat"}
+```
+
+`source` 混着两种：
+
+```text
+chat    主人聊出来的
+bili    我自己刷出来的
+```
+
+### 6.2 问题
+
+```text
+1. weight = 被提到的次数，不是兴趣深度
+2. 主人提到的话题被直接算成她的兴趣
+3. 没有「还想知道什么」，刷完就完了
+4. 选材按权重随机抽，会自我强化
+```
+
+### 6.3 设计方向：不判阶段，只判要不要回来
+
+研究依据（Hidi & Renninger 四阶段模型、信息缺口理论）指向一个结论：
+
+```text
+好奇不等于兴趣
+答完问题，好奇就填平了
+有新问题，兴趣才继续
+```
+
+所以不问「现在第几阶段」，只问：
+
+```text
+还有没有接着想弄明白的？
+```
+
+### 6.4 统一的出口
+
+```text
+刷完视频  → 问一句
+聊完天    → 问一句
+```
+
+两种去处：
+
+```text
+想问主人的   → ask_him
+想自己刷的   → want_more
+```
+
+### 6.5 选材顺序（待定）
+
+```text
+1. questions 里没答的    优先
+2. 没有就按权重抽
+3. 权重池也空             自由探索
+```
+
+### 6.6 权重只说明「她自己给了意义」
+
+```text
+question 驱动的轮次     不加权重
+chat 来源的话题         被抽中也不加权重
+只有自己写了 care 的     才加
+```
+
+### 6.7 未定
+
+```text
+长期兴趣怎么识别
+（倾向：不在这层判，交给人格复查）
+```
+
+## 7. B 站
+
+### 7.1 现状
+
+```text
+activity_log 里 86 轮
+有 summary 的     8 轮
+有 insight 的     7 轮
+转成 L3 的        7 轮
+```
+
+只有 8% 的轮次有 summary，这本身是个问题。
+
+### 7.2 已定的改法
+
+```text
+B站 写 L0（不是 activity）
+L1 批处理统一处理
+L3 批处理顺着 L1 找到它
+```
+
+好处：
+
+```text
+1. 管线统一，不需要额外入口
+2. L1 天然成为筛选层：刷 7 轮 → 只有带感悟的进 L1
+3. L3 不再被 B站 稀释
+```
+
+### 7.3 感悟的落点
+
+```text
+B站 的 L1    只写：看了什么 / 什么感受 / 留下什么问题
+感悟         不写
+             等 L3 批处理再判断要不要立成 L3
+```
+
+## 8. 待办清单
+
+### 8.1 人格
+
+```text
+[ ] 核心设定加「偏好」栏
+[ ] 画像对齐五格，清掉互动偏好 / 边界
+[ ] 自我认知并进中间层（删「我学到的」）
+```
+
+### 8.2 记忆
+
+```text
+[ ] memory 表加 emotion_label / emotion_valence / emotion_arousal
+[ ] memory 表加 want_more / ask_him
+[ ] L1 抽取整批写情绪（不再只挑一条）
+[ ] 删 emotion_log 表（先导出 93 条历史）
+[ ] 删 set_emotion / state.emotion / emotion.py
+[ ] state.mjs 去掉情绪段
+[ ] B站 改写成 L0
+[ ] L3 批处理改为顺 source_ids 找 L0
+[ ] L1 分段 30 分钟 → 5 分钟
+[ ] insight_kind → insight_target（me / us / none）
+```
+
+### 8.3 兴趣
+
+```text
+[ ] questions 存储（want_more / ask_him 分开）
+[ ] 选材顺序改成「未答问题 → 权重 → 自由探索」
+[ ] 权重只在「自己写了 care」时增加
+[ ] chat 来源的话题只进候选，不直接算她的兴趣
+```
+
+### 8.4 人格关联机制
+
+```text
+[ ] {{L3:id}} 存储
+[ ] 三层渲染（面板可点 / 日常抹掉 / 复盘带正文）
+[ ] 面板跳转
+```
+
+### 8.5 复盘模块分工
+
+```text
+[ ] important.py   只管新增带重要标记的条目
+[ ] review.py      只管修正「价值取向」「我们怎么对彼此」，不再产出约定
+[ ] style.py       只改「表现」
+[ ] reflect.py     只写中间层
+[ ] profile.py     只写画像
+```
+
+## 9. 已完成的代码改动
+
+```text
+人格
+  panel_readers.py            STYLE_HEADING → ## 表现
+                              段落正则同步
+                              review_apply heading 映射改新四段
+  style.py                    style_block 正则同步
+  check_persona_boundaries.py CORE_HEADINGS 改六段
+  核心设定本身                  已重排并写入
+
+提示词
+  qzone/publish.py            九项禁令 → 用途说明 + 三个真实例子
+  growth/emotion.py           加两条真实例子（此文件待删）
+
+运维
+  panel_routes.py             重启前杀光所有 bridge 实例
+  SnowLuma runtime.json       hookAutoLoad: true（开机自动挂 hook）
+  维护会话                    按流程分会话，占用 30k 换新
+```
+
+备份：
+
+```text
+persona-roles/state/constitution-before-struct-20261110-204634.md
+D:\QQBot\SnowLuma\config\runtime.json.bak-20261111-123100
+```
+
+## 10. 参考
+
+- [Character Card V2](https://github.com/malfoyslastname/character-card-spec-v2)：角色描述与示例分开
+- [Letta Memory Blocks](https://docs.letta.com/v1-sdk/memory/memory-blocks/)：常驻片段与长期记忆分开
+- [Fate Core: Your Character Idea](https://fate-srd.com/fate-core/your-character-idea)：High Concept 与 Trouble
+- [SEP: Friendship](https://plato.stanford.edu/entries/friendship/)：关心、亲密、共同活动
+- [SEP: Love](https://plato.stanford.edu/entries/love/)：appraisal / bestowal
+- [OISE: Hidi 的兴趣研究](https://www.oise.utoronto.ca/about/news/08-05-24-exploring-interest-education-understanding-core-dr-suzanne-hidis-psychological)：四阶段模型
+- [OISE: 兴趣的应用](https://www.oise.utoronto.ca/about/news/08-05-24-application-interest-suzanne-hidis-educational-research-sparks-questions)：好奇 ≠ 兴趣
+- [APS: 好奇的刚好区间](https://www.psychologicalscience.org/news/to-spark-curiosity-dont-tell-preschoolers-too-much-or-too-little.html)
