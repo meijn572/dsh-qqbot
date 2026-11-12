@@ -1359,3 +1359,55 @@ activity_log 历史数据   15 条 insight 全部已在对应 L3 正文里，
 理由：它现在只是「对某件往事的回忆」的一部分，没有独立标签把它标成
 「这是你的结论」。之前担心的诱导来自「感悟：」这种显式标签。
 先观察，若出现逐句复述再处理。
+
+## 21. 状态注入与词库清理（2026-11-12 晚）
+
+### 删掉的两节
+
+```text
+心情
+  只输出 state.mood（happy/tired/annoyed/bored/normal），长期是「平常」
+  情绪本身已随 L1 走，这一节是空壳 → 删
+
+B站见闻
+  读 state.browsed（旧 browsed 表，6 条），作用是给可分享的链接
+  但 L0 里没有 URL → 不能直接删
+  改法：round.py 写 L0 时把 BV 链接带进去，然后删这一节
+```
+
+### 词库三份合一
+
+核查发现：
+
+```text
+lexicon.json        18 条，权威源（含 scope=group:1132633236 的 10 条）
+slang 表            0 条（已退役）
+network-memes.json  0 条（空的）
+group-slang/*.json  1 个群的旧副本，内容已被 lexicon 覆盖
+```
+
+处理：
+
+```text
+/state 的 slang_learned   原来读 store.slang_list()（表空，永远 []）
+                          改成直接读 lexicon.json，现在返回 6 条
+network-memes.json        0 条 → 移走备份
+group-slang/              已被 lexicon 覆盖 → 移走备份
+群黑话游标                从 group-slang/state.json 改到
+                          persona-roles/state/group-slang-state.json
+                          （避免和那儿已有的 state.json 撞名）
+```
+
+### 效果
+
+```text
+state.mjs 的「你会跟着主人说的词」 现在真的有内容了
+                            以前一直不触发，因为数据源是空表
+```
+
+### 备份
+
+```text
+network-memes.json.bak-20261112-201618
+group-slang.bak-20261112-201618
+```

@@ -1,6 +1,8 @@
 """GET 路由逻辑：只做协议适配，返回是否已处理。"""
 from __future__ import annotations
 
+from pathlib import Path
+
 import time
 
 
@@ -141,16 +143,21 @@ def handle_get(handler, path: str, query: dict, store) -> bool:
                 ]
             except Exception:
                 st["open_threads"] = []
+            # 词库已经统一到 lexicon：slang 表已退役，直接读统一词库
             try:
-                # 只给「说了 6 次以上」或「她主动学的」——一两次的碎句不算口头禅
-                st["slang_learned"] = store.slang_list(
-                    limit=6, only_repeated=True, min_count=6, require_meaning=True)
+                # 词库统一在 lexicon.json（qqbot 侧维护），这里只读文件
+                import json as _json
+                lx_path = Path.home() / ".dsh-qqbot" / "lexicon.json"
+                data = _json.loads(lx_path.read_text(encoding="utf-8"))
+                entries = data.get("entries")
+                if not isinstance(entries, list):
+                    entries = []
+                entries = [x for x in entries
+                           if isinstance(x, dict) and str(x.get("meaning") or "").strip()]
+                st["slang_learned"] = entries[:6]
+                st["slang_pending"] = []
             except Exception:
                 st["slang_learned"] = []
-            try:
-                # 够 6 次但还没搞懂意思的，提示她去问
-                st["slang_pending"] = store.slang_pending(6, 4)
-            except Exception:
                 st["slang_pending"] = []
             hour = None
             try:

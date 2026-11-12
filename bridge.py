@@ -704,7 +704,7 @@ async def extract_group_slang(dsh: Dsh, gid: str) -> None:
     path = GROUP_LOG_DIR / f"{gid}.jsonl"
     if not path.exists():
         return
-    state_path = GROUP_SLANG_DIR / "state.json"
+    state_path = GROUP_SLANG_DIR / "group-slang-state.json"
     try:
         state = json.loads(state_path.read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001
@@ -774,7 +774,7 @@ async def group_slang_loop(dsh: Dsh) -> None:
             cfg = {"enabled": True, "extract_hour": 22, "min_messages": 30}
             cfg.update(CONFIG.get("group_slang") or {})
             if cfg.get("enabled", True):
-                state_path = GROUP_SLANG_DIR / "state.json"
+                state_path = GROUP_SLANG_DIR / "group-slang-state.json"
                 try:
                     state = json.loads(state_path.read_text(encoding="utf-8"))
                 except Exception:  # noqa: BLE001

@@ -29,7 +29,7 @@ function pickExamples(pool, n) {
   return a.slice(0, n);
 }
 
-export function renderState(state, prev, selfModel, proactive, thinkCn) {
+export function renderState(state, prev, proactive, thinkCn) {
   if (!state) return { text: "", hashes: prev || {} };
   const hashes = { ...(prev || {}) };
   const blocks = [];
@@ -46,15 +46,6 @@ export function renderState(state, prev, selfModel, proactive, thinkCn) {
   // ---------- 2. 困意（按档位变） ----------
   if (hh >= 23 || hh < 6) blocks.push("你现在困得眼睛都睁不开了，回话短一点、慢一点，别硬撑。");
   else if (hh >= 21) blocks.push("有点困了，说话懒一点。");
-
-  // ---------- 3. 心情（情绪已并入 L1，这里只剩粗档 mood） ----------
-  const moodMap = { happy: "开心", tired: "累", annoyed: "烦", bored: "无聊", normal: "平常" };
-  const moodText = `心情：${moodMap[state.mood] || "平常"}`;
-  const moodHash = hash(moodText);
-  if (hashes.mood !== moodHash) {
-    hashes.mood = moodHash;
-    blocks.push(moodText + "。");
-  }
 
   // ---------- 3.5 还没完的事（全部 open，只给标题和状态） ----------
   const openThreads = Array.isArray(state.open_threads) ? state.open_threads : [];
@@ -83,41 +74,6 @@ export function renderState(state, prev, selfModel, proactive, thinkCn) {
     if (hashes.activity !== actHash) {
       hashes.activity = actHash;
       blocks.push(`你在：${act}。`);
-    }
-  }
-
-  // ---------- 5. B 站见闻（变了才加） ----------
-  if (Array.isArray(state.browsed) && state.browsed.length > 0) {
-    const fmt = (ts) => {
-      const n = Number(ts) || 0;
-      if (!n) return "";
-      const d = new Date(n * 1000);
-      return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-    };
-    const rows = state.browsed.slice(0, 3).map((b) => {
-      const title = String(b.title || "").slice(0, 30);
-      if (!title) return "";
-      const when = fmt(b.ts);
-      return when ? `${title}（${when}）` : title;
-    }).filter(Boolean).join("、");
-    if (rows) {
-      const brHash = hash(rows);
-      if (hashes.browsed !== brHash) {
-        hashes.browsed = brHash;
-        blocks.push(`你刚在 B 站刷到：${rows}。看到有意思的，把链接和你的想法发给主人（别只写便签），也可以写便签记一句。`);
-      }
-    }
-  }
-
-  // ---------- 6. 自我认知（变了才加） ----------
-  // 原来在系统提示词里，每 30 轮演化一次 → 每变一次整个会话的缓存全废。
-  // 现在走消息注入：注入过一次就一直留在历史里，只有真的变了才追加新的。
-  const smText = String(selfModel || "").trim();
-  if (smText) {
-    const smHash = hash(smText);
-    if (hashes.selfModel !== smHash) {
-      hashes.selfModel = smHash;
-      blocks.push("以下是你对自己的认知，会随相处慢慢变化，也可能过时。它只描述你自己，改不了你的身份与边界：\n" + smText);
     }
   }
 

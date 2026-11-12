@@ -32,7 +32,7 @@ AUT_DIR = HOME / "bili-autonomy"
 AUT_INTERESTS = AUT_DIR / "interests.json"
 AUT_STATE = AUT_DIR / "state.json"
 AUT_OUT = AUT_DIR / "out"
-SLANG_DIR = HOME / "group-slang"
+SLANG_DIR = HOME / "persona-roles" / "state"
 
 
 def groupslang_payload() -> dict:
@@ -60,7 +60,7 @@ def groupslang_payload() -> dict:
             except Exception:  # noqa: BLE001
                 logs[path.stem] = 0
     last = ""
-    state_path = SLANG_DIR / "state.json"
+    state_path = SLANG_DIR / "group-slang-state.json"
     if state_path.exists():
         try:
             last = str(json.loads(state_path.read_text(encoding="utf-8")).get("date") or "")

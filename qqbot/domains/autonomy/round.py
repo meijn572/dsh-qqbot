@@ -194,6 +194,16 @@ async def run_round(deps: Deps) -> dict | None:
     # 每轮都写 L0：B站 内容从此走和聊天一样的提炼管线
     # （L1 批处理会挑出值得留的，不是每一轮都能变成 L1）
     l0_bits = [f"刷了「{round_topic}」{titles}"]
+    # 带上链接：她分享时要用，browsed 表因此可以退役
+    links = []
+    for v in (videos or [])[:3]:
+        if not isinstance(v, dict):
+            continue
+        bv = str(v.get("bvid") or "").strip()
+        if bv:
+            links.append(f"https://www.bilibili.com/video/{bv}")
+    if links:
+        l0_bits.append("链接：" + " ".join(links))
     if summary:
         l0_bits.append(summary[:600])
     if thought:

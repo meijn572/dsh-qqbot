@@ -13,7 +13,7 @@ from settings import DSH_HOME
 from qqbot.domains.group.lexicon import list_entries, replace_scope, search_entries
 
 log = logging.getLogger("qqbot.group.slang")
-GROUP_SLANG_DIR = DSH_HOME / "group-slang"  # 仅保留旧状态文件路径
+GROUP_SLANG_DIR = DSH_HOME / "persona-roles" / "state"  # 群黑话游标放这里（旧目录已退役）
 GROUP_LOG_DIR = DSH_HOME / "group-log"
 
 
