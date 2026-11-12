@@ -3226,6 +3226,23 @@ class Handler(BaseHTTPRequestHandler):
             result = store.update_memory_text(mid, text)
         self._json(200 if result.get("ok") else 400, result)
 
+    def _set_thread_status(self) -> None:
+        """手动改 L3 状态：open / dormant / closed / standalone。"""
+        body = self._body()
+        try:
+            mid = int(body.get("id") or 0)
+        except Exception:
+            mid = 0
+        status = str(body.get("status") or "").strip().lower()
+        if not mid:
+            self._json(400, {"ok": False, "error": "id required"})
+            return
+        if status not in ("open", "dormant", "closed", "standalone"):
+            self._json(400, {"ok": False, "error": "bad status"})
+            return
+        ok = store.set_thread_status(mid, status)
+        self._json(200 if ok else 400, {"ok": ok, "id": mid, "status": status})
+
     def _close_thread(self) -> None:
         body = self._body()
         try:

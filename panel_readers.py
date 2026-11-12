@@ -604,6 +604,20 @@ def notebook_payload() -> dict:
     }
 
 
+def set_thread_status(thread_id, status: str) -> dict:
+    """面板手动改 L3 状态。"""
+    try:
+        mid = int(thread_id)
+    except Exception:
+        return {"ok": False, "error": "invalid id"}
+    if mid <= 0:
+        return {"ok": False, "error": "invalid id"}
+    st = str(status or "").strip().lower()
+    if st not in ("open", "dormant", "closed", "standalone"):
+        return {"ok": False, "error": "状态只能是 open/dormant/closed/standalone"}
+    return cmem_post("/threads/status", {"id": mid, "status": st})
+
+
 def close_thread(thread_id) -> dict:
     try:
         mid = int(thread_id)

@@ -917,6 +917,21 @@ class MemoryStore:
             })
         return out
 
+    def set_thread_status(self, mem_id: int, status: str) -> bool:
+        """手动改一条 L3 的状态。只在这几个值里选，不接受乱填。"""
+        st = str(status or "").strip().lower()
+        if st not in ("open", "dormant", "closed", "standalone"):
+            return False
+        now = time.time()
+        closed = now if st == "closed" else None
+        cur = self.conn.execute(
+            "UPDATE memory SET thread_status=?, thread_closed_at=?, updated_at=? "
+            "WHERE id=? AND tier='L3'",
+            (st, closed, now, int(mem_id)),
+        )
+        self.conn.commit()
+        return bool(cur.rowcount)
+
     def close_thread(self, mem_id: int) -> bool:
         """手动结束一条 open L3；不删除。"""
         now = time.time()
