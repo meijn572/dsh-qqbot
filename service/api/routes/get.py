@@ -143,22 +143,6 @@ def handle_get(handler, path: str, query: dict, store) -> bool:
                 ]
             except Exception:
                 st["open_threads"] = []
-            # 词库已经统一到 lexicon：slang 表已退役，直接读统一词库
-            try:
-                # 词库统一在 lexicon.json（qqbot 侧维护），这里只读文件
-                import json as _json
-                lx_path = Path.home() / ".dsh-qqbot" / "lexicon.json"
-                data = _json.loads(lx_path.read_text(encoding="utf-8"))
-                entries = data.get("entries")
-                if not isinstance(entries, list):
-                    entries = []
-                entries = [x for x in entries
-                           if isinstance(x, dict) and str(x.get("meaning") or "").strip()]
-                st["slang_learned"] = entries[:6]
-                st["slang_pending"] = []
-            except Exception:
-                st["slang_learned"] = []
-                st["slang_pending"] = []
             hour = None
             try:
                 raw_hour = (query.get("hour") or [None])[0]
@@ -170,7 +154,6 @@ def handle_get(handler, path: str, query: dict, store) -> bool:
             fetch_weather = str((query.get("weather") or ["0"])[0]).lower() in ("1", "true", "yes")
             st["weather"] = store.current_weather(fetch=fetch_weather)
             try:
-                st["slang"] = store.slang_list(8)
                 st["affinity"] = store.affinity_get("owner")
                 st["open_tasks"] = len([x for x in store.task_list(include_done=False)])
                 st["seen_liked"] = store.seen_liked()

@@ -1411,3 +1411,46 @@ state.mjs 的「你会跟着主人说的词」 现在真的有内容了
 network-memes.json.bak-20261112-201618
 group-slang.bak-20261112-201618
 ```
+
+### 词表注入删除（2026-11-12 深夜）
+
+删掉 state.mjs 第 6.5 节的两段：
+
+```text
+「你会跟着主人说的词」      和 bridge 的消息匹配注入重叠，
+                            而且是整份清单，容易诱发「为了用而用」
+「这些词主人说了好几次还没懂」 数据源是 slang 表，表 0 条，
+                            从来没触发过，以后也不会
+```
+
+删完后词库的完整闭环：
+
+```text
+写     bridge 每天 7 点 lexicon_review_loop（从 L0 抽词）
+       learn_word 工具（她主动学）
+读     bridge 每条消息匹配，命中才注入「群里常用说法：X→Y」
+       lexicon_search 工具（她主动查）
+看     面板 /api/lexicon、/api/groupslang
+```
+
+整份词表注入不在这个闭环里的任何一环，删了无损失。
+
+### 顺带统一的
+
+```text
+/state          不再返回 slang / slang_learned / slang_pending
+/state 的 slang_learned  改读 lexicon.json（原来是空表）
+面板 groupslang_payload   改读 lexicon（原来读 /slang 接口的空表）
+```
+
+### 关于 slang_pending 和 ask_him 的关系
+
+它们不是重复：
+
+```text
+ask_him        她当下想问的一句，从具体对话里长出来的
+slang_pending  按词频统计推出来的「见了 6 次还没懂」
+```
+
+前者是内容，后者是统计。删它的真实原因是**数据源一直是空的**，
+不是和 ask_him 重复。以后真要做词频统计，这是另一条线。

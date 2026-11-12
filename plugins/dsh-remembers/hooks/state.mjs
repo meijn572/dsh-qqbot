@@ -77,36 +77,6 @@ export function renderState(state, prev, proactive, thinkCn) {
     }
   }
 
-  // ---------- 6.5 学到的词 / 还没搞懂意思的词 ----------
-  // 以前只有 recordSlang 在写，提示词里从不读 —— 攒了一堆词她一个没学会。
-  // 现在两头都接上：会说的自然带出来，不懂的自己找机会问。
-  {
-    const learned = (Array.isArray(state.slang_learned) ? state.slang_learned : [])
-      .filter((s) => s && s.phrase && String(s.meaning || "").trim());
-    const pending = Array.isArray(state.slang_pending) ? state.slang_pending : [];
-    if (learned.length) {
-      const words = learned.slice(0, 4)
-        .map((s) => `${s.phrase}（${String(s.meaning).slice(0, 24)}）`)
-        .join("；");
-      const lh = hash("learned:" + learned.map((s) => s.phrase).join(","));
-      if (hashes.slangLearned !== lh) {
-        hashes.slangLearned = lh;
-        blocks.push("【你会跟着主人说的词】" + words
-          + "。用的时候要合场合，别为了用而硬塞。");
-      }
-    }
-    if (pending.length) {
-      const names = pending.slice(0, 3).map((s) => `${s.phrase}×${s.count}`).join("、");
-      const ph = hash("pending:" + pending.map((s) => s.phrase).join(","));
-      if (hashes.slangPending !== ph) {
-        hashes.slangPending = ph;
-        blocks.push("【这些词主人说了好几次，你还没搞懂意思】" + names
-          + "。想问就找个自然的时机问一句；搞懂了用 learn_word 把意思记进词库"
-          + "（必须带 meaning，不然不算学会）。");
-      }
-    }
-  }
-
   // ---------- 7. 关系状态（变了才加） ----------
   const rel = state.relationship || {};
   if (rel.summary) {

@@ -66,11 +66,8 @@ def groupslang_payload() -> dict:
             last = str(json.loads(state_path.read_text(encoding="utf-8")).get("date") or "")
         except Exception:  # noqa: BLE001
             last = ""
-    learned = cmem_get("/slang") or []
-    learned = [
-        item for item in learned
-        if str(item.get("meaning") or "").strip() or int(item.get("count") or 0) >= 2
-    ]
+    # 词库统一在 lexicon（slang 表已退役），这里读统一源
+    learned = [x for x in list_lexicon_entries() if str(x.get("meaning") or "").strip()]
     return {"groups": groups, "logs": logs, "last_extract": last, "service_slang": learned}
 
 
