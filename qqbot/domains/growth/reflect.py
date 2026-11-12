@@ -46,7 +46,8 @@ async def run(turn: Turn) -> bool:
     except Exception:  # noqa: BLE001
         diary_block = ""
     prompt = (
-        "（内部维护，不要回复用户）你写「我对我自己的理解」，不是规则，不是主人画像。\n\n"
+        "（内部维护，不要回复用户）你在写最近的日记：这两天你有什么变化、有什么还没想清。\n"
+        "不是规则，不是主人画像，也不是流水账。\n\n"
         + (persona_text or "（空）") + "\n\n"
         + "【最近对话】\n" + (recent or "（最近没聊什么）") + "\n\n"
         + (("【最近几天的日记】\n" + diary_block + "\n\n") if diary_block else "")
