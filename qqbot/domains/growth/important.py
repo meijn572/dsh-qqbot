@@ -54,13 +54,17 @@ async def check_once(turn: Turn) -> str:
     l1_lines = []
     l3_lines = []
     for item in items:
-        text = str(item.get("text") or "").strip().replace("\n", " ")
-        if not text:
-            continue
+        # 服务端已渲染好一行（带标签和 id），这里只管截断
+        line = str(item.get("line") or "").strip()
+        if not line:
+            text = str(item.get("text") or "").strip().replace("\n", " ")
+            if not text:
+                continue
+            line = text
         if str(item.get("tier")) == "L1":
-            l1_lines.append(text[:240])
+            l1_lines.append(line[:280])
         elif str(item.get("tier")) == "L3":
-            l3_lines.append(text[:400])
+            l3_lines.append(line[:440])
     raw_l0 = [str(x.get("text") or "").strip().replace("\n", " ") for x in (ev.get("l0") or [])]
     raw_l0 = [x[:400] for x in raw_l0 if x]
     if not l1_lines and not l3_lines and not raw_l0:

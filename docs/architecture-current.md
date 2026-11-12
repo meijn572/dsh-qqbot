@@ -1841,3 +1841,65 @@ ask_him   留着。它现在只在对话里注入，不参与选材。
 会不会又收敛到同一主题。跑几天看 L3 的 topic 分布。
 如果还是收敛，加一个「和上一轮 topic 重合就 log」的观察点。
 ```
+
+### 复盘流程的适配（2026-11-13 凌晨）
+
+盘了一遍四个复盘 + 一个重要事件检查，改了四处。
+
+#### 1. persona/context 原来有第二套渲染
+
+`service/persona/context.py` 自己拼：
+
+```python
+parts = [("核心设定", constitution), ("我眼中的主人", user_profile)]
+text = "\n\n".join(f"【{name}】\n{c}" ...)
+```
+
+和 `render.render_persona()` 不是一套。后果：
+
+```text
+persona.text    1792 字，L3 标记已抹
+persona/context  970 字，L3 标记还在   ← 四个复盘读的是这个
+```
+
+改成走 `render_persona()`，带 `keep_links` 参数：
+
+```text
+keep_links=True   复盘用，保留 【L3:123】 溯源
+keep_links=False  日常注入用，抹掉标记
+```
+
+#### 2. important.py 自己拼证据
+
+```python
+text = str(item.get("text") or "").strip().replace("\n", " ")
+if tier == "L1": l1_lines.append(text[:240])
+```
+
+两份重复逻辑，也没用服务端的 `line`。改成优先用 `line`。
+
+#### 3. review 的 source 说明
+
+```text
+改前  输入里 [L3:123] 那个数字
+改后  输入里「记得的事（123）」括号里那个数字
+```
+
+#### 4. evidence.py 的兜底保留
+
+`format_block` 优先用 `line`，拿不到才自己拼 —— 兼容旧调用。
+
+#### 仍然是独立的
+
+```text
+diary.py:45     判断「今天写过没」，读原始字段，不需要渲染
+review.py:50    解析提案 JSON 的 text 字段，不是记忆条目
+```
+
+#### 复盘现在的输入链路
+
+```text
+人格        persona_context()  → /persona/context → render_persona(keep_links=True)
+记忆证据    collect()          → /context/evidence → item['line']
+日记        diary_recent()     → /diary          → row['line']
+```
