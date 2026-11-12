@@ -382,6 +382,16 @@ class Handler(BaseHTTPRequestHandler):
     def _context(self) -> None:
         self._json(200, build_context(store, self._body(), embedder))
 
+    def _context_batches(self) -> None:
+        """按空闲间隔切批次取最近几段对话：会话重建后接着聊用。"""
+        from memory.context import recent_batches
+        body = self._body()
+        if not body.get("idle_seconds"):
+            # 跟批处理用同一个切分标准，这样「上一批」就是真的上一批
+            cfg = _load_config()
+            body["idle_seconds"] = float(cfg.get("segment_idle_seconds", 300))
+        self._json(200, recent_batches(store, body))
+
     def _hook_pre_step(self) -> None:
         self._json(200, hook_pre_step(store, embedder, self._body()))
 

@@ -117,6 +117,7 @@ from qqbot.domains.autonomy import round as autonomy_round
 from qqbot.clients.memory import (
     cmem_call,
     l0_recent as l0_recent_text,
+    recent_batches as recent_dialogue_batches,
     long_term_memory as long_term_memory_text,
     persona_context as full_persona_text,
     recent_dialogue as recent_dialogue_text,
@@ -1110,17 +1111,44 @@ async def _process_locked(dsh: Dsh, onebot: OneBot, mtype: str, target: int, cha
         log.info("new dsh session %s for %s", sid, chat_key)
     try:
         prompt_started = time.time()
-        try:
-            proj = await dsh.projections(sid)
-        except RuntimeError as exc:
-            # DSH 重启后旧会话的 projection 可能读不出来；自动换新会话，别让用户看到“卡了”
-            if "Session projection" not in str(exc):
-                raise
-            log.warning("会话投影损坏，切换新会话 (%s): %s", chat_key, exc)
+        proj = None
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                proj = await dsh.projections(sid)
+                break
+            except RuntimeError as exc:
+                # DSH 重启后旧会话的 projection 可能读不出来。
+                # 这里很可能是一次偶发读失败 —— 先退一步重试，别一次就丢掉整个会话。
+                if "Session projection" not in str(exc):
+                    raise
+                last_exc = exc
+                if attempt < 2:
+                    log.warning("会话投影读取失败（第 %s 次），稍后重试 (%s)",
+                                attempt + 1, chat_key)
+                    await asyncio.sleep(1.0)
+        if proj is None:
+            log.warning("会话投影连续读不出，切换新会话 (%s): %s", chat_key, last_exc)
             sid = await dsh.create_session()
-            set_state(chat_key, sid, 0)
+            set_state(chat_key, sid, 0, ph=ph)
             proj = await dsh.projections(sid)
             log.info("new dsh session %s for %s (recovered)", sid, chat_key)
+            # 新会话是空的，她不该从零开始：把刚聊过的几段捞回来
+            try:
+                prior = await recent_dialogue_batches(chat_key, batches=2)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("取最近对话失败：%s", exc)
+                prior = ""
+            if prior:
+                await dsh.prompt(
+                    sid,
+                    "（会话重建，前面的对话记录没了。以下是你们刚聊过的原话，"
+                    "按时间从早到晚。接着聊就行，不要提「重建」这件事。）\n\n"
+                    + prior,
+                )
+                await dsh.wait_reply(sid, int(proj.get("asOfSeq") or 0))
+                proj = await dsh.projections(sid)
+                log.info("会话重建后回灌了最近对话：%s 字", len(prior))
         await dsh.ensure_title(sid, f"qqbot:{chat_key}")
         baseline = int(proj.get("asOfSeq") or 0)
         extras: list[str] = []

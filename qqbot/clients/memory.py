@@ -161,6 +161,21 @@ async def l0_recent(chat_key: str, limit: int = 80) -> str:
     return str(data.get("text") or "")
 
 
+async def recent_batches(chat_key: str, batches: int = 2, idle_seconds: int = 300,
+                         max_chars: int = 8000) -> str:
+    """按空闲间隔切好的最近几段对话；会话重建后接着聊用。
+
+    不按会话 id 过滤 —— 重建后新会话里没有旧消息，得从记忆里捞。
+    """
+    data = await cmem_call("POST", "/context/batches", {
+        "scope": chat_key,
+        "batches": max(1, int(batches)),
+        "idle_seconds": max(60, int(idle_seconds)),
+        "max_chars": max_chars,
+    })
+    return str(data.get("text") or "")
+
+
 async def recent_dialogue(limit: int = 80) -> str:
     return await l0_recent(OWNER_CHAT_KEY, limit)
 

@@ -118,3 +118,63 @@ def build_context(store, body: dict, embedder) -> dict:
     )
     text = header + "\n" + "\n".join(lines)
     return {"ok": True, "text": text[:max_chars], "count": len(lines), "counts": counts}
+
+
+def recent_batches(store, body: dict) -> dict:
+    """按空闲间隔把 L0 切成对话批次，取最近几批。
+
+    会话重建后要接着聊，按「批」取比按条数取更像一段完整的对话：
+    中间隔了五分钟以上的自然分成两段。
+    """
+    scope = str(body.get("scope") or "")
+    idle = max(60.0, min(3600.0, float(body.get("idle_seconds") or 300)))
+    want = max(1, min(6, int(body.get("batches") or 2)))
+    limit = max(1, min(600, int(body.get("limit") or 300)))
+    max_chars = max(500, min(30000, int(body.get("max_chars") or 8000)))
+
+    sql = ("SELECT id,text,ts FROM memory WHERE tier='L0' "
+           "AND tags NOT LIKE '%\"bili\"%'")
+    args: list = []
+    if scope:
+        sql += " AND (scope=? OR scope='global')"
+        args.append(scope)
+    sql += " ORDER BY ts DESC LIMIT ?"
+    args.append(limit)
+    try:
+        rows = store.conn.execute(sql, args).fetchall()
+    except Exception:  # noqa: BLE001
+        rows = []
+
+    batches: list[list] = []
+    cur: list = []
+    prev_ts = None
+    for row in rows:
+        ts = float(row["ts"] or 0)
+        if prev_ts is not None and prev_ts - ts > idle:
+            if cur:
+                batches.append(cur)
+            cur = []
+            if len(batches) >= want:
+                break
+        cur.append(row)
+        prev_ts = ts
+    if cur and len(batches) < want:
+        batches.append(cur)
+
+    blocks = []
+    for batch in reversed(batches):          # 旧的在前
+        lines = []
+        for row in reversed(batch):
+            text = str(row["text"] or "").strip()
+            if not text:
+                continue
+            stamp = time.strftime("%m-%d %H:%M", time.localtime(float(row["ts"] or 0)))
+            lines.append(f"[{stamp}] {text}")
+        if lines:
+            blocks.append("\n".join(lines))
+    return {
+        "ok": True,
+        "text": "\n\n".join(blocks)[:max_chars],
+        "batches": len(batches),
+        "count": sum(len(b) for b in batches),
+    }

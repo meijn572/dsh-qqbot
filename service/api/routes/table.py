@@ -7,6 +7,7 @@ POST_ROUTES = {
     "/ingest": "_ingest",
     "/context": "_context",
     "/context/evidence": "_context_evidence",
+    "/context/batches": "_context_batches",
     "/search": "_search",
     "/consolidate": "_consolidate",
     "/import": "_import",
