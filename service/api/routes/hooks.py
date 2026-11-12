@@ -123,6 +123,13 @@ def evidence(store, body: dict) -> dict:
             elif tier == "L3":
                 l3_rows.append(item)
 
+    # 每条附上渲染好的行：消费方不用自己拼标签
+    from render import render_memory_line
+    for item in items:
+        item["line"] = render_memory_line(item, with_id=True, with_time=False)
+        # 另给一条纯 id 标识，复盘要按编号引用
+        item["ref"] = f"{item['tier']}:{item['id']}"
+
     # L3 的 source_ids 可能直接是 L0，也可能指向 L1；两种都处理
     src_ids = {sid for item in l3_rows for sid in item["source_ids"]}
     l0_ids: set[int] = set()

@@ -21,17 +21,18 @@ def format_block(ev: dict, l1_chars: int = 240, l3_chars: int = 400, l0_chars: i
     l1_lines = []
     l3_lines = []
     for item in items:
-        text = str(item.get("text") or "").strip().replace("\n", " ")
-        if not text:
-            continue
+        # 服务端已经渲染好一行（带标签和 id），这里只管截断和分组
+        line = str(item.get("line") or "").strip()
+        if not line:
+            text = str(item.get("text") or "").strip().replace("\n", " ")
+            if not text:
+                continue
+            line = f"[{item.get('tier')}] {text}"
         tier = str(item.get("tier"))
-        # 带上 id：复盘要能给回 source，人格条目才能指回具体事件
-        mid = item.get("id")
-        tag = f"[{tier}:{mid}]" if mid else f"[{tier}]"
         if tier == "L1":
-            l1_lines.append(f"{tag} {text[:l1_chars]}")
+            l1_lines.append(line[:l1_chars + 40])
         elif tier == "L3":
-            l3_lines.append(f"{tag} {text[:l3_chars]}")
+            l3_lines.append(line[:l3_chars + 40])
 
     l0_lines = []
     seen = set()

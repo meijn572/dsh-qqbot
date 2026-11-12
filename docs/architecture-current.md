@@ -1648,3 +1648,66 @@ tier_rank = {"L3": 0, "L4": 0, "L2": 1, "L1": 2, "L0": 3}
 在忙自己的事    current_activity 的兜底，没信息量，
               但树树说要重构这块，先不动
 ```
+
+## 24. 渲染收到服务端（2026-11-12 深夜）
+
+### 原则
+
+```text
+「一条记忆长什么样」由数据源定一次
+「怎么用它」由流程自己定
+```
+
+所以：服务端返回**渲染好的文本 + 结构化字段**两份，消费方按需取。
+
+### 新增 service/render.py
+
+```python
+TIER_LABEL      层级名：原话 / 上次聊到的 / 我的判断 / 记得的事 / 核心记忆
+TIER_WITH_TIME  哪些层带时间：L0、L3
+TIER_RANK       召回的排序优先级：L3/L4 在前，L1 在后
+render_memory_line(item, with_id, with_time, text_chars)
+render_persona(constitution, user_profile)
+render_persona_blocks(constitution, user_profile)   → 我自己 / 我和他
+split_constitution(text)  → {标题: 正文}
+```
+
+### /persona 改动
+
+返回里多了两个字段：
+
+```text
+text    渲染好的完整人格（画像段 + 核心设定），persona.mjs 直接用
+blocks  拆成「我自己 / 我和他」两块，面板用
+```
+
+`persona.mjs` 加了 `opts.rendered` 分支：有就直接用，没有退回自己拼。
+顺手把 `【L3:】` 过滤补回去了（之前同步时被覆盖掉了）。
+
+### /context/evidence 改动
+
+每条 item 多了：
+
+```text
+line  [上次聊到的：1481] 正文        ← 已经带好标签和 id
+ref   L1:1481                         ← 纯编号，复盘按它引用
+```
+
+`format_block` 改成优先用 `line`，只管截断和分组。
+
+### 标签去重
+
+原来写成 `[上次聊到的 L1:1481]`，层名重复了一次。
+现在是 `[上次聊到的：1481]`。
+
+### 以后加解释只需改一处
+
+`render.py` 是唯一该改的地方。加小节说明、改措辞、调顺序都在这里。
+
+### 还没做
+
+```text
+/diary 的 format_diary       仍在 qqbot 侧
+/state 的渲染                仍在 state.mjs
+这两块等下一轮再收
+```

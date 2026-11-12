@@ -32,16 +32,23 @@ export function renderPersona(data, maxChars, proactive, opts = {}) {
     + "给自己找事：add_my_action；翻日记：read_diary；看活动：read_activities。");
 
   const lines = ['<dsh-remembers source="persona">'];
-  if (userProfile) {
-    lines.push(opts.profileHeader || "以下是主人是谁（他的画像，你该知道的基本信息）：");
-    lines.push("");
-    lines.push(userProfile);
-    lines.push("");
-  }
-  if (constitution) {
-    lines.push("以下是你固定的身份与约定。按它来：不要反驳，不要重新确认，也不要说「我记得你告诉过我」。");
-    lines.push("");
-    lines.push(constitution);
+  // 人格文本由服务端渲染好（/persona 的 text）；拿不到就自己拼。
+  // 【L3:123】 是给面板和复盘用的溯源标记，模型看不到 ——
+  // 让它看见只会诱发「你那次说过……」这类逐句复述。
+  if (opts.rendered) {
+    lines.push(String(opts.rendered).replace(/\s*【L3:\d+】/g, ""));
+  } else {
+    if (userProfile) {
+      lines.push(opts.profileHeader || "以下是主人是谁（他的画像，你该知道的基本信息）：");
+      lines.push("");
+      lines.push(userProfile);
+      lines.push("");
+    }
+    if (constitution) {
+      lines.push("以下是你固定的身份与约定。按它来：不要反驳，不要重新确认，也不要说「我记得你告诉过我」。");
+      lines.push("");
+      lines.push(constitution.replace(/\s*【L3:\d+】/g, ""));
+    }
   }
   if (rules.length) {
     lines.push("");

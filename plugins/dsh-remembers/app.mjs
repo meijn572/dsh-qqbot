@@ -827,6 +827,8 @@ const soft = (key) => {
     }
 
     return renderPersona(data, maxChars, proactive, {
+      // 服务端已经把人格文本渲染好了（含画像段），直接用
+      rendered: String(data?.text || ""),
       profileText: persona.ownerManual,
       profileHeader: "以下是主人是谁（他的画像，你该知道的基本信息）：",
     });
