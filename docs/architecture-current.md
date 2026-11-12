@@ -1264,3 +1264,65 @@ L0 的价值是溯源原话，那是 review（判断人格条目正不成立）�
 预计省约 6000 token / 次（当前约 1.9 万）。
 
 等树树说改再动手。
+
+## 20. 感悟并进 L3 正文（2026-11-12）
+
+### 改了什么
+
+```text
+L3 正文    = 事件叙述 + 最后一句感悟
+insight_target  保留（me / us / none），只做筛选标签
+insight_text    删除
+insight_history 删除（27 条历史数据本来就没消费者）
+```
+
+数据：43 条有感悟的 L3 已把感悟并到正文末尾，备份在
+`memories.db.bak-insight-merge-20261112-194954`。
+
+### 为什么这么改
+
+感悟本来就是从同一段经历里得出的，单独存一列等于把一段经历拆成两个字段。
+合并后：
+- 一个文本字段承载全部内容，模型读到的是一条完整的经历
+- 一个标签字段管分类，复盘按 me/us 筛，效果和以前一样
+- 少一次重复输入：reflect 原来要单独查一遍感悟再拼一块
+
+### 提示词的关键约束
+
+合并的风险是正文只剩结论、事件细节丢失，那样 review 就没法判断了。
+所以 THREAD_SYSTEM 里写死了一条：
+
+```text
+summary 仍然是「重写后的当前状态」：保留仍成立的关键事实，
+压缩已解决的，把新进展写进去；事件细节不能丢，感悟是加在后面的。
+```
+
+### 消费者改动
+
+```text
+reflect        删 bili_insights 块（感悟已在 L3 正文里）
+style          同款块，本来查出来就是空
+关系复盘        查询从 insight_text!='' 改成 insight_target='us'，取 text
+bili_insights  查询条件从 insight_text!='' 改成 insight_target!=''
+add_bili_insight  删除（无调用方）
+update_thread  不再处理 insight_text / history
+```
+
+### 保留的兼容
+
+```text
+memory.insight_kind   38 条老数据的分类还在这儿，查询时兼容
+                      没迁到 insight_target，因为老 L3 的 me/us 已经标过了
+```
+
+### 对话出口仍然只有 text
+
+```text
+/context        SELECT id,text,ts              ← 感悟现在就在 text 里了，
+                                                  所以对话会看到它
+```
+
+这条要留意：感悟并进正文后，对话上下文里就会出现「规则透明这件事，
+出了校门就再没处买了」这类结论句。之前讨论过对话不该看结论，
+但合并之后结构上没法再分——除非在 text 里加分隔符区分。
+先观察，看会不会出现逐句复述。
