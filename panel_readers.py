@@ -702,9 +702,19 @@ def persona_payload() -> dict:
                   + [{"title": k, "body": parts.get(k, "")}
                      for k in OTHER_SECTIONS if parts.get(k)]),
     }
+    try:
+        rel = cmem_get("/state") or {}
+        rel = (rel.get("relationship") or {}) if isinstance(rel, dict) else {}
+    except Exception:  # noqa: BLE001
+        rel = {}
+    recent_relationship = {
+        "summary": str(rel.get("summary") or ""),
+        "updated_at": float(rel.get("updated_at") or 0),
+    }
     return {
         "text": text,
         "blocks": blocks,
+        "recent_relationship": recent_relationship,
         "role": "大肥鱼",
         "sections": {"identity": display, "style": "", "relationship": ""},
         "important": [],

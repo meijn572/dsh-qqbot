@@ -343,15 +343,22 @@ async function load(){
         <div style="margin-top:8px"><button onclick="saveCore()">保存</button> <button onclick="cancelCore()">取消</button> <span id="coreMsg" class="mut"></span></div>
         <div class="mut" style="margin-top:6px">「我和他」那几节也在这份文档里，保存会一起写回。</div>
       </div></div>`;
+    const otherOf=(t)=>(blk.other||[]).find(x=>x.title===t);
+    const rel=p.recent_relationship||{};
+    const relWhen=rel.updated_at?new Date(Number(rel.updated_at)*1000).toLocaleString('zh-CN',{hour12:false}):'';
     h+=`<div class="card"><div class="k">我和他</div>
-      ${secHtml((blk.other||[]).filter(x=>x.title!=='我眼中的他'))||'<div class="mut">（空）</div>'}
       <div class="section-title">我眼中的他 <button style="float:right" onclick="editPersonaField('user_profile')">编辑</button></div>
       <div id="profilePreview">${p.user_profile?mdToHtml(p.user_profile):'<div class="mut">（还没形成）</div>'}</div>
       <div id="profileEditWrap" hidden>
         <textarea id="profileText" style="width:100%;height:280px;background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.6">${esc(p.user_profile||'')}</textarea>
         <div style="margin-top:8px"><button onclick="savePersonaField('user_profile')">保存</button> <button onclick="cancelPersonaField('user_profile')">取消</button> <span id="profileMsg" class="mut"></span></div>
         <div class="mut" style="margin-top:6px">只改「我眼中的他」，不会动核心设定。</div>
-      </div></div>`;
+      </div>
+      ${secHtml([otherOf('我们怎么对彼此')].filter(Boolean))}
+      <div class="section-title">最近的关系 <span class="mut" style="font-weight:400">${esc(relWhen)}</span></div>
+      <div>${rel.summary?mdToHtml(rel.summary):'<div class="mut">（还没复盘）</div>'}</div>
+      ${secHtml([otherOf('我们之间有什么')].filter(Boolean))}
+    </div>`;
     const rv=await j('/api/review');
     if((rv.items||[]).length){
       h+=`<div class="card" style="border-color:#d29922"><div class="k">人格复盘 · ${rv.count} 条待确认</div>`;
