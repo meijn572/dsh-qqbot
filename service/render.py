@@ -24,6 +24,16 @@ TIER_LABEL = {
 # 哪些层带时间：原话和事件需要，便签和判断不需要
 TIER_WITH_TIME = ("L0", "L3")
 
+# 状态给人话。模型看到「open」这种词会当成变量名复述出来。
+# 只给「标题没说到」的状态加注。open 不加：那节标题已经写了「还没完的事」，
+# 每行再挂一次等于重复。这条清单也只收 open 的，其它状态本来就不该出现。
+STATUS_SPOKEN = {
+    "closed": "已经完了",
+    "dormant": "很久没提了",
+    "standalone": "",
+    "open": "",
+}
+
 # 召回时的优先级：L3 是事件级，比 L1 的细节更该先读到。
 # 截断是从尾部砍的，放前面才不会被优先砍掉。
 TIER_RANK = {"L3": 0, "L4": 0, "L2": 1, "L1": 2, "L0": 3}
@@ -51,9 +61,9 @@ def render_memory_line(item: dict, *, with_id: bool = False,
 
     label = tier_label(tier)
     if with_id and item.get("id"):
-        # 复盘要能指回具体条目。只挂数字，层名已经在 label 里了：
-        # 「上次聊到的：1481」而不是「上次聊到的 L1:1481」
-        label = f"{label}：{item['id']}"
+        # 复盘要能指回具体条目（source 字段要填这个数字）。
+        # 用括注而不是冒号，读起来像注解，不像编号：「上次聊到的（1481）」
+        label = f"{label}（{item['id']}）"
 
     use_time = tier in TIER_WITH_TIME if with_time is None else with_time
     if use_time and item.get("ts"):
@@ -92,11 +102,24 @@ def split_constitution(text: str) -> dict[str, str]:
     return out
 
 
+# 人格里的【L3:123】是溯源标记，给面板和复盘看。
+# 模型看到会诱发「你那次说过……」这类逐句复述，所以在渲染时抹掉。
+import re as _re
+_PERSONA_LINK = _re.compile(r"\s*【L3:\d+】")
+
+
+def strip_persona_links(text: str) -> str:
+    return _PERSONA_LINK.sub("", str(text or ""))
+
+
 def render_persona(constitution: str, user_profile: str = "") -> str:
     """人格渲染成给模型看的文本。
 
     结构由这里定，消费方不用再拼。
+    【L3:】 在这里就去掉，消费方不用各自过滤一遍。
     """
+    constitution = strip_persona_links(constitution)
+    user_profile = strip_persona_links(user_profile)
     parts: list[str] = []
     if str(user_profile or "").strip():
         parts.append("以下是主人是谁（他的画像，你该知道的基本信息）：\n\n"
@@ -183,7 +206,9 @@ def render_open_threads(threads: list[dict]) -> str:
         title = str(t.get("title") or "").strip()
         if not title:
             continue
-        lines.append(f"- {title} · {str(t.get('status') or 'open')}")
+        # 状态翻成人话，没状态或片段就只说事本身
+        note = STATUS_SPOKEN.get(str(t.get("status") or "").strip().lower(), "")
+        lines.append(f"- {title}（{note}）" if note else f"- {title}")
     return "【还没完的事】\n" + "\n".join(lines) if lines else ""
 
 

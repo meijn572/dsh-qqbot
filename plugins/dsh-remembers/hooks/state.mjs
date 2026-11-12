@@ -57,7 +57,7 @@ export function renderState(state, prev, proactive, thinkCn) {
   const threadLines = openThreads.slice(0, 8).map((t) => {
     const title = String(t.title || "").trim();
     if (!title) return "";
-    return `- ${title} · ${String(t.status || "open")}`;
+    return `- ${title}`;
   }).filter(Boolean);
   const threadHash = hash(threadLines.join("\n"));
   if (threadLines.length && hashes.threads !== threadHash) {
