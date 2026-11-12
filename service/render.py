@@ -119,3 +119,74 @@ def render_persona_blocks(constitution: str, user_profile: str = "") -> dict:
                   + [{"title": k, "body": parts.get(k, "")}
                      for k in OTHER_SECTIONS if parts.get(k)]),
     }
+
+# ---------------------------------------------------------------------------
+# 中间层（日记）
+# ---------------------------------------------------------------------------
+
+# 日记各段的标题。顺序固定：先当天，再变化，再没想清，最后关系
+DIARY_FIELDS = (
+    ("text", ""),
+    ("changes", "变化"),
+    ("open_questions", "还没想清"),
+    ("relationship", "那天的关系"),
+)
+
+
+def render_diary_row(row: dict) -> str:
+    """一天渲染成一块；没内容返回空串。"""
+    parts: list[str] = []
+    for key, title in DIARY_FIELDS:
+        body = str(row.get(key) or "").strip()
+        if not body:
+            continue
+        parts.append(f"{title}：\n{body}" if title else body)
+    if not parts:
+        return ""
+    return f"【{row.get('date') or ''}】\n" + "\n".join(parts)
+
+
+def render_diary(rows: list[dict]) -> str:
+    """多天拼一起，空行分隔。"""
+    blocks = [b for b in (render_diary_row(r) for r in (rows or [])) if b]
+    return "\n\n".join(blocks)
+
+# ---------------------------------------------------------------------------
+# 状态块
+# ---------------------------------------------------------------------------
+
+def render_time_block(ts, week=None) -> str:
+    """现在是 2026-11-12 周四 22:30（深夜）。"""
+    lt = time.localtime(ts)
+    hh = lt.tm_hour
+    weekdays = week or ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    date_str = time.strftime("%Y-%m-%d", lt) + f" {weekdays[lt.tm_wday]} {hh:02d}:{lt.tm_min:02d}"
+    phase = ("凌晨" if hh < 5 else "清早" if hh < 8 else "上午" if hh < 11
+             else "中午" if hh < 13 else "下午" if hh < 17
+             else "傍晚" if hh < 19 else "晚上" if hh < 22 else "深夜")
+    return f"现在是 {date_str}（{phase}）。"
+
+
+def render_sleepy_block(hour: int) -> str:
+    """按小时给困意提示；白天返回空串。"""
+    if hour >= 23 or hour < 6:
+        return "你现在困得眼睛都睁不开了，回话短一点、慢一点，别硬撑。"
+    if hour >= 21:
+        return "有点困了，说话懒一点。"
+    return ""
+
+
+def render_open_threads(threads: list[dict]) -> str:
+    """还没完的事：只给标题和状态。"""
+    lines = []
+    for t in (threads or [])[:8]:
+        title = str(t.get("title") or "").strip()
+        if not title:
+            continue
+        lines.append(f"- {title} · {str(t.get('status') or 'open')}")
+    return "【还没完的事】\n" + "\n".join(lines) if lines else ""
+
+
+def render_relationship(summary: str) -> str:
+    s = str(summary or "").strip()
+    return f"最近我们的关系：{s}" if s else ""

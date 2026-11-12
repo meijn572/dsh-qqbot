@@ -77,5 +77,13 @@ def simple_get(path: str, query: dict, store):
         limit = int((query.get("limit") or ["5"])[0])
         return store.outbound_recent(scope=scope, limit=limit)
     if path == "/diary":
-        return store.diary_list()
+        rows = store.diary_list()
+        # 渲染收到服务端：消费方拿 text 直接用，结构化字段仍保留
+        try:
+            from render import render_diary
+            for r in rows:
+                r["line"] = render_diary([r])
+        except Exception:  # noqa: BLE001
+            pass
+        return rows
     return None

@@ -1711,3 +1711,55 @@ ref   L1:1481                         ← 纯编号，复盘按它引用
 /state 的渲染                仍在 state.mjs
 这两块等下一轮再收
 ```
+
+### 渲染全部收到服务端（2026-11-13 凌晨）
+
+`service/render.py` 现在覆盖所有渲染场景：
+
+```text
+记忆条目    render_memory_line    [记得的事：1481] 正文
+人格        render_persona        画像段 + 核心设定
+人格分块    render_persona_blocks 我自己 / 我和他
+日记        render_diary_row       【日期】正文 + 变化 + 还没想清 + 那天的关系
+状态块      render_time_block      现在是 … （深夜）
+            render_sleepy_block    按小时给困意
+            render_open_threads    还没完的事
+            render_relationship    最近我们的关系
+```
+
+### 各接口的变化
+
+```text
+/persona          + text（完整人格）+ blocks（两块）
+/context/evidence + line（渲染好的行）+ ref（L1:1481）
+/diary            + line（每天一块）
+/state            + render{time, sleepy, open_threads, relationship, activity}
+```
+
+消费方全部改成「有就用，没有退回自己拼」：
+
+```text
+persona.mjs    opts.rendered 分支
+state.mjs      state.render 分支（4 个块）
+evidence.py    优先用 item.line
+memory.py      format_diary 优先用 row.line
+```
+
+### 这轮之后的分工
+
+```text
+服务端 render.py     「一条记忆 / 一天日记 / 一个状态块长什么样」
+消费方                「怎么用它」：拼 prompt 顺序、HTML、去重哈希
+```
+
+以后改措辞、加小节解释、调标签，只改 `render.py` 一处。
+
+### 验证
+
+```text
+/state.render 五个块都有内容
+/diary[0].line 渲染正确
+/persona.text 1792 字
+/context/evidence 每条带 line 和 ref
+60 个测试通过
+```

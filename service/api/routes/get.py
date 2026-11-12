@@ -151,6 +151,21 @@ def handle_get(handler, path: str, query: dict, store) -> bool:
             except Exception:
                 hour = None
             st["activity"] = store.current_activity(hour)
+            # 渲染收到服务端：各块文本由这里给，state.mjs 只管挑选和去重
+            try:
+                from render import (render_time_block, render_sleepy_block,
+                                    render_open_threads, render_relationship)
+                st["render"] = {
+                    "time": render_time_block(time.time()),
+                    "sleepy": render_sleepy_block(hour if hour is not None else time.localtime().tm_hour),
+                    "open_threads": render_open_threads(st.get("open_threads") or []),
+                    "relationship": render_relationship(
+                        str(((st.get("relationship") or {}).get("summary") or ""))),
+                    "activity": f"你在：{str(st.get('activity') or '').strip()}。"
+                                if str(st.get("activity") or "").strip() else "",
+                }
+            except Exception:  # noqa: BLE001
+                st["render"] = {}
             fetch_weather = str((query.get("weather") or ["0"])[0]).lower() in ("1", "true", "yes")
             st["weather"] = store.current_weather(fetch=fetch_weather)
             try:

@@ -41,11 +41,16 @@ export function renderState(state, prev, proactive, thinkCn) {
   const mi = String(now.getMinutes()).padStart(2, "0");
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${WK[now.getDay()]} ${hh}:${mi}`;
   const phase = hh < 5 ? "凌晨" : hh < 8 ? "清早" : hh < 11 ? "上午" : hh < 13 ? "中午" : hh < 17 ? "下午" : hh < 19 ? "傍晚" : hh < 22 ? "晚上" : "深夜";
-  blocks.push(`现在是 ${dateStr}（${phase}）。`);
+  // 状态块文本由服务端 render.py 给，拿不到才自己拼
+  const rnd = state.render || {};
+  blocks.push(rnd.time || `现在是 ${dateStr}（${phase}）。`);
 
   // ---------- 2. 困意（按档位变） ----------
-  if (hh >= 23 || hh < 6) blocks.push("你现在困得眼睛都睁不开了，回话短一点、慢一点，别硬撑。");
-  else if (hh >= 21) blocks.push("有点困了，说话懒一点。");
+  const sleepy = rnd.sleepy !== undefined
+    ? String(rnd.sleepy || "")
+    : (hh >= 23 || hh < 6 ? "你现在困得眼睛都睁不开了，回话短一点、慢一点，别硬撑。"
+       : hh >= 21 ? "有点困了，说话懒一点。" : "");
+  if (sleepy) blocks.push(sleepy);
 
   // ---------- 3.5 还没完的事（全部 open，只给标题和状态） ----------
   const openThreads = Array.isArray(state.open_threads) ? state.open_threads : [];
@@ -57,7 +62,7 @@ export function renderState(state, prev, proactive, thinkCn) {
   const threadHash = hash(threadLines.join("\n"));
   if (threadLines.length && hashes.threads !== threadHash) {
     hashes.threads = threadHash;
-    blocks.push("【还没完的事】\n" + threadLines.join("\n"));
+    blocks.push(rnd.open_threads || ("【还没完的事】\n" + threadLines.join("\n")));
   }
 
   // ---------- 3.6 小本子：每天轻轻提一句 ----------
@@ -80,7 +85,7 @@ export function renderState(state, prev, proactive, thinkCn) {
   // ---------- 7. 关系状态（变了才加） ----------
   const rel = state.relationship || {};
   if (rel.summary) {
-    const stText = `最近我们的关系：${rel.summary}`;
+    const stText = rnd.relationship || `最近我们的关系：${rel.summary}`;
     const stHash = hash(stText);
     if (hashes.stage !== stHash) {
       hashes.stage = stHash;

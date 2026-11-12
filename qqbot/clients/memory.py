@@ -89,22 +89,26 @@ async def diary_recent(days: int = 7) -> list[dict]:
 
 
 def format_diary(rows: list[dict]) -> str:
-    """把中间层渲染成给复盘看的文本；没内容返回空串。"""
+    """把中间层渲染成给复盘看的文本；没内容返回空串。
+
+    渲染规则在服务端 render.py，这里优先用 it['line']，
+    拿不到才退回自己拼（兼容旧数据）。
+    """
     blocks = []
-    for r in rows:
+    for r in rows or []:
+        line = str(r.get("line") or "").strip()
+        if line:
+            blocks.append(line)
+            continue
         parts = []
         text = str(r.get("text") or "").strip()
         if text:
             parts.append(text)
-        changes = str(r.get("changes") or "").strip()
-        if changes:
-            parts.append("变化：\n" + changes)
-        questions = str(r.get("open_questions") or "").strip()
-        if questions:
-            parts.append("还没想清：\n" + questions)
-        rel = str(r.get("relationship") or "").strip()
-        if rel:
-            parts.append("那天的关系：\n" + rel)
+        for key, title in (("changes", "变化"), ("open_questions", "还没想清"),
+                           ("relationship", "那天的关系")):
+            body = str(r.get(key) or "").strip()
+            if body:
+                parts.append(f"{title}：\n{body}")
         if parts:
             blocks.append(f"【{r.get('date')}】\n" + "\n".join(parts))
     return "\n\n".join(blocks)
