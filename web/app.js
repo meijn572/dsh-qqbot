@@ -410,7 +410,6 @@ async function load(){
       if(d.text) h+=`<div style="margin-top:3px">${esc(d.text)}</div>`;
       if(d.changes) h+=`<div class="mut" style="margin-top:4px">最近在变：${esc(d.changes)}</div>`;
       if(d.open_questions) h+=`<div class="mut" style="margin-top:4px">还没想清：${esc(d.open_questions)}</div>`;
-      if(d.tasks) h+=`<div class="mut" style="margin-top:4px">正在做：${esc(d.tasks)}</div>`;
       if(d.relationship) h+=`<div class="mut" style="margin-top:4px">那天的关系：${esc(d.relationship)}</div>`;
       h+='</div>';
     }

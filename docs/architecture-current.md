@@ -1173,3 +1173,36 @@ POST /persona/self  路由和处理函数删除，现在 404
 
 现在没有任何入口能写自我认知。`memory` 层的 store 方法 `set_self_model`
 还留着（测试在用），但没有调用方。
+
+### 新字段的输入输出补全（2026-11-12）
+
+审计结果：大部分字段两端都通了，两处漏的已补。
+
+```text
+ask_him      只有写没有读
+             → 新增 GET /ask-him（近 7 天、最多 2 条）
+             → bridge 私聊时拼进 payload：
+                （你自己留着没问的一句：xxx）
+             加轻标记是防止它被当成主人说过的话
+
+diary.tasks  只有面板显示，没有任何地方写
+             → 整个字段删掉（任务本来就在 tasks 表里，面板另有一块）
+             → schema / memory_core / 服务接口 / 前端 / 数据库列全部移除
+```
+
+其余字段两端都通：
+
+```text
+情绪三列    抽取写 → /emotion、/state、面板、日记读
+want_more   抽取写 → B站 选材优先取
+want_used   选材用掉时标 → 选材时过滤
+insight_target  L3 写 → 关系复盘、B站 感悟、面板读
+changes / open_questions  reflect 写 → 人格复盘、reflect 自己读
+relationship      关系复盘写 → 面板、主动说、复盘输入读
+```
+
+### ask_him 还留一个隐患
+
+现在每轮都会带最近 2 条，可能连续几轮重复同一句。
+要彻底解决得加一个 ask_used 标记（像 want_used 那样用一次就划掉），
+但那样她没问出口就作废了。先观察。

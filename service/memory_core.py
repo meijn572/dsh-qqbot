@@ -1741,7 +1741,7 @@ class MemoryStore:
     # -- 日记本：每天一篇 ------------------------------------------------------
 
     def diary_add(self, date: str, text: str, mood: str = "",
-                  changes: str = "", open_questions: str = "", tasks: str = "",
+                  changes: str = "", open_questions: str = "",
                   relationship: str = "") -> dict:
         """中间层：日记带几个附段，都是可空的。
 
@@ -1754,15 +1754,15 @@ class MemoryStore:
         row = self.conn.execute("SELECT date FROM diary WHERE date=?", (str(date),)).fetchone()
         if row is None:
             self.conn.execute(
-                "INSERT INTO diary(date, text, mood, changes, open_questions, tasks, relationship, created_at) "
-                "VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT INTO diary(date, text, mood, changes, open_questions, relationship, created_at) "
+                "VALUES (?,?,?,?,?,?,?)",
                 (str(date), str(text), str(mood), str(changes),
-                 str(open_questions), str(tasks), str(relationship), now),
+                 str(open_questions), str(relationship), now),
             )
         else:
             sets, args = [], []
             for col, val in (("text", text), ("mood", mood), ("changes", changes),
-                             ("open_questions", open_questions), ("tasks", tasks),
+                             ("open_questions", open_questions),
                              ("relationship", relationship)):
                 if val:
                     sets.append(f"{col}=?")
@@ -1773,12 +1773,12 @@ class MemoryStore:
                 self.conn.execute(f"UPDATE diary SET {', '.join(sets)} WHERE date=?", args)
         self.conn.commit()
         return {"date": date, "text": text, "mood": mood,
-                "changes": changes, "open_questions": open_questions, "tasks": tasks,
+                "changes": changes, "open_questions": open_questions,
                 "relationship": relationship}
 
     def diary_list(self, limit: int = 60) -> list[dict]:
         rows = self.conn.execute(
-            "SELECT date, text, mood, changes, open_questions, tasks, relationship, created_at "
+            "SELECT date, text, mood, changes, open_questions, relationship, created_at "
             "FROM diary ORDER BY date DESC LIMIT ?",
             (max(1, min(int(limit), 366)),),
         ).fetchall()
@@ -1786,7 +1786,7 @@ class MemoryStore:
 
     def diary_get(self, date: str) -> dict | None:
         r = self.conn.execute(
-            "SELECT date, text, mood, changes, open_questions, tasks, relationship, created_at "
+            "SELECT date, text, mood, changes, open_questions, relationship, created_at "
             "FROM diary WHERE date=?", (str(date),),
         ).fetchone()
         return self._diary_row(r) if r is not None else None
@@ -1797,7 +1797,7 @@ class MemoryStore:
             "date": r["date"], "text": r["text"], "mood": r["mood"],
             "changes": str(r["changes"] or ""),
             "open_questions": str(r["open_questions"] or ""),
-            "tasks": str(r["tasks"] or ""),
+
             "relationship": str(r["relationship"] or ""),
             "created_at": float(r["created_at"] or 0),
         }
@@ -1806,7 +1806,7 @@ class MemoryStore:
         """最近几天的中间层，按时间正序给复盘用。"""
         n = max(1, min(int(days), 60))
         rows = self.conn.execute(
-            "SELECT date, text, mood, changes, open_questions, tasks, relationship, created_at "
+            "SELECT date, text, mood, changes, open_questions, relationship, created_at "
             "FROM diary ORDER BY date DESC LIMIT ?", (n,),
         ).fetchall()
         return [self._diary_row(r) for r in reversed(rows)]

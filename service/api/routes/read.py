@@ -22,6 +22,21 @@ def simple_get(path: str, query: dict, store):
         limit = int((query.get("limit") or ["20"])[0])
         days = int((query.get("days") or ["90"])[0])
         return store.bili_insights(kind=kind, limit=limit, days=days)
+    if path == "/ask-him":
+        # 她自己留着没问出口的话：挑最近 7 天、没被用过的
+        days = int((query.get("days") or ["7"])[0])
+        limit = int((query.get("limit") or ["2"])[0])
+        since = time.time() - max(1, days) * 86400
+        rows = store.conn.execute(
+            "SELECT id,ts,ask_him,text FROM memory WHERE tier='L1' AND ask_him!='' AND ts>=? "
+            "ORDER BY ts DESC LIMIT ?",
+            (since, max(1, min(limit, 10))),
+        ).fetchall()
+        return [{
+            "id": int(r["id"]), "ts": float(r["ts"] or 0),
+            "ask": str(r["ask_him"] or ""), "text": str(r["text"] or ""),
+        } for r in rows]
+
     if path == "/emotion":
         # 情绪已并入 L1：这里读带情绪的 L1，接口形状保持不变
         days = int((query.get("days") or ["0"])[0])

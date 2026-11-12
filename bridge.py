@@ -1154,6 +1154,18 @@ async def _process_locked(dsh: Dsh, onebot: OneBot, mtype: str, target: int, cha
             extras.append(meme_hint)
         if mtype == "private":
             extras.append(SILENT_REPLY_RULE)
+            # 她之前留着没问出口的话：轻描淡写地放进去，
+            # 但要标明是「你自己想说的」，免得跟主人说过的话混了。
+            try:
+                import urllib.parse as _up
+                q = _up.urlencode({"days": 7, "limit": 2})
+                asks = await cmem_call("GET", "/ask-him?" + q)
+                asks = [x for x in (asks or []) if isinstance(x, dict) and str(x.get("ask") or "").strip()]
+            except Exception:  # noqa: BLE001
+                asks = []
+            if asks:
+                lines = [f"（你自己留着没问的一句：{str(x.get('ask')).strip()[:80]}）" for x in asks[:2]]
+                extras.append("\n".join(lines))
         payload = text
         if extras:
             payload = text + "\n[[bridge-note]]\n" + "\n".join(extras) + "\n[[/bridge-note]]"
