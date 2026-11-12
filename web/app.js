@@ -93,7 +93,7 @@ function renderMem(){
     const l2=it.type==='L2'?`<div class="mut" style="margin-top:3px">${it.confidence!=null?`置信 ${(Number(it.confidence)*100).toFixed(0)}%`:''}${it.expires_at?` · 过期 ${new Date(Number(it.expires_at)*1000).toLocaleDateString('zh-CN')}`:''}</div>`:'';
     const memo=it.type==='L3'?`<div class="mut" style="margin-top:3px">难忘 ${it.memorability!=null?(Number(it.memorability)*100).toFixed(0)+'%':'—'}${it.dominant&&it.dominant!=='none'?`（${esc(DOMINANT_LABEL[it.dominant]||it.dominant)}）`:''}${it.stability_days?(' · 稳定 '+Math.round(Number(it.stability_days))+' 天'):''}${it.recall_count?(' · 召回 '+it.recall_count+' 次'):''}${it.active_until&&Number(it.active_until)>Date.now()/1000?(' · 活跃至 '+fmtUntil(it.active_until)):''}</div>`:'';
     const ik=insightKindLabel(it.insight_target);
-    const insight=it.insight_text?`<div class="mut" style="margin-top:3px">感悟${ik?`（${esc(ik)}）`:''}：${esc(it.insight_text)}</div>`:'';
+    const insight=ik?`<div class="mut" style="margin-top:3px">感悟类型：${esc(ik)}</div>`:'';
     const emo=it.emotion_label?`<span class="badge" style="background:#1f6feb;color:#fff">${esc(it.emotion_label)}${it.emotion_valence!=null?` ${Number(it.emotion_valence).toFixed(1)}`:''}</span> `:'';
     const wants=it.want_more?`<div class="mut" style="margin-top:3px">想弄明白${it.want_used?'（已用）':''}：${esc(it.want_more)}</div>`:'';
     const asks=it.ask_him?`<div class="mut" style="margin-top:3px">想问：${esc(it.ask_him)}</div>`:'';

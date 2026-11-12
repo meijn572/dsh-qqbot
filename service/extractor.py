@@ -1275,7 +1275,7 @@ class Extractor:
                     f"- id={item.get('id')} [{item.get('status')}] {item.get('title')}"
                     f"（最后 {time.strftime('%m-%d %H:%M', time.localtime(float(item.get('last_seen_at') or 0)))}）\n"
                     f"  摘要：{str(item.get('summary') or '')[:300]}\n"
-                    f"  已有感悟：{str(item.get('insight_text') or '（无）')[:300]}"
+                    f"  已有正文：{str(item.get('summary') or item.get('text') or '（无）')[:300]}"
                 )
         else:
             blocks.append("【最近相关事件】\n（空）")

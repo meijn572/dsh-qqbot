@@ -1840,14 +1840,14 @@ class MemoryStore:
             return False
 
     def log_activity(self, kind: str, detail: str = "", thought: str = "",
-                     summary: str = "", insight: str = "", insight_kind: str = "") -> int | None:
+                     summary: str = "") -> int | None:
         """记一条活动。thought = 她当时的想法（可以空）。"""
         try:
             cur = self.conn.execute(
-                "INSERT INTO activity_log(ts, kind, detail, thought, summary, insight, insight_kind) "
-                "VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO activity_log(ts, kind, detail, thought, summary) "
+                "VALUES (?,?,?,?,?)",
                 (time.time(), str(kind), str(detail)[:300], str(thought)[:600],
-                 str(summary)[:1200], str(insight)[:1200], str(insight_kind)[:80]),
+                 str(summary)[:1200]),
             )
             self.conn.commit()
             return int(cur.lastrowid)

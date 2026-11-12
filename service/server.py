@@ -2471,16 +2471,12 @@ class Handler(BaseHTTPRequestHandler):
         """记一条活动日志（她真的做过什么）。"""
         body = self._body()
         kind = str(body.get("kind") or "other")
-        insight = str(body.get("insight") or "")
-        insight_kind = str(body.get("insight_kind") or "")
         with _lock:
             mid = store.log_activity(
                 kind,
                 str(body.get("detail") or ""),
                 str(body.get("thought") or ""),
                 summary=str(body.get("summary") or ""),
-                insight=insight,
-                insight_kind=insight_kind,
             )
         self._json(200, {"ok": True, "id": mid})
 
