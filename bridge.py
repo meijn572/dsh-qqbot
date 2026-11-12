@@ -2665,6 +2665,7 @@ async def run() -> None:
     asyncio.create_task(inject_watch(dsh, onebot))
     asyncio.create_task(group_proactive_loop(dsh, onebot))
     asyncio.create_task(style_review_loop(dsh))
+    asyncio.create_task(persona_reflect_loop(dsh))
     asyncio.create_task(persona_review_loop(dsh))
     asyncio.create_task(profile_refresh_loop(dsh))
     asyncio.create_task(qzone_loop(dsh, onebot))
