@@ -135,11 +135,6 @@ export class MemoryClient {
     return this.#request("POST", "/persona", body);
   }
 
-  /** 只写自我认知区。宪法区没有对应参数，服务端层面就改不了。 */
-  async setSelfModel(payload) {
-    return this.#request("POST", "/persona/self", typeof payload === "string" ? { text: payload } : payload);
-  }
-
   /**
    * 把一段对话压成一条 L3 事件记录（episode）。
    * 要调 LLM，所以超时给足；服务端没配 LLM 时返回 {ok:false,degraded}。

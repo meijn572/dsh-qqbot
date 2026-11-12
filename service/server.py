@@ -14,8 +14,7 @@
   POST /consolidate                 整理：按 text 完全重复合并（先给个保守版）
   GET  /persona                     人格设定：宪法区 + 自我认知区
   POST /persona                     设置页保存（两半都能写）
-  POST /persona/self                插件/AI 写入（只能写自我认知区，宪法区没有参数）
-  POST /episode                     旧路径：压一条 L3（当前由 /batch/run 取代）
+    POST /episode                     旧路径：压一条 L3（当前由 /batch/run 取代）
   POST /batch/run                   按会话段抽 L1 / 更新 L3
   POST /core/review                 每 3 天从 closed/standalone L3 提升 L4
   GET  /threads/open                还没完的事
@@ -520,27 +519,6 @@ class Handler(BaseHTTPRequestHandler):
         with _lock:
             data = store.set_state(**kwargs)
         self._json(200, data)
-
-    def _set_self_model(self) -> None:
-        """AI 写作入口：只能写自我认知区。
-
-        宪法区在这里改不了 —— 不是指望调用方自觉，是这个端点压根没有那个
-        参数。插件侧的 persona_update 工具打到这儿，坏掉的插件也只能改掉
-        半张卡。
-        """
-        body = self._body()
-        if body.get("sections") is not None:
-            text = render_self_sections(validate_self_sections(body.get("sections")))
-        else:
-            raw = body.get("text")
-            if raw is None:
-                raw = body.get("content")
-            text = str(raw or "")
-        if not text.strip():
-            raise ValueError("sections/text is required")
-        with _lock:
-            data = store.set_self_model(text)
-        self._json(200, self._persona_payload(data))
 
     def _set_important(self) -> None:
         """AI 写作入口：只能改「非常重要的事」这一段，别处仍然固定。"""

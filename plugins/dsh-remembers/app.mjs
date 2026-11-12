@@ -861,12 +861,6 @@ const soft = (key) => {
   void registerMemeToolsModule({ registerTool, log, endpoint: config.endpoint, memeDir: config.memeDir });
   // 与 dsh-bili-scroll 的 bili_run 重名，B站工具统一交给 bili-scroll
 
-  /**
-   * 自我认知写入工具。只打 /persona/self —— 宪法区在服务端根本没有那个参数，
-   * 所以哪怕这个工具被模型用歪了，也只能改掉半张卡。
-   */
-
-
 
   /** 扫用户发来的图并计数（fire-and-forget）。 */
 async function scanSeen() {

@@ -1160,3 +1160,16 @@ relationship_state 表留着不写
 人格 我们怎么对彼此    长期约定，很少改（改了会换会话）
 日记 relationship      每天的状态，天天变，不进人格
 ```
+
+### 自我认知彻底退场（2026-11-12）
+
+```text
+self_model 内容     清空（原 225 字备份在 persona-roles/state/self-model-before-clear-*.md）
+「工具坏了直接说」   并进「表现」
+「不确定先查」       本来就已经在「表现」里（不懂的会自己查资料…）
+POST /persona/self  路由和处理函数删除，现在 404
+插件 client.mjs     setSelfModel 删除；app.mjs 里那段注释删掉
+```
+
+现在没有任何入口能写自我认知。`memory` 层的 store 方法 `set_self_model`
+还留着（测试在用），但没有调用方。

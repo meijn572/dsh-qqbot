@@ -15,7 +15,6 @@ POST_ROUTES = {
     "/config": "_set_config",
     "/state": "_set_state",
     "/persona": "_set_persona",
-    "/persona/self": "_set_self_model",
     "/persona/important": "_set_important",
     "/extract": "_extract",
     "/memes": "_post_meme",
