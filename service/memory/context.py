@@ -80,7 +80,10 @@ def build_context(store, body: dict, embedder) -> dict:
             items.extend({"id": int(r["id"]), "tier": tier, "text": str(r["text"]), "ts": r["ts"]} for r in rows)
     if not items:
         return {"ok": True, "text": "", "count": 0, "counts": {}}
-    order = {t: i for i, t in enumerate(tiers)}
+    # L3 在前：它是事件级，比 L1 的细节更该先被读到；
+    # 6000 字截断是从尾部砍的，把 L1 放后面才不会被优先砍掉
+    tier_rank = {"L3": 0, "L4": 0, "L2": 1, "L1": 2, "L0": 3}
+    order = {t: tier_rank.get(t, 9) for t in tiers}
     if purpose == "recent":
         items.sort(key=lambda x: float(x["ts"] or 0))
     else:

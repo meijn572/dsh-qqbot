@@ -1134,24 +1134,39 @@ async def _process_locked(dsh: Dsh, onebot: OneBot, mtype: str, target: int, cha
         hint = history_hint() if should_hint(text) else ""
         if hint:
             extras.append(hint)
-        if chat_key.startswith("group:"):
-            gid = chat_key.split(":", 1)[1]
-            items = _matched_slang(load_slang(gid), text)
-            if items:
-                slang = "；".join(f"{i.get('term')}→{i.get('meaning') or '（未记）'}" for i in items)
-                extras.append("（群里常用说法：" + slang[:400] + "。自然理解，别硬套、别解释。）")
-        elif mtype == "private" and (CONFIG.get("allowed_groups") or []):
-            gid = str((CONFIG.get("allowed_groups") or [])[0])
-            items = _matched_slang(load_slang(gid), text, limit=6)
-            if items:
-                slang = "；".join(f"{i.get('term')}→{i.get('meaning') or '（未记）'}" for i in items)
-                extras.append("（你和主人在群里学到的说法：" + slang[:300] + "。跟主人私聊时也可以自然用，别解释、别硬套。）")
+        # 词库匹配：统一一次，群黑话/网络梗不再各自一套。
+        # 按「消息里出现的词」匹配，不是整句子串查表。
+        try:
+            entries = lexicon_store.list_entries()
+            hit = []
+            for e in entries:
+                names = [str(e.get("term") or "").strip()]
+                names += [str(a).strip() for a in (e.get("aliases") or [])]
+                if any(n and len(n) >= 2 and n in text for n in names):
+                    hit.append(e)
+                if len(hit) >= 6:
+                    break
+        except Exception:  # noqa: BLE001
+            hit = []
+        if hit:
+            kind_label = {"slang": "黑话", "meme": "梗", "buzzword": "热词",
+                          "fandom": "圈内", "abbreviation": "缩写",
+                          "emoji": "表情", "event": "事件"}
+            bits = []
+            for i in hit[:6]:
+                term = str(i.get("term") or "").strip()
+                if not term:
+                    continue
+                meaning = str(i.get("meaning") or "").strip()[:40]
+                k = kind_label.get(str(i.get("kind") or ""), "")
+                bits.append(f"{term}【{k}】{meaning}" if k else f"{term}→{meaning}")
+            if bits:
+                where = "群里" if chat_key.startswith("group:") else "你和他在群里学到的"
+                extras.append("（" + where + "常用说法：" + "；".join(bits)[:450]
+                              + "。自然理解，别硬套、别解释。）")
         link_hint = await bili_link_hint(text)
         if link_hint:
             extras.append(link_hint)
-        meme_hint = network_meme_hint(text)
-        if meme_hint:
-            extras.append(meme_hint)
         if mtype == "private":
             extras.append(SILENT_REPLY_RULE)
             # 她之前留着没问出口的话：轻描淡写地放进去，

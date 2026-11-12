@@ -80,7 +80,7 @@ export function renderState(state, prev, proactive, thinkCn) {
   // ---------- 7. 关系状态（变了才加） ----------
   const rel = state.relationship || {};
   if (rel.summary) {
-    const stText = `我对我们关系的判断：${rel.summary}`;
+    const stText = `最近我们的关系：${rel.summary}`;
     const stHash = hash(stText);
     if (hashes.stage !== stHash) {
       hashes.stage = stHash;
