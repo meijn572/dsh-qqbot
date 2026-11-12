@@ -11,11 +11,8 @@ from dataclasses import dataclass
 from typing import Awaitable, Callable
 
 from qqbot.domains.autonomy.bili import (
-    apply_interest,
     compose_share_text,
-    decay_interests,
     fetch_bili_feed,
-    pick_topic,
 )
 from qqbot.domains.autonomy.state import (
     AUT_REPORT_DIR,
@@ -23,12 +20,8 @@ from qqbot.domains.autonomy.state import (
     autonomy_cfg,
     load_aut_seen,
     load_aut_state,
-    load_interests,
     mark_aut_seen,
     save_aut_state,
-    similar_topic,
-    mark_want_used,
-    pending_want_more,
 )
 
 log = logging.getLogger("qqbot.autonomy.round")
@@ -50,6 +43,8 @@ class Deps:
     send_private: Callable[[int, str], Awaitable[None]]
     lock: asyncio.Lock
     consolidate: Callable[[str], Awaitable[None]]
+    persona_text: Callable[[], Awaitable[str]]                 # 渲染好的人格
+    recent_l3_titles: Callable[[int], Awaitable[list[str]]]    # 最近 L3 的标题
 
 
 def _quiet_now(cfg: dict) -> bool:
@@ -80,32 +75,32 @@ async def run_round(deps: Deps) -> dict | None:
     uid = int(deps.users[0])
     chat_key = f"private:{uid}"
     sid = await deps.activity_sid("bili")
-    topic, mode = pick_topic(cfg)
-    # mode == want_more 时，topic 就是 L1 上那句话；用掉要标记，别重复选
-    used_want_id = 0
-    if mode == "want_more":
-        try:
-            pend = pending_want_more(1)
-            if pend:
-                used_want_id = int(pend[0]["id"])
-        except Exception:  # noqa: BLE001
-            used_want_id = 0
-    interests = load_interests()[:8]
-    listing = "\n".join(f"- {i.get('topic')}（权重 {i.get('weight')}）" for i in interests) or "（清单还是空的）"
     recent = deps.recent_text.get(chat_key, "")[:300]
     max_videos = int(cfg.get("max_videos_per_round", 3))
     seen = aut_seen_set()
     feed = [it for it in await fetch_bili_feed(12) if it["bvid"] not in seen]
-    feed_lines = "\n".join(f"- {it['bvid']}｜{it['title']}｜{it['up']}" for it in feed) or "（没拿到新的）"
+    feed_lines = "\n".join(f"- {it['title']}" for it in feed[:5]) or "（没拿到新的）"
     seen_lines = "、".join(str(i.get("bvid")) for i in load_aut_seen()[-15:]) or "（无）"
+
+    # 她现在是谁、最近记得什么 —— 选材只靠这两样，不靠兴趣清单
+    try:
+        persona = await deps.persona_text()
+    except Exception:  # noqa: BLE001
+        persona = ""
+    try:
+        recent_l3 = await deps.recent_l3_titles(10)
+    except Exception:  # noqa: BLE001
+        recent_l3 = []
+
     prompt = (
-        "（内部探索，不要回复用户、不要把结果直接发出去）现在是 " + time.strftime("%Y-%m-%d %H:%M") + "。\n"
-        f"你的兴趣清单：\n{listing}\n"
-        f"最近聊天里出现过：{recent or '（没有）'}\n"
-        f"最近已经看过的 BV（不要重复看）：{seen_lines}\n"
-        f"首页推荐流（可能是你没接触过的领域）：\n{feed_lines}\n"
-        f"这一轮的方向：{('自由探索，挑一个跟兴趣清单无关、你真好奇的领域' if mode == 'explore' else f'优先看「{topic}」')}。\n"
-        "请按真实好奇心走，来源可以自己选：\n"
+        "（内部探索，不要回复用户、不要把结果直接发出去）现在是 " + time.strftime("%Y-%m-%d %H:%M") + "。\n\n"
+        + (("以下是你自己。按它来决定你现在想知道什么：\n" + persona[:2000] + "\n\n") if persona else "")
+        + (("最近记得的事：\n" + "\n".join(f"- {x}" for x in recent_l3) + "\n\n") if recent_l3 else "")
+        + "别从你最近看的视频里找题目——那些已经翻篇了。\n"
+        + "要的是你现在真的想知道什么，不是上一个问题往下再挖一层。\n\n"
+        + ("推荐流（实在没想法可以从这里挑，有想法就搜你自己的）：\n" + feed_lines + "\n\n")
+        + f"最近已经看过的 BV（不要重复看）：{seen_lines}\n\n"
+        + "先想清楚你这会儿想弄明白什么，再去搜。来源可以自己选：\n"
         f"1) 用 bili_search 搜最多 {max_videos} 条（关键词自定，近期的）；或者直接从推荐流里挑 1-2 条\n"
         "2) 用 bili_subtitle 读其中 1 条的字幕原文（太长就只看关键部分）。\n"
         "   看画面优先用 bili_watch：\n"
@@ -124,7 +119,7 @@ async def run_round(deps: Deps) -> dict | None:
         "summary：视频讲了什么，客观，只写视频本身。\n"
         "thought：你看完的第一反应，可以主观。\n"
         "\n"
-        "只输出 JSON：{\"topic\":\"这轮主题（短标签，≤12 字；若属于清单里已有方向，直接沿用清单里的名字）\","
+        "只输出 JSON：{\"topic\":\"这轮主题（短标签）\","
         "\"videos\":[{\"bvid\":\"\",\"title\":\"\",\"why\":\"为什么点开\"}],"
         "\"frames\":0,\"summary\":\"视频讲了什么\",\"thought\":\"看完的想法（一两句，第一人称）\"}\n"
         "不要输出 JSON 以外的内容。"
@@ -140,7 +135,7 @@ async def run_round(deps: Deps) -> dict | None:
         except Exception:  # noqa: BLE001
             log.warning("自主刷 JSON 解析失败")
             return None
-        round_topic = str(data.get("topic") or topic or "自由探索")
+        round_topic = str(data.get("topic") or "自由探索")
         thought = str(data.get("thought") or "").strip()
         summary = str(data.get("summary") or "").strip()
         try:
@@ -166,56 +161,6 @@ async def run_round(deps: Deps) -> dict | None:
         lines.append(f"\n> {thought}")
     with report.open("a", encoding="utf-8") as handle:
         handle.write("\n".join(lines) + "\n")
-    # 权重只在「她自己给了意义」时增加：
-    #   want_more 驱动的轮次是还账，不加
-    #   interest 驱动的本来就喜欢过，不加
-    #   只有自由探索撞到新东西才 +0.2
-    if mode == "explore":
-        if not any(similar_topic(round_topic, str(i.get("topic", ""))) for i in load_interests()):
-            apply_interest(round_topic, 0.2, "自由探索发现", "bili")
-    state = load_aut_state()
-    today = time.strftime("%Y-%m-%d")
-    if state.get("date") != today:
-        state.update({"date": today, "rounds": 0, "shares": 0})
-    state["rounds"] = int(state.get("rounds", 0)) + 1
-    state["last_run"] = int(time.time())
-    recent_topics = list(state.get("recent_topics") or [])
-    recent_topics.append(round_topic)
-    state["recent_topics"] = recent_topics[-6:]
-    save_aut_state(state)
-    titles = "、".join(f"《{v.get('title')}》" for v in videos[:3] if isinstance(v, dict) and v.get("title"))
-    # 活动日志只记「她做了什么」，不再顺手写 L3。
-    # B 站内容从此只走 L0 → L1 → L3 这一条链：L1 是筛子，
-    # 有感悟的那几轮自然会在 L3 批处理里被挑出来。
-    deps.log_activity(
-        "bili", f"刷了「{round_topic}」{titles}", thought,
-        summary=summary,
-    )
-    # 每轮都写 L0：B站 内容从此走和聊天一样的提炼管线
-    # （L1 批处理会挑出值得留的，不是每一轮都能变成 L1）
-    l0_bits = [f"刷了「{round_topic}」{titles}"]
-    # 带上链接：她分享时要用，browsed 表因此可以退役
-    links = []
-    for v in (videos or [])[:3]:
-        if not isinstance(v, dict):
-            continue
-        bv = str(v.get("bvid") or "").strip()
-        if bv:
-            links.append(f"https://www.bilibili.com/video/{bv}")
-    if links:
-        l0_bits.append("链接：" + " ".join(links))
-    if summary:
-        l0_bits.append(summary[:600])
-    if thought:
-        l0_bits.append(f"我的反应：{thought[:300]}")
-    try:
-        deps.add_bili_l0("\n".join(l0_bits))
-    except Exception as exc:  # noqa: BLE001
-        log.warning("自主刷写 L0 失败：%s", exc)
-    if used_want_id:
-        mark_want_used(used_want_id)
-    log.info("自主刷完成：%s（%s 条视频，%s 帧）", round_topic, len(videos), frames_used)
-    return data
 
 
 def _active_block(cfg: dict, hour: int) -> dict | None:
@@ -280,7 +225,6 @@ async def loop(deps: Deps) -> None:
                     and now >= next_at
                 )
                 if due:
-                    decay_interests()
                     await run_round(deps)
                     state = load_aut_state()
                     counts = dict(state.get("block_counts") or {})

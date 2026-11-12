@@ -12,7 +12,6 @@ from settings import CONFIG, DSH_HOME
 
 log = logging.getLogger("qqbot.autonomy.state")
 BILI_AUTONOMY_DIR = DSH_HOME / "bili-autonomy"
-AUT_INTERESTS = BILI_AUTONOMY_DIR / "interests.json"
 AUT_STATE = BILI_AUTONOMY_DIR / "state.json"
 AUT_REPORT_DIR = BILI_AUTONOMY_DIR / "out"
 AUT_SEEN = BILI_AUTONOMY_DIR / "seen.json"
@@ -32,8 +31,7 @@ def autonomy_cfg() -> dict:
             {"start": 13, "end": 18, "max": 4},
             {"start": 18, "end": 23, "max": 4},
         ],
-        "free_explore_ratio": 0.25,
-        "max_videos_per_round": 3,
+            "max_videos_per_round": 3,
         "share_max_per_day": 0,
         "max_unanswered_shares": 1,
         "pending_share_max": 5,
@@ -43,59 +41,6 @@ def autonomy_cfg() -> dict:
     }
     merged.update(CONFIG.get("bili_autonomy") or {})
     return merged
-
-
-def pending_want_more(limit: int = 3) -> list[dict]:
-    """最近还没被选材用掉的 want_more（存在 L1 上）。
-
-    这是「她自己想接着弄明白」的唯一去向：下一轮刷 B 站时优先拿它去搜。
-    """
-    import sqlite3
-    db = DSH_HOME / "remembers-data" / "memories.db"
-    if not db.exists():
-        return []
-    try:
-        conn = sqlite3.connect(str(db))
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT id,ts,want_more FROM memory "
-            "WHERE tier='L1' AND want_more!='' AND (want_used IS NULL OR want_used=0) "
-            "ORDER BY ts DESC LIMIT ?", (max(1, min(int(limit), 10)),),
-        ).fetchall()
-        out = [{"id": int(r["id"]), "want_more": str(r["want_more"]), "ts": float(r["ts"] or 0)}
-               for r in rows]
-        conn.close()
-        return out
-    except Exception:  # noqa: BLE001
-        return []
-
-
-def mark_want_used(mem_id: int) -> None:
-    """用掉一条 want_more，标记一下，不再重复选。"""
-    import sqlite3
-    db = DSH_HOME / "remembers-data" / "memories.db"
-    try:
-        conn = sqlite3.connect(str(db))
-        conn.execute("UPDATE memory SET want_used=1 WHERE id=?", (int(mem_id),))
-        conn.commit()
-        conn.close()
-    except Exception:  # noqa: BLE001
-        pass
-
-
-def load_interests() -> list[dict]:
-    if not AUT_INTERESTS.exists():
-        return []
-    try:
-        data = json.loads(AUT_INTERESTS.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
-    except Exception:  # noqa: BLE001
-        return []
-
-
-def save_interests(items: list[dict]) -> None:
-    AUT_INTERESTS.parent.mkdir(parents=True, exist_ok=True)
-    AUT_INTERESTS.write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 def load_aut_seen() -> list[dict]:
@@ -146,29 +91,6 @@ def load_aut_state() -> dict:
 def save_aut_state(state: dict) -> None:
     AUT_STATE.parent.mkdir(parents=True, exist_ok=True)
     AUT_STATE.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
-
-
-def similar_topic(a: str, b: str) -> bool:
-    def clean(text: str) -> str:
-        return re.sub(r"[\s，。；;、!?！？~]+", "", str(text or ""))
-
-    a, b = clean(a), clean(b)
-    if not a or not b:
-        return False
-    if a == b:
-        return True
-    if len(a) >= 4 and len(b) >= 4 and (a in b or b in a):
-        return True
-
-    def bigrams(text: str) -> set[str]:
-        return {text[i:i + 2] for i in range(len(text) - 1)}
-
-    left, right = bigrams(a), bigrams(b)
-    if left and right and len(left & right) / len(left | right) >= 0.6:
-        return True
-    english = {t.lower() for t in re.findall(r"[A-Za-z]{3,}", a)}
-    other = {t.lower() for t in re.findall(r"[A-Za-z]{3,}", b)}
-    return bool(english & other)
 
 
 def read_new_l1(after_rowid: int = 0, limit: int = 12) -> tuple[list[tuple], int]:

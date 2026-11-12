@@ -1763,3 +1763,81 @@ memory.py      format_diary 优先用 row.line
 /context/evidence 每条带 line 和 ref
 60 个测试通过
 ```
+
+## 25. 自主刷改成一次调用（2026-11-13 凌晨）
+
+### 为什么要改
+
+今天 12:31–22:28 连刷 5 轮全是「高考作弊」：
+
+```text
+12:52 want_more：修正案九的具体条款和量刑
+18:10 want_more：替考和组织的量刑差距
+21:07 want_more：数罪并罚的量刑标准
+22:37 want_more：明知认定和罪轻辩护
+```
+
+每一轮的 want_more 都是上一轮的更细一层 —— 是「未解问题的惯性」，
+不是兴趣。而 pick_topic 把它排在第一优先级，于是自己给自己续了下一条。
+
+### 改成了什么
+
+```text
+改前  pick_topic()（本地启发式：want_more → 兴趣池权重 → 随机）
+      → round.run()（一次 LLM 调用去搜去看）
+
+改后  只有 round.run() 一次调用
+      它先想清楚想看什么，再自己去搜
+```
+
+### 选材的输入
+
+```text
+人格          /persona 的 text（已渲染）
+最近 L3       取 thread_title 或正文前 28 字，最多 10 条
+推荐流        前 5 条标题（不给 BV，放最后）
+已看过的 BV   最近 15 个，避免重复
+```
+
+### 提示词里唯一硬的一条
+
+```text
+别从你最近看的视频里找题目——那些已经翻篇了。
+要的是你现在真的想知道什么，不是上一个问题往下再挖一层。
+```
+
+其余按树树要求先写软，看效果再调。
+
+### 删掉的东西
+
+```text
+字段    want_more / want_used（数据库列、schema、模型、抽取、面板全删）
+函数    pick_topic / apply_interest / decay_interests
+        pending_want_more / mark_want_used
+        load_interests / save_interests / similar_topic
+模块    qqbot/domains/autonomy/interests.py（整个删除）
+配置    free_explore_ratio
+桥接    extract_interests / consolidate_interests 两个包装
+        record_share_feedback 里的加权逻辑（现在只记 feedback_at）
+```
+
+### 保留的
+
+```text
+ask_him   留着。它现在只在对话里注入，不参与选材。
+          树树说这个思路不错，以后可能调整到提示词里。
+```
+
+### 代价
+
+```text
+刷完不再累积任何「兴趣记录」，只进记忆（L0 → L1 → L3）
+面板上看不到「她最近对什么感兴趣」，得从 L3 里推
+```
+
+### 待观察
+
+```text
+会不会又收敛到同一主题。跑几天看 L3 的 topic 分布。
+如果还是收敛，加一个「和上一轮 topic 重合就 log」的观察点。
+```

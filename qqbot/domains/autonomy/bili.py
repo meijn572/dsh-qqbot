@@ -10,90 +10,13 @@ from pathlib import Path
 
 import aiohttp
 
-from qqbot.domains.autonomy.state import (
-    load_aut_state,
-    load_interests,
-    mark_want_used,
-    pending_want_more,
-    save_interests,
-    similar_topic,
-)
+
 from settings import DSH_HOME
 
 log = logging.getLogger("qqbot.autonomy.bili")
 BILI_CRED = DSH_HOME / "bili-duty" / "bili_credential.json"
 BILI_BUVID: dict[str, str] = {"b3": "", "b4": ""}
 BILI_VIEW_CACHE: dict[str, dict] = {}
-
-
-def apply_interest(topic: str, delta: float, evidence: str = "", source: str = "chat", memory_ids: list[str] | None = None) -> None:
-    topic = re.sub(r"[\s。！？!?；;，,]+$", "", (topic or "").strip())[:24]
-    if not topic:
-        return
-    items = load_interests()
-    now = int(time.time())
-    found = next((item for item in items if similar_topic(topic, str(item.get("topic", "")))), None)
-    ids = [str(i) for i in (memory_ids or []) if i]
-    if found is None:
-        items.append({"topic": topic, "weight": round(max(1.0, delta), 2), "evidence": evidence[:80],
-                      "source": source, "last_seen": now, "memory_ids": ids[:20]})
-    else:
-        if len(topic) >= 4 and len(topic) < len(str(found.get("topic", ""))):
-            found["topic"] = topic
-        found["weight"] = round(max(0.0, min(9.0, float(found.get("weight", 1)) + delta)), 2)
-        found["last_seen"] = now
-        if evidence:
-            found["evidence"] = evidence[:80]
-        if ids:
-            found["memory_ids"] = list(dict.fromkeys([*(found.get("memory_ids") or []), *ids]))[-20:]
-    items.sort(key=lambda x: float(x.get("weight", 0)), reverse=True)
-    save_interests(items[:40])
-
-
-def decay_interests() -> None:
-    items = load_interests()
-    now = int(time.time())
-    changed = False
-    for item in items:
-        last = int(item.get("last_seen") or 0)
-        if last and now - last > 3 * 86400:
-            item["weight"] = round(float(item.get("weight", 0)) * 0.5, 2)
-            item["last_seen"] = now
-            changed = True
-    if changed:
-        save_interests([i for i in items if float(i.get("weight", 0)) > 0.3])
-
-
-def pick_topic(cfg: dict) -> tuple[str, str]:
-    """选这一轮看什么。返回 (主题, 驱动方式)。
-
-    顺序：
-      1. L1 上还没用掉的 want_more —— 她自己想接着弄明白的
-      2. 兴趣池里按权重抽
-      3. 都没有就自由探索
-
-    权重只反映「她自己给了意义」，被 want_more 驱动的轮次不加权重——
-    那是还账，不是又喜欢了一次。
-    """
-    try:
-        pending = pending_want_more(1)
-    except Exception:  # noqa: BLE001
-        pending = []
-    if pending:
-        item = pending[0]
-        return str(item["want_more"]), "want_more"
-
-    items = load_interests()
-    if not items:
-        return "", "explore"
-    state = load_aut_state()
-    recent = {str(x) for x in (state.get("recent_topics") or [])[-2:]}
-    pool = [i for i in items if str(i.get("topic", "")) not in recent] or items
-    if random.random() >= float(cfg.get("free_explore_ratio", 0.4)):
-        weights = [max(0.5, float(i.get("weight", 1))) ** 0.6 for i in pool]
-        chosen = random.choices(pool, weights=weights, k=1)[0]
-        return str(chosen.get("topic", "")), "interest"
-    return "", "explore"
 
 
 def compose_share_text(line: str, links: list[str]) -> str:

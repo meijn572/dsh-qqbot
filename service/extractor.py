@@ -493,11 +493,10 @@ EXTRACT_SYSTEM = VOICE_RULE + """你从一段对话里整理这一段的会话�
 → {"text": "我刷了一条讲生命起源的科普，说海底热泉的化学梯度能在无阳光条件
            下合成氨基酸；我由此想到「宜居带」这个概念没那么绝对。",
    "source_refs": [1],
-   "want_more": "海底热泉化学梯度合成氨基酸的实验证据"}
+   }
 ```
 
-她自己做过的事往往比寒暄更值得留：里面有她当时的反应，也可能留下
-还想接着弄明白的问题（写进 want_more）。
+她自己做过的事往往比寒暄更值得留：里面有她当时的反应。
 - 不要写来源里没有出现的人
 
 ## 说话方向不能反
@@ -627,15 +626,6 @@ reason     一句由头
 
 除了发生的事，每条便签还可以带两样「未完成」。两样都可以空。
 
-want_more 是「我自己还想接着弄明白的」，写出来要能直接拿去搜：
-
-```text
-主人：刷到个讲福特推行双休的
-我：那笔账他是怎么算的，涨薪还多放假，钱从哪出
-→ want_more: "福特当年给工人涨薪还推行双休，成本从哪来"
-```
-
-不要写「深入了解福特」「了解一下双休历史」——那种拿去搜不出东西。
 
 ask_him 是「我会顺口问出来的一句话」，不是「我要了解的信息」：
 
@@ -659,7 +649,7 @@ text 直接写内容本身，不要加「我记得 / 我记住」前缀；主人
 严格 JSON 数组，不要任何其他文字：
 [{"text": "一句话", "tier": "L1", "source_refs": [1, 2],
   "emotion": {"label": "难过", "valence": -0.7, "arousal": 0.4, "reason": "..."} | null,
-  "want_more": "想接着弄明白的，没有就空", "ask_him": "想问他的，没有就空"}]
+  "ask_him": "想问他的，没有就空"}]
 """
 
 
@@ -1496,7 +1486,6 @@ class Extractor:
             emotion_label=emo_label,
             emotion_valence=emo_valence if emo_label else None,
             emotion_arousal=emo_arousal if emo_label else None,
-            want_more=str(fact.get("want_more") or "").strip()[:500],
             ask_him=str(fact.get("ask_him") or "").strip()[:500],
             vec=vec,
             vec_model=vec_model,

@@ -105,22 +105,16 @@ from qqbot.domains.autonomy.state import (
     aut_seen_set,
     load_aut_seen,
     load_aut_state,
-    load_interests,
     mark_aut_seen,
     read_new_l1,
     save_aut_state,
-    save_interests,
-    similar_topic,
 )
 from qqbot.domains.autonomy.bili import (
-    apply_interest,
     compose_share_text,
     fetch_bili_feed,
     fetch_bili_view,
-    pick_topic,
 )
 from qqbot.domains.autonomy import round as autonomy_round
-from qqbot.domains.autonomy import interests as autonomy_interests
 from qqbot.clients.memory import (
     cmem_call,
     l0_recent as l0_recent_text,
@@ -1500,11 +1494,6 @@ def record_share_feedback(chat_key: str, text: str) -> None:
     else:
         delta = 0.0
     info["feedback_at"] = time.time()
-    if delta == 0:
-        log.info("分享反馈：%s 未加权（%s）", topic, message[:20])
-        return
-    apply_interest(topic, delta, "主人回应了分享：" + message[:40], "feedback")
-    log.info("分享反馈加权：%s %+.1f", topic, delta)
 
 
 async def run_persona_reflect(dsh: Dsh) -> bool:
@@ -1636,12 +1625,6 @@ async def internal_turn(dsh: Dsh, sid: str, chat_key: str, prompt: str, images: 
     return reply or ""
 
 
-async def extract_interests(dsh: Dsh, chat_key: str, text: str) -> None:
-    await autonomy_interests.extract(
-        lambda prompt: maintenance_turn(dsh, chat_key, prompt, task="interests"), chat_key, text
-    )
-
-
 async def bili_link_hint(text: str) -> str:
     urls = re.findall(r"https?://[^\s<>\"']+", text or "")
     if not urls:
@@ -1701,7 +1684,27 @@ def _autonomy_deps(dsh: Dsh, onebot: OneBot) -> autonomy_round.Deps:
         await onebot.send("private", uid, text)
 
     async def consolidate(chat_key: str) -> None:
-        await consolidate_interests(dsh, chat_key)
+        """自主刷之后不再做兴趣合并，留空占位给 Deps 签名。"""
+
+    async def persona_text() -> str:
+        data = await cmem_call("GET", "/persona")
+        return str(data.get("text") or "")
+
+    async def recent_l3_titles(limit: int = 10) -> list[str]:
+        """最近记得的事，给选材当「我最近在想什么」的参照。"""
+        try:
+            data = await cmem_call("GET", f"/memories?tier=L3&limit={int(limit)}")
+        except Exception:  # noqa: BLE001
+            return []
+        out = []
+        for it in (data.get("items") or [])[:limit]:
+            title = str(it.get("thread_title") or "").strip()
+            if not title:
+                body = str(it.get("text") or "").replace("\n", " ").strip()
+                title = body[:28]
+            if title:
+                out.append(title)
+        return out
 
     def add_bili_l0(text: str) -> None:
         """自主刷的每一轮都写进 L0，走和聊天一样的提炼管线。"""
@@ -1723,17 +1726,13 @@ def _autonomy_deps(dsh: Dsh, onebot: OneBot) -> autonomy_round.Deps:
         send_private=send_private,
         lock=ACTIVITY_LOCK,
         consolidate=consolidate,
+        persona_text=persona_text,
+        recent_l3_titles=recent_l3_titles,
     )
 
 
 async def run_autonomy_round(dsh: Dsh, onebot: OneBot) -> dict | None:
     return await autonomy_round.run_round(_autonomy_deps(dsh, onebot))
-
-
-async def consolidate_interests(dsh: Dsh, chat_key: str) -> None:
-    await autonomy_interests.consolidate(
-        lambda prompt: maintenance_turn(dsh, chat_key, prompt, task="interests"), chat_key
-    )
 
 
 async def autonomy_loop(dsh: Dsh, onebot: OneBot) -> None:
@@ -1978,7 +1977,6 @@ async def schedule_flush(dsh: Dsh, onebot: OneBot, chat_key: str) -> None:
             ACTIVE_GROUP[chat_key] = time.time()
             if pending.get("interjected"):
                 mark_interject(chat_key)
-        await extract_interests(dsh, chat_key, merged)
 
 
 GUEST_TOUCH_TS: dict[str, float] = {}
@@ -2615,7 +2613,7 @@ async def qzone_loop(dsh: Dsh, onebot: OneBot) -> None:
         lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt, task="qzone"),
         onebot.post_qzone,
         add_l1_event,
-        lambda: [str(i.get("topic")) for i in load_interests()],
+        lambda: [],
     )
 
 async def important_check_loop(dsh: Dsh) -> None:

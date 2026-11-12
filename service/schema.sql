@@ -32,9 +32,7 @@ CREATE TABLE IF NOT EXISTS memory (
   emotion_label  TEXT DEFAULT '',             -- L1：这段当时的情绪
   emotion_valence REAL DEFAULT NULL,
   emotion_arousal REAL DEFAULT NULL,
-  want_more      TEXT DEFAULT '',             -- L1：想自己接着弄明白的
   ask_him        TEXT DEFAULT '',             -- L1：想问他的
-  want_used      INTEGER DEFAULT 0,           -- want_more 是否已被选材消费
   lifecycle_reviewed_at REAL DEFAULT NULL,   -- L3：上次生命周期复盘
   status_reason TEXT DEFAULT '',             -- L3：状态变更原因
   merged_into INTEGER DEFAULT NULL,          -- L3：被合并到哪条
