@@ -57,7 +57,6 @@ POST_ROUTES = {
     "/threads/status": "_set_thread_status",
     "/memories/update_text": "_update_memory_text",
     "/l2/review": "_l2_review",
-    "/relationship/review": "_relationship_review",
 }
 
 

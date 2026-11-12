@@ -148,31 +148,70 @@ def render_persona_blocks(constitution: str, user_profile: str = "") -> dict:
 # ---------------------------------------------------------------------------
 
 # 日记各段的标题。顺序固定：先当天，再变化，再没想清，最后关系
-DIARY_FIELDS = (
-    ("text", ""),
-    ("changes", "变化"),
-    ("open_questions", "还没想清"),
-    ("relationship", "那天的关系"),
-)
+DIARY_FIELDS = ("text", "changes", "open_questions", "relationship")
+
+
+def _join_list(body: str) -> list[str]:
+    """把「- xxx」行拆成句子列表；不是列表就整段当一句。"""
+    out = []
+    for line in str(body or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        out.append(line[2:].strip() if line.startswith("- ") else line)
+    return out
+
+
+_END_PUNCT = "。！？…"
+
+
+def _stitch(items: list[str]) -> str:
+    """几句话接成一段：去掉各句末尾的标点，用分号连，最后补句号。"""
+    cleaned = []
+    for item in items:
+        s = str(item or "").strip()
+        while s and s[-1] in _END_PUNCT:
+            s = s[:-1]
+        if s:
+            cleaned.append(s)
+    if not cleaned:
+        return ""
+    if len(cleaned) == 1:
+        return cleaned[0] + "。"
+    return "；".join(cleaned) + "。"
 
 
 def render_diary_row(row: dict) -> str:
-    """一天渲染成一块；没内容返回空串。"""
+    """一天渲染成一篇连贯的日记；没内容返回空串。
+
+    存的还是四个字段（给程序和面板用），读起来是一篇文章。
+    """
+    body = str(row.get("text") or "").strip()
+    changes = _join_list(row.get("changes") or "")
+    questions = _join_list(row.get("open_questions") or "")
+    relationship = str(row.get("relationship") or "").strip()
+
     parts: list[str] = []
-    for key, title in DIARY_FIELDS:
-        body = str(row.get(key) or "").strip()
-        if not body:
-            continue
-        parts.append(f"{title}：\n{body}" if title else body)
+    if body:
+        parts.append(body)
+    if changes:
+        lead = "这之后我想明白一件事：" if len(changes) == 1 else "这之后我想明白几件事："
+        parts.append(lead + _stitch(changes))
+    if questions:
+        lead = "还有一件我到现在也没想清：" if len(questions) == 1 else "还有一些我到现在也没想清："
+        parts.append(lead + _stitch(questions))
+    if relationship:
+        parts.append("最近我们的关系：" + relationship)
     if not parts:
         return ""
-    return f"【{row.get('date') or ''}】\n" + "\n".join(parts)
+    return f"【{row.get('date') or ''}】\n" + "\n\n".join(parts)
 
 
 def render_diary(rows: list[dict]) -> str:
     """多天拼一起，空行分隔。"""
     blocks = [b for b in (render_diary_row(r) for r in (rows or [])) if b]
     return "\n\n".join(blocks)
+
 
 # ---------------------------------------------------------------------------
 # 状态块

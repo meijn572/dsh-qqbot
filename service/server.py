@@ -2496,7 +2496,18 @@ class Handler(BaseHTTPRequestHandler):
         """写今天的日记：情绪事件 + 对应 L0 + L3 旧记忆 + 少量活动。"""
         body = self._body()
         import datetime as _dt
-        today_start = _dt.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        # 07:00 写的是昨天：等当天完整结束，不丢深夜的对话
+        target = str(body.get("date") or "").strip()
+        if target:
+            try:
+                day = _dt.date.fromisoformat(target)
+            except ValueError:
+                day = _dt.date.today() - _dt.timedelta(days=1)
+        else:
+            day = _dt.date.today() - _dt.timedelta(days=1)
+        day_start = _dt.datetime.combine(day, _dt.time.min).timestamp()
+        today_start = day_start
+        day_end = day_start + 86400
         cfg = _load_config()
         if not bool(cfg.get("diary_enabled", True)):
             self._json(200, {"ok": True, "skipped": "disabled"})
@@ -2507,9 +2518,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             row = store.conn.execute(
                 "SELECT scope, COUNT(*) AS c FROM memory "
-                "WHERE tier='L0' AND ts>=? AND scope LIKE 'private:%' "
+                "WHERE tier='L0' AND ts>=? AND ts<? AND scope LIKE 'private:%' "
                 "GROUP BY scope ORDER BY c DESC, MAX(id) DESC LIMIT 1",
-                (today_start,),
+                (day_start, day_end),
             ).fetchone()
             if row is None:
                 row = store.conn.execute(
@@ -2640,25 +2651,35 @@ class Handler(BaseHTTPRequestHandler):
             acts = []
         persona_text = build_persona_context(store.get_persona()).get("text", "")
 
-        text = extractor.write_diary(
+        # 前几天的日记：保持连续，尤其关系那句不要每天重写
+        prev_diary = ""
+        try:
+            rows = store.diary_list(8)
+            keep = [r for r in rows if str(r.get("date") or "") < day.isoformat()][:7]
+            from render import render_diary
+            prev_diary = render_diary(keep)
+        except Exception:  # noqa: BLE001
+            prev_diary = ""
+
+        result = extractor.write_diary(
             user_text,
             assistant_text=str(body.get("assistant_text") or ""),
-            date=str(body.get("date") or time.strftime("%Y-%m-%d")),
+            date=day.isoformat(),
             activities=acts,
             persona=persona_text,
             memories=related,
+            prev_diary=prev_diary,
         )
-        if not text:
+        if not result:
             self._json(503, {"ok": False, "error": "llm unavailable"})
             return
-        date = str(body.get("date") or time.strftime("%Y-%m-%d"))
-        mood = str(body.get("mood") or "")
         with _lock:
             data = store.diary_add(
-                date, text, mood,
-                changes=str(body.get("changes") or ""),
-                open_questions=str(body.get("open_questions") or ""),
-                relationship=str(body.get("relationship") or ""),
+                day.isoformat(),
+                str(result.get("text") or ""),
+                changes=str(result.get("changes") or ""),
+                open_questions=str(result.get("open_questions") or ""),
+                relationship=str(result.get("relationship") or ""),
             )
         self._json(200, {"ok": True, **data})
 
@@ -3114,56 +3135,6 @@ class Handler(BaseHTTPRequestHandler):
             stats["l3"] += 1
 
         self._json(200, stats)
-
-    def _relationship_review(self) -> None:
-        """关系复盘：模型读文本影响，自由更新 summary。"""
-        current = store.get_relationship()
-        since = float(current.get("updated_at") or 0)
-        rows = store.conn.execute(
-            "SELECT id,text,thread_title,insight_target,ts FROM memory "
-            "WHERE tier='L3' AND ts>? AND insight_target='us' "
-            "ORDER BY ts ASC LIMIT 20",
-            (since,),
-        ).fetchall()
-        impacts = [{
-            "id": int(r["id"]),
-            "text": str(r["text"] or ""),
-            "title": str(r["thread_title"] or ""),
-            "ts": float(r["ts"] or 0),
-        } for r in rows]
-        if not impacts:
-            self._json(200, {"ok": True, "skipped": "no-impact"})
-            return
-        open_threads = store.open_threads(8)
-        anchors = [dict(r) for r in store.conn.execute(
-            "SELECT id,text,thread_title FROM memory WHERE tier='L4' ORDER BY ts DESC LIMIT 5"
-        ).fetchall()]
-        result = extractor.review_relationship(
-            current, impacts, open_threads, anchors,
-            persona=str((store.get_persona() or {}).get("constitution") or ""),
-        )
-        if not isinstance(result, dict):
-            self._json(200, {"ok": True, "skipped": "no-result"})
-            return
-        refs = result.get("evidence_refs") or []
-        evidence_ids = []
-        for ref in refs if isinstance(refs, list) else []:
-            try:
-                idx = int(ref) - 1
-            except Exception:
-                continue
-            if 0 <= idx < len(impacts):
-                evidence_ids.append(int(impacts[idx]["id"]))
-        summary = str(result.get("summary") or "").strip()[:5000]
-        old_summary = str(current.get("summary") or "")
-        if not summary or summary in ("没有需要改的。", "没有需要改的"):
-            self._json(200, {"ok": True, "changed": False, "skipped": "no-change"})
-            return
-        if summary != old_summary and not evidence_ids:
-            self._json(200, {"ok": False, "error": "evidence-required"})
-            return
-        store.set_relationship(summary, evidence_ids)
-        self._json(200, {"ok": True, "changed": summary != old_summary, "summary": summary})
 
     def _l2_review(self) -> None:
         """复查短期判断：confirmed 的自动升 L1，并保留 L2 作为来源。"""

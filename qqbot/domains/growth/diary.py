@@ -1,4 +1,4 @@
-"""每日日记：23 点后按当天素材写一篇。"""
+"""每日日记：早上 7 点写昨天那一篇。"""
 from __future__ import annotations
 
 import asyncio
@@ -31,11 +31,13 @@ async def run_once(cfg: dict) -> bool:
     """到点且有素材时写当天日记；返回是否真的发起写入。"""
     if not cfg.get("enabled", True):
         return False
-    hour = int(cfg.get("hour", 23))
+    hour = int(cfg.get("hour", 7))
     if time.localtime().tm_hour < hour:
         return False
 
-    today = time.strftime("%Y-%m-%d")
+    # 写昨天：等当天完整结束，深夜的矛盾不会漏
+    import datetime as _dt
+    today = (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
     state = _load_state()
     if state.get("last_date") == today:
         return False

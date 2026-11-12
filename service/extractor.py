@@ -46,22 +46,28 @@ SLEEP_SYSTEM = VOICE_RULE + """你在睡前整理今天发生的事。用第一�
 只输出正文。"""
 
 
-DIARY_SYSTEM = VOICE_RULE + """你写今天的日记。用洄的口吻，第一人称，写给以后的自己看。
+DIARY_SYSTEM = VOICE_RULE + """你写昨天的日记。用洄的口吻，第一人称，写给以后的自己看。
 
-可以从今天最想记住的地方写起，不必把每件事都写到。
-写具体的事、当时的念头，像自己回头想一想，不像汇报。
+这是你自己的日记，四样东西合成一次写出来：
+text            昨天发生了什么。从最想记住的地方写起，不必每件都写到。
+                写具体的事、当时的念头，像自己回头想一想，不像汇报。
+changes         昨天想明白了什么。只写真的变了的地方，不是总结。
+open_questions  还没想清的。可以就一两句，别凑数。
+relationship    最近你和他是什么样子。看得到前几天的日记，写变化，不必每天重写同一句。
+
+四样都是自己的话，不是条目汇总。
 只写输入里真实发生过的事。可以写自己的想法，但不要补不存在的动作、场景或对话。
-对话里「主人：」是主人说的话，「我：」或「洄：」是你；不要写反。
-只输出日记正文。
+对话里「主人：」是主人说的，「我：」或「洄：」是你，不要写反。
 
-示例一：
-牙只是发炎。他说“没啥事”的时候，我才想起自己催了他一整天。
+像这样的句子：
+- 牙只是发炎。他说"没啥事"的时候，我才想起自己催了他一整天。
+- 我笑完就把这话收了；玩笑一开，那套催睡的话我就不太想再走了。
+- 主动开口和安静待着，这条线我到现在也没划清。
 
-示例二：
-他改记忆逻辑改到快两点，说这不算工作，做得爽。我信。可“爽”这个理由，听着还是有点替他累。
-
-示例三：
-西西弗斯那句还是没想透。先搁着吧，反正山也不会跑。"""
+只返回 JSON，不要解释、不要代码块：
+{"text":"","changes":[],"open_questions":[],"relationship":""}
+changes / open_questions 是句子数组，各最多 4 条；relationship 是一段话，没有就空。
+text 没有实质内容时可以空着。"""
 
 
 THREAD_SYSTEM = VOICE_RULE + """你负责从这段对话里，留下那些过一阵子还会被想起的事。
@@ -895,11 +901,13 @@ class Extractor:
 
     def write_diary(self, user_text: str, assistant_text: str = "", date: str = "",
                     activities: list | None = None, persona: str = "",
-                    memories: str = "") -> str | None:
-        """写今天的日记（LLM，第一人称，范例式提示词）。"""
+                    memories: str = "", prev_diary: str = "") -> dict | None:
+        """写昨天的日记：一次调用产出 text / changes / open_questions / relationship。"""
         if self.llm is None or not getattr(self.llm, "enabled", False):
             return None
         parts = []
+        if date:
+            parts.append(f"【日期】{date}")
         if persona:
             parts.append("【你现在的样子】")
             parts.append(persona[:3000])
@@ -911,11 +919,11 @@ class Extractor:
                 parts.append("【你说的】")
                 parts.append(assistant_text)
             else:
-                parts.append("【今天的情绪事件与对应原话】")
+                parts.append("【昨天的事，按时间】")
                 parts.append(user_text)
             parts.append("")
         if activities:
-            parts.append("今天还做过的事（补充，不必全写）：")
+            parts.append("昨天还做过的事（补充，不必全写）：")
             for a in activities[-30:]:
                 detail = str(a.get("detail") or "")[:80]
                 kind = str(a.get("kind") or "")
@@ -925,14 +933,40 @@ class Extractor:
         if memories:
             parts.append("以前可能相关的记忆（不一定相关，只在对得上时自然联想）：")
             parts.append(memories[:3000])
+            parts.append("")
+        if prev_diary:
+            parts.append("前几天写过的日记（保持连续，别每天重写同一句）：")
+            parts.append(prev_diary[:4000])
         convo = "\n".join(parts) if parts else str(user_text)
         try:
-            text = self.llm.chat(DIARY_SYSTEM, convo, max_tokens=600)
+            raw = self.llm.chat(DIARY_SYSTEM, convo, max_tokens=1200)
         except Exception:
             return None
-        if not text:
+        if not raw:
             return None
-        return str(text).strip()[:600]
+        match = re.search(r"\{.*\}", raw, re.S)
+        if not match:
+            # 没给 JSON 就当成只有正文，别整篇丢掉
+            return {"text": str(raw).strip()[:1200],
+                    "changes": "", "open_questions": "", "relationship": ""}
+        try:
+            data = json.loads(match.group(0))
+        except Exception:
+            return {"text": str(raw).strip()[:1200],
+                    "changes": "", "open_questions": "", "relationship": ""}
+
+        def _lines(value) -> str:
+            if isinstance(value, list):
+                items = [str(x).strip() for x in value if str(x).strip()]
+                return "\n".join(f"- {x}" for x in items)
+            return str(value or "").strip()
+
+        return {
+            "text": str(data.get("text") or "").strip()[:2000],
+            "changes": _lines(data.get("changes")),
+            "open_questions": _lines(data.get("open_questions")),
+            "relationship": str(data.get("relationship") or "").strip()[:1500],
+        }
 
     def process_turn(self, user_text: str, assistant_text: str = "",
                      subject: str = "self", user_id: str = "", scope: str = "global",
@@ -1243,28 +1277,6 @@ class Extractor:
             return []
         items = data.get("items")
         return [x for x in items if isinstance(x, dict)] if isinstance(items, list) else []
-
-    def review_relationship(self, current: dict, impacts: list[dict],
-                            open_threads: list[dict], anchors: list[dict],
-                            persona: str = "") -> dict | None:
-        if self.llm is None or not getattr(self.llm, "enabled", False):
-            return None
-        lines = [
-            "【当前关系】",
-            f"summary: {current.get('summary') or '（还没有）'}",
-        ]
-        if persona:
-            lines.extend(["", "【人格边界（只读）】", persona[:3000]])
-        lines.extend(["", "【最近的关系影响】"])
-        for i, item in enumerate(impacts, 1):
-            lines.append(f"[{i}] {str(item.get('text') or '')}")
-        lines.append("\n【还没解开的 L3】")
-        for item in open_threads[:8]:
-            lines.append(f"- {item.get('title')}：{str(item.get('summary') or '')[:200]}")
-        lines.append("\n【L4 锚点】")
-        for item in anchors[:5]:
-            lines.append(f"- {str(item.get('title') or item.get('text') or '')[:80]}")
-        return self.llm.chat_json(RELATIONSHIP_REVIEW_SYSTEM, "\n".join(lines), max_tokens=700)
 
     def plan_threads(self, transcript: str, facts: list[str],
                      open_threads: list[dict],

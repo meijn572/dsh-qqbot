@@ -154,7 +154,6 @@ CREATE INDEX IF NOT EXISTS idx_search_log_ts ON search_log(ts);
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS state (
   id               INTEGER PRIMARY KEY CHECK (id = 1),
-  mood             TEXT NOT NULL DEFAULT 'normal',
   mood_updated     REAL NOT NULL DEFAULT 0,
   last_interaction REAL NOT NULL DEFAULT 0,
   diary            TEXT NOT NULL DEFAULT '',
@@ -180,7 +179,6 @@ INSERT OR IGNORE INTO state(id) VALUES (1);
 CREATE TABLE IF NOT EXISTS diary (
   date       TEXT PRIMARY KEY,          -- YYYY-MM-DD
   text       TEXT NOT NULL DEFAULT '',  -- 今天怎么样了
-  mood       TEXT NOT NULL DEFAULT '',
   changes    TEXT NOT NULL DEFAULT '',  -- 最近在变什么
   open_questions TEXT NOT NULL DEFAULT '', -- 还没想清
   relationship TEXT NOT NULL DEFAULT '', -- 最近我们是什么样子

@@ -1903,3 +1903,69 @@ review.py:50    解析提案 JSON 的 text 字段，不是记忆条目
 记忆证据    collect()          → /context/evidence → item['line']
 日记        diary_recent()     → /diary          → row['line']
 ```
+
+## 26. 中间层合并成一次调用（2026-11-13）
+
+### 问题
+
+同一天的日记由三个进程、三个时间、三套提示词拼出来，互不知情：
+
+```text
+23:00  diary.py       写 text
+≥8h    reflect        写 changes / open_questions
+07:00  关系复盘        写 relationship
+```
+
+今天那行就是证据：`changes` 里有 3 条是 `text` 完全没提到的事。
+
+### 改法：一次调用，四个字段
+
+```text
+每天 07:00  写昨天
+输入        人格 + 昨天全部 L0 + 昨天活动 + 相关 L3 + 前几天日记
+输出        {text, changes, open_questions, relationship}
+```
+
+时间从 23:00 挪到 07:00、写前一天，理由是等当天完整结束，深夜的话不会漏。
+
+### 渲染改成连贯叙述
+
+存的还是四个字段（给程序和面板用），读起来是一篇：
+
+```text
+【2026-11-12】
+<正文>
+
+这之后我想明白几件事：A；B；C。
+
+还有一些我到现在也没想清：A；B。
+
+最近我们的关系：…
+```
+
+拼接时会去掉各句原有的句号再补分号，避免「。；」这种标点。
+
+### 删掉的
+
+```text
+任务      reflect（整个模块 reflect.py 删除）
+          关系复盘（_relationship_review + scheduler tick + /relationship/review 路由）
+函数      extractor.review_relationship
+字段      diary.mood（跟 L1 的 emotion_label 重复，且一直没人写）
+配置      persona_reflect → 改成 persona_review（只剩 review_days 一个参数）
+```
+
+### 保留的
+
+```text
+diary.changes / open_questions / relationship   数据保留，只是不再由独立任务写
+get_relationship()                            读最新日记行，供 /state 注入
+```
+
+### 时间线
+
+```text
+07:00   写昨天的日记（一次调用出四段）
+07:05   L2 复查
+07:10   人格复盘 review（每月，读日记）
+```

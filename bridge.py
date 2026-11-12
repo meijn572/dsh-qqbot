@@ -83,7 +83,6 @@ from qqbot.domains.media.meta import apply_record as apply_sticker_meta
 from qqbot.domains.media.meta import lookup_ref as sticker_lookup_ref
 from qqbot.domains.media.stickers import collect_sticker
 from qqbot.domains.growth import profile as growth_profile
-from qqbot.domains.growth import reflect as growth_reflect
 from qqbot.domains.growth import review as growth_review
 from qqbot.domains.growth import style as growth_style
 from qqbot.domains.growth import important as growth_important
@@ -1460,14 +1459,10 @@ IMPORTANT_STORE = DSH_HOME / "persona-roles" / "state" / "important.json"
 IMPORTANT_MAX = 8
 
 
-def persona_reflect_cfg() -> dict:
-    merged = {"enabled": True, "hour": 23, "min_gap_hours": 20}
-    merged.update(CONFIG.get("persona_reflect") or {})
+def review_cfg() -> dict:
+    merged = {"enabled": True, "review_days": 30}
+    merged.update(CONFIG.get("persona_review") or {})
     return merged
-
-
-def load_reflect_state() -> dict:
-    return growth_reflect.load_state()
 
 
 def record_share_feedback(chat_key: str, text: str) -> None:
@@ -1494,36 +1489,6 @@ def record_share_feedback(chat_key: str, text: str) -> None:
     else:
         delta = 0.0
     info["feedback_at"] = time.time()
-
-
-async def run_persona_reflect(dsh: Dsh) -> bool:
-    users = CONFIG.get("allowed_users") or []
-    if not users:
-        return False
-    chat_key = f"private:{int(users[0])}"
-    return await growth_reflect.run(lambda prompt: maintenance_turn(dsh, chat_key, prompt, task="reflect"))
-
-
-async def persona_reflect_loop(dsh: Dsh) -> None:
-    await asyncio.sleep(60)
-    while True:
-        try:
-            cfg = persona_reflect_cfg()
-            if cfg.get("enabled", True):
-                state = load_reflect_state()
-                last = float(state.get("last_run_at") or 0)
-                hour = time.localtime().tm_hour
-                try:
-                    start_s, _, end_s = str(cfg.get("active_hours") or "8-24").partition("-")
-                    active = int(start_s) <= hour < int(end_s)
-                except (TypeError, ValueError):
-                    active = 8 <= hour < 24
-                due = active and time.time() - last >= float(cfg.get("min_gap_hours", 8)) * 3600
-                if due:
-                    await run_persona_reflect(dsh)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("persona_reflect_loop err: %s", exc)
-        await asyncio.sleep(1800)
 
 
 def add_l1_event(content: str) -> None:
@@ -2532,7 +2497,7 @@ async def persona_review_loop(dsh: Dsh) -> None:
                 continue
             state = growth_review.load_state()
             last = float(state.get("last_run") or 0)
-            days = max(1, int(persona_reflect_cfg().get("persona_review_days", 30)))
+            days = max(1, int(review_cfg().get("review_days", 30)))
             if time.time() - last >= days * 86400:
                 await run_persona_review(dsh)
         except Exception as exc:  # noqa: BLE001
@@ -2687,7 +2652,6 @@ async def run() -> None:
     asyncio.create_task(inject_watch(dsh, onebot))
     asyncio.create_task(group_proactive_loop(dsh, onebot))
     asyncio.create_task(style_review_loop(dsh))
-    asyncio.create_task(persona_reflect_loop(dsh))
     asyncio.create_task(persona_review_loop(dsh))
     asyncio.create_task(profile_refresh_loop(dsh))
     asyncio.create_task(qzone_loop(dsh, onebot))

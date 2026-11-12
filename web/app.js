@@ -423,10 +423,9 @@ async function load(){
     if(!n.diary.length) h+='<div class="mut">今天还没写</div>';
     for(const d of n.diary){
       h+=`<div style="margin:10px 0"><span class="mut">${esc(d.date||'')}</span>`;
-      if(d.text) h+=`<div style="margin-top:3px">${esc(d.text)}</div>`;
-      if(d.changes) h+=`<div class="mut" style="margin-top:4px">最近在变：${esc(d.changes)}</div>`;
-      if(d.open_questions) h+=`<div class="mut" style="margin-top:4px">还没想清：${esc(d.open_questions)}</div>`;
-      if(d.relationship) h+=`<div class="mut" style="margin-top:4px">那天的关系：${esc(d.relationship)}</div>`;
+      // 用服务端渲染好的连贯叙述（正文 + 变化 + 没想清 + 关系）
+      if(d.line) h+=`<div style="margin-top:3px">${esc(d.line)}</div>`;
+      else if(d.text) h+=`<div style="margin-top:3px">${esc(d.text)}</div>`;
       h+='</div>';
     }
     h+='</div>';
