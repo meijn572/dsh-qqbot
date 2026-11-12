@@ -262,8 +262,6 @@ async function load(){
     h+='</div></div>';
     h+=`<div class="card"><div class="k">她现在的状态</div><div class="grid" style="margin-top:8px">
       <div><div class="k">记忆</div><div class="v">${s.memory_count} 条</div></div>
-      <div><div class="k">心情值</div><div class="v">${s.mood ?? '—'} / 100</div></div>
-      <div><div class="k">和你的关系</div><div class="v" style="font-size:13px;font-weight:400">${esc(s.relationship||'还没有复盘')}</div></div>
       <div><div class="k">主动唤醒</div><div class="v">${s.proactive?'<span class="badge ok">开</span>':'<span class="badge bad">关</span>'}</div></div>
     </div><div class="mut" style="margin-top:8px">${esc(s.activity||'')}</div></div>`;
     h+='<div class="card"><div class="k">操作</div><button onclick="restartBridge()">重启桥接</button> <span class="mut" style="margin-left:8px">重启后约 6 秒恢复</span></div>';
@@ -271,16 +269,10 @@ async function load(){
   }
   if(!$('#mood').hidden){
     const m=await j('/api/mood');
-    const rel=m.relationship||{};
-    const relText = rel.summary || '';
-    const relBars = `<div style="margin-top:6px">${esc(relText||'还没有复盘。')}</div>
-      <div class="mut" style="margin-top:8px">互动 ${Number(rel.interaction_count||0).toFixed(0)} 轮</div>`;
-    let h=`<div class="card"><div class="k">现在的心情</div><div class="v" style="font-size:26px">${m.mood ?? '—'} <span class="mut" style="font-size:13px">/100</span> ${m.mood>=70?'😊':m.mood>=40?'🙂':'😔'}</div>
-      <div class="bar" style="margin:10px 0"><i style="width:${m.mood ?? 0}%"></i></div>
-      <div class="k">情绪值 ${Math.round((m.valence??0)*100)} · 唤醒 ${Math.round((m.arousal??0)*100)}%</div></div>`;
-    h+=`<div class="card"><div class="k">和你的关系</div>${relBars}</div>`;
+    let h=`<div class="card"><div class="k">最近的情绪</div>
+      <div class="v" style="font-size:22px">${esc(m.emotion_label||'—')}</div>
+      <div class="mut" style="margin-top:6px">${esc(m.reason||'')}</div></div>`;
     h+=`<div class="card"><div class="k">她正在做什么</div><div>${esc(m.activity||'—')}</div></div>`;
-    h+=`<div class="card"><div class="k">最近一次情绪的由头</div><div>${esc(m.emotion_label||'—')}${m.reason?('：'+esc(m.reason)):''}</div></div>`;
     h+=`<div class="card"><div class="k">情绪时间线（最近 ${m.timeline.length} 条）</div><div id="tl"></div></div>`;
     $('#mood').innerHTML=h;
     let tl='';

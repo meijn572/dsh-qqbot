@@ -1639,23 +1639,7 @@ class MemoryStore:
                 "evidence_ids": [],
                 "updated_at": float(row["created_at"] or 0),
             }
-        # 兼容：还没写过新列时，退回老表
-        try:
-            old = self.conn.execute(
-                "SELECT summary,evidence_ids,updated_at FROM relationship_state WHERE id=1"
-            ).fetchone()
-        except Exception:
-            old = None
-        try:
-            evidence_ids = json.loads(old["evidence_ids"] or "[]") if old else []
-        except Exception:
-            evidence_ids = []
-        return {
-            "summary": str(old["summary"] or "") if old else "",
-            "date": "",
-            "evidence_ids": evidence_ids,
-            "updated_at": float(old["updated_at"] or 0) if old else 0.0,
-        }
+        return {"summary": "", "date": "", "evidence_ids": [], "updated_at": 0.0}
 
     def set_relationship(self, summary: str, evidence_ids: list[int] | None = None) -> dict:
         """写今天那一行的 relationship 列。"""

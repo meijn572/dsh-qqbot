@@ -179,15 +179,6 @@ CREATE TABLE IF NOT EXISTS state (
 );
 INSERT OR IGNORE INTO state(id) VALUES (1);
 
--- 关系状态：由模型复盘后自由书写，不做数值聚合，也不套固定阶段
-CREATE TABLE IF NOT EXISTS relationship_state (
-  id           INTEGER PRIMARY KEY CHECK (id = 1),
-  summary      TEXT NOT NULL DEFAULT '',
-  evidence_ids TEXT NOT NULL DEFAULT '[]',
-  updated_at   REAL NOT NULL DEFAULT 0
-);
-INSERT OR IGNORE INTO relationship_state(id) VALUES (1);
-
 -- ---------------------------------------------------------------------------
 -- 日记本：每天一篇（按日期唯一）
 -- ---------------------------------------------------------------------------
@@ -312,22 +303,6 @@ CREATE TABLE IF NOT EXISTS browsed (
 );
 
 -- ---------------------------------------------------------------------------
--- 情感层：她的情绪轨迹（每次明显波动记一条，带原因）
--- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS emotion_log (
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  ts           REAL NOT NULL DEFAULT 0,
-  valence      REAL NOT NULL DEFAULT 0,
-  arousal      REAL NOT NULL DEFAULT 0,
-  label        TEXT NOT NULL DEFAULT '',
-  trigger      TEXT NOT NULL DEFAULT '',
-  source       TEXT NOT NULL DEFAULT 'chat',
-  ts_start     REAL DEFAULT NULL,          -- 这次情绪对应的 L0 窗口起点
-  ts_end       REAL DEFAULT NULL,          -- 这次情绪对应的 L0 窗口终点
-  memory_id    INTEGER DEFAULT NULL       -- 关联到 memory.id（哪条记忆引发的）
-);
-CREATE INDEX IF NOT EXISTS idx_emotion_log_ts ON emotion_log(ts);
-
 -- 多用户画像（除主人外，按 QQ 号区分）
 CREATE TABLE IF NOT EXISTS profiles (
     user_id     TEXT PRIMARY KEY,
