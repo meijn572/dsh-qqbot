@@ -102,6 +102,9 @@ def format_diary(rows: list[dict]) -> str:
         questions = str(r.get("open_questions") or "").strip()
         if questions:
             parts.append("还没想清：\n" + questions)
+        rel = str(r.get("relationship") or "").strip()
+        if rel:
+            parts.append("那天的关系：\n" + rel)
         if parts:
             blocks.append(f"【{r.get('date')}】\n" + "\n".join(parts))
     return "\n\n".join(blocks)

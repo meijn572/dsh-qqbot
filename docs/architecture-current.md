@@ -1119,3 +1119,44 @@ persona-roles/state/constitution-before-slim-20261112-021829.md
 
 人格变了，bridge 的人格指纹会不一致，下一条 QQ 消息进来时会自动换新会话。
 这是设计好的行为，不是故障。
+
+## 18. 关系状态并进中间层（2026-11-12）
+
+### 改动
+
+```text
+diary 加一列 relationship      「最近我们是什么样子」
+关系复盘不再写 relationship_state，改成写当天那一行
+store.get_relationship()       读最近一条非空的 relationship
+                               上游调用方（bridge / 面板）一行没改
+小本子                         每天那行会多显示「那天的关系」
+面板「我和他」                 那一节显示最近一条，带日期
+```
+
+### 为什么这么改
+
+```text
+以前 relationship_state 只有一行，每天覆盖
+并进日记后，每天的关系状态留一条历史
+昨天什么样、今天什么样，都看得见
+```
+
+### 代价
+
+```text
+evidence_ids 没了
+  旧表那列没有任何地方读，接受这个损失
+relationship_state 表留着不写
+  get_relationship 在日记还没写时会退回老表，兼容期用
+```
+
+### 迁移
+
+旧的 85 字摘要已写进 2026-11-12 那行的 relationship。
+
+### 边界还是分开的
+
+```text
+人格 我们怎么对彼此    长期约定，很少改（改了会换会话）
+日记 relationship      每天的状态，天天变，不进人格
+```

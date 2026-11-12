@@ -2685,6 +2685,7 @@ class Handler(BaseHTTPRequestHandler):
                 changes=str(body.get("changes") or ""),
                 open_questions=str(body.get("open_questions") or ""),
                 tasks=str(body.get("tasks") or ""),
+                relationship=str(body.get("relationship") or ""),
             )
         self._json(200, {"ok": True, **data})
 

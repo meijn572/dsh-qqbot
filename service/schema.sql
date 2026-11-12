@@ -198,6 +198,7 @@ CREATE TABLE IF NOT EXISTS diary (
   changes    TEXT NOT NULL DEFAULT '',  -- 最近在变什么
   open_questions TEXT NOT NULL DEFAULT '', -- 还没想清
   tasks      TEXT NOT NULL DEFAULT '',  -- 正在做的事
+  relationship TEXT NOT NULL DEFAULT '', -- 最近我们是什么样子
   created_at REAL NOT NULL DEFAULT 0
 );
 

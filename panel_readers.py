@@ -709,6 +709,7 @@ def persona_payload() -> dict:
         rel = {}
     recent_relationship = {
         "summary": str(rel.get("summary") or ""),
+        "date": str(rel.get("date") or ""),
         "updated_at": float(rel.get("updated_at") or 0),
     }
     return {

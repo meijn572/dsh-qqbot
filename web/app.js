@@ -345,7 +345,7 @@ async function load(){
       </div></div>`;
     const otherOf=(t)=>(blk.other||[]).find(x=>x.title===t);
     const rel=p.recent_relationship||{};
-    const relWhen=rel.updated_at?new Date(Number(rel.updated_at)*1000).toLocaleString('zh-CN',{hour12:false}):'';
+    const relWhen=rel.date?rel.date:(rel.updated_at?new Date(Number(rel.updated_at)*1000).toLocaleString('zh-CN',{hour12:false}):"");
     h+=`<div class="card"><div class="k">我和他</div>
       <div class="section-title">我眼中的他 <button style="float:right" onclick="editPersonaField('user_profile')">编辑</button></div>
       <div id="profilePreview">${p.user_profile?mdToHtml(p.user_profile):'<div class="mut">（还没形成）</div>'}</div>
@@ -419,6 +419,7 @@ async function load(){
       if(d.changes) h+=`<div class="mut" style="margin-top:4px">最近在变：${esc(d.changes)}</div>`;
       if(d.open_questions) h+=`<div class="mut" style="margin-top:4px">还没想清：${esc(d.open_questions)}</div>`;
       if(d.tasks) h+=`<div class="mut" style="margin-top:4px">正在做：${esc(d.tasks)}</div>`;
+      if(d.relationship) h+=`<div class="mut" style="margin-top:4px">那天的关系：${esc(d.relationship)}</div>`;
       h+='</div>';
     }
     h+='</div>';
