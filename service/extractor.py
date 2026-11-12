@@ -191,9 +191,22 @@ L4 是以后从 L3 里再挑的。
 }
 
 status：
-- open：还有明确下一步 / 在等结果 / 有承诺 / 未解决
-- closed：这次结束了
-- standalone：一个瞬间/一段话，没有下一步，不是“结束”
+- open：有一件具体的东西在等——等他回话、等结果、答应要做的事
+- closed：确认结束了
+- standalone：一个瞬间/一段话，没有下一步，也不是“结束”
+- 没把握时给 standalone，不要默认 open
+
+不算 open（这些都是 standalone）：
+- 一次性的互动：发表情、被戳、揉头、斗嘴
+- 当场就结束的事：吃饭、起名字、找表情包、看天气
+- 只是聊到一个话题，但没有在等任何东西
+- 已经办完的事（哪怕办的过程中聊了很多）
+
+像这样判断：
+  「他让我找揉揉的表情包，我说找吧」          → standalone（已经找过了）
+  「他说去交协议，我说放之前先拍照」          → open（他还没去，在等他回来说）
+  「他说期末考完再说实习的事」                → open（在等考试结果）
+  「他发了个绘梨喵表情，我接着逗他」          → standalone（一瞬间的互动）
 
 先看【最近相关事件】里有没有同一件事。
 - 同一件事即使是 standalone / closed / dormant，也放进 updates，用原 thread_id。
@@ -271,7 +284,9 @@ L3_LIFECYCLE_SYSTEM = """你回看一些还没确认结束的事。
 - 没有明确结束证据时，最多标 dormant，不要硬 close。
 - 最近又提到的，标 reopen。
 - standalone 不参与“是否结束”的判断。
-- 拿不准就 keep_open。
+- 拿不准就 keep_open，除非它本来就不是「在等什么」——那种直接转 standalone。
+- 只有一个瞬间、没有在等任何东西的（发表情、揉头、一顿饭、随手聊到的话题），
+  转 standalone，不要挂成 open。
 - 同一件事的重复 L3 用 merge_into，target_id 指向保留的那条。
 - close/dormant 要写一句 reason；evidence_refs 可选。
 

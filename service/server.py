@@ -2889,7 +2889,7 @@ class Handler(BaseHTTPRequestHandler):
         idle_seconds = float(cfg.get("segment_idle_seconds", 300))
         max_minutes = float(cfg.get("segment_max_minutes", 30))
         max_messages = int(cfg.get("segment_max_messages", 80))
-        lifecycle = store.mark_lifecycle(30.0, 14.0)
+        lifecycle = store.mark_lifecycle(30.0, 7.0)
         stats = {"ok": True, "l1": 0, "l2": 0, "l3": 0, "waiting": "",
                  "stale": lifecycle.get("stale", 0), "dormant": lifecycle.get("dormant", 0)}
 
@@ -3048,9 +3048,10 @@ class Handler(BaseHTTPRequestHandler):
             if target is None:
                 continue
             summary = str(item.get("summary") or "").strip()[:2000]
-            status = str(item.get("status") or "open").lower()
-            if status not in ("open", "closed"):
-                status = "open"
+            # 默认 standalone：单次片段是更安全的兜底，open 必须模型明确给出
+            status = str(item.get("status") or "standalone").lower()
+            if status not in ("open", "closed", "standalone"):
+                status = "standalone"
             ref_pairs = _tier_of_refs(item.get("source_refs"), ref_rows)
             l0_ids = [rid for tier, rid in ref_pairs if tier == "L0"]
             if not l0_ids:
@@ -3079,9 +3080,9 @@ class Handler(BaseHTTPRequestHandler):
             summary = str(item.get("summary") or "").strip()[:2000]
             if not title or not summary:
                 continue
-            status = str(item.get("status") or "open").lower()
+            status = str(item.get("status") or "standalone").lower()
             if status not in ("open", "closed", "standalone"):
-                status = "open"
+                status = "standalone"
             ref_pairs = _tier_of_refs(item.get("source_refs"), ref_rows)
             l0_ids = [rid for tier, rid in ref_pairs if tier == "L0"]
             if not l0_ids:

@@ -698,7 +698,7 @@ class MemoryStore:
             self._invalidate_caches()
         return changed
 
-    def mark_lifecycle(self, l1_days: float = 30.0, thread_days: float = 14.0) -> dict:
+    def mark_lifecycle(self, l1_days: float = 30.0, thread_days: float = 7.0) -> dict:
         """只打标记，不删除。
 
         L1：超过 l1_days 标 stale_at，默认检索不再召回。
