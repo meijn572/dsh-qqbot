@@ -27,10 +27,7 @@ CREATE TABLE IF NOT EXISTS memory (
   thread_closed_at REAL DEFAULT NULL,
   stale_at       REAL DEFAULT NULL,          -- L1 过期标记，不删除
   relationship_impact TEXT DEFAULT '',       -- 废弃：已并入 insight_*
-  insight_text   TEXT DEFAULT '',             -- L3：感悟正文（只在 L3）
-  insight_kind   TEXT DEFAULT '',             -- 废弃：改用 insight_target
   insight_target TEXT DEFAULT '',             -- me / us / none
-  insight_history TEXT DEFAULT '[]',          -- L3：历次感悟，JSON 数组
   source_activity_id INTEGER DEFAULT NULL,    -- L3：来源 activity
   emotion_label  TEXT DEFAULT '',             -- L1：这段当时的情绪
   emotion_valence REAL DEFAULT NULL,

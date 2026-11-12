@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from qqbot.clients.memory import (bili_insights, cmem_call, diary_recent, format_diary,
+from qqbot.clients.memory import (cmem_call, diary_recent, format_diary,
                                   persona_context, recent_dialogue)
 from qqbot.domains.growth.evidence import collect, format_block
 from settings import DSH_HOME
@@ -38,8 +38,6 @@ async def run(turn: Turn) -> bool:
     recent = await recent_dialogue(30)
     ev = await collect(l1=50, l3=30, l0=50)
     memories = format_block(ev)
-    insights = await bili_insights("me", limit=12, days=90)
-    insight_block = "\n".join(f"- {x.get('insight_text')}" for x in insights if x.get("insight_text"))
     # 中间层：最近几天的日记，含之前写下的变化和没想清
     try:
         diary_block = format_diary(await diary_recent(7))
@@ -52,7 +50,6 @@ async def run(turn: Turn) -> bool:
         + "【最近对话】\n" + (recent or "（最近没聊什么）") + "\n\n"
         + (("【最近几天的日记】\n" + diary_block + "\n\n") if diary_block else "")
         + (memories or "（没有长期记忆）") + "\n\n"
-        + (("【看视频时留下的自我感悟】\n" + insight_block + "\n\n") if insight_block else "")
         + "只写最近真的发生的变化，或者终于想清楚的事。\n"
         "旧的变化如果还成立，就保留，写得更准；过时、重复、琐碎的，压缩掉。\n\n"
         "写法：第一人称，像自己说话，具体。\n"

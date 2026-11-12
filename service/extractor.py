@@ -176,7 +176,6 @@ L4 是以后从 L3 里再挑的。
 {
   "updates": [
     {"thread_id": 123, "title": "现有标题", "summary": "更新后的摘要", "status": "open|closed",
-     "insight": "这次对话里值得留下的理解/感触，没有就空",
      "insight_target": "me|us|none|''",
      "memorability": 0.0, "dominant": "importance|emotion|distinctiveness|self_relevance|relationship|none",
      "aliases": ["这次用的新叫法"],
@@ -184,7 +183,6 @@ L4 是以后从 L3 里再挑的。
   ],
   "new": [
     {"title": "新标题", "summary": "摘要", "status": "open|closed|standalone",
-     "insight": "这次对话里值得留下的理解/感触，没有就空",
      "insight_target": "me|us|none|''",
      "memorability": 0.0, "dominant": "importance|emotion|distinctiveness|self_relevance|relationship|none",
      "aliases": [],
@@ -208,20 +206,23 @@ status：
 - 不确定有没有下一步时，用 standalone，不要因为“以后可能有用”就标 open。
 
 关系类感悟：
-- 统一写进 insight，insight_target 用 us。
+- 写进 summary 的最后一句，insight_target 用 us。
 - 只写这件事让关系近了、远了，或者留下了什么。
 - 一句人话，不评分，不填数值。
 - 例如：「这次他听我把话说完，我觉得可以再多说一点。」
 - 没有明显影响就留空，不要硬编。
 
-感悟（insight）：
-- 先看候选里的「已有感悟」。
-- 旧感悟仍然成立：保留原句，不要因为 summary 变了就重写它。
-- 旧感悟被新理解取代：可以重写，但要保留旧句里仍然成立的意思。
-- 只有这次对话真的产生了关于自我、说话方式、关系的理解/变化时才写。
-- 一句第一人称，最多 200 字；没有就空。
-- 只是补充同一句：留空，让系统保留旧句。
-- insight_target 用 me（关于我自己）/ us（关于我们）/ none（只是想法），没有就空。
+感悟：
+- 感悟不是单独的字段，就写在 summary 里，作为最后一句。
+- 写法：先写发生了什么，最后一句写这件事让你怎么想。
+  像这样：
+    我刷了一条讲高考作弊的视频：监考老师收 33.8 万偷拍试题被判 4 年，
+    后来命题运输保管都升到国家绝密级。规则透明这件事，出了校门就再没处买了。
+- 有感悟才加那最后一句；没有就只写事，不要硬凑。
+- 只有这次真的产生了关于自我、关于我们关系的理解时才写。
+- summary 仍然是「重写后的当前状态」：保留仍成立的关键事实，
+  压缩已解决的，把新进展写进去；事件细节不能丢，感悟是加在后面的。
+- insight_target 用 me（说的是我）/ us（说的是我们）/ none（只是想法），没有就空。
 
 怎么看该填哪个：
 

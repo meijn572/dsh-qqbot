@@ -3067,7 +3067,6 @@ class Handler(BaseHTTPRequestHandler):
                 relationship_impact=_impact(item),
                 memorability=_memo(item), dominant=_dominant(item),
                 aliases=_aliases(item),
-                insight_text=str(item.get("insight") or ""),
                 insight_target=str(item.get("insight_target") or ""),
             )
             if not ref_pairs:
@@ -3109,7 +3108,6 @@ class Handler(BaseHTTPRequestHandler):
                 thread_last_seen_at=now,
                 thread_closed_at=now if status == "closed" else None,
                 relationship_impact=_impact(item),
-                insight_text=str(item.get("insight") or ""),
                 insight_target=str(item.get("insight_target") or ""),
                 memorability=_memo(item) if _memo(item) is not None else 0.5,
                 dominant=_dominant(item) or "",
@@ -3125,14 +3123,14 @@ class Handler(BaseHTTPRequestHandler):
         current = store.get_relationship()
         since = float(current.get("updated_at") or 0)
         rows = store.conn.execute(
-            "SELECT id,text,thread_title,insight_text,insight_target,ts FROM memory "
-            "WHERE tier='L3' AND ts>? AND insight_target='us' AND insight_text!='' "
+            "SELECT id,text,thread_title,insight_target,ts FROM memory "
+            "WHERE tier='L3' AND ts>? AND insight_target='us' "
             "ORDER BY ts ASC LIMIT 20",
             (since,),
         ).fetchall()
         impacts = [{
             "id": int(r["id"]),
-            "text": str(r["insight_text"] or r["relationship_impact"] or r["text"] or ""),
+            "text": str(r["text"] or ""),
             "title": str(r["thread_title"] or ""),
             "ts": float(r["ts"] or 0),
         } for r in rows]

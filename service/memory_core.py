@@ -136,8 +136,6 @@ class MemoryInput:
     thread_closed_at: float | None = None
     stale_at: float | None = None
     relationship_impact: str = ""
-    insight_text: str = ""
-    insight_kind: str = ""
     insight_target: str = ""
     emotion_label: str = ""
     emotion_valence: float | None = None
@@ -315,9 +313,7 @@ class MemoryStore:
                               ("l3_id", "INTEGER"),
                               ("shared", "INTEGER DEFAULT 0"),
                               ("shared_at", "REAL DEFAULT NULL")]),
-            ("memory", [("insight_text", "TEXT DEFAULT ''"),
-                        ("insight_kind", "TEXT DEFAULT ''"),
-                        ("insight_history", "TEXT DEFAULT '[]'"),
+            ("memory", [
                         ("source_activity_id", "INTEGER"),
                         ("memorability", "REAL DEFAULT 0.5"),
                         ("dominant", "TEXT DEFAULT ''"),
@@ -409,7 +405,7 @@ class MemoryStore:
         """管理用：列出记忆（按时间倒序），带 tier 过滤和关键词搜索。"""
         sql = ("SELECT id, tier, subject, text, summary, tags, source_ids, source_status, "
                "thread_status, thread_title, thread_aliases, thread_opened_at, thread_last_seen_at, thread_closed_at, "
-               "stale_at, relationship_impact, insight_text, insight_kind, insight_target, "
+               "stale_at, relationship_impact, insight_target, "
                "emotion_label, emotion_valence, emotion_arousal, want_more, ask_him, want_used, "
                "source_activity_id, "
                "memorability, dominant, last_recalled_at, active_until, recall_count, stability_days, "
@@ -453,8 +449,6 @@ class MemoryStore:
                 "thread_closed_at": float(r["thread_closed_at"]) if r["thread_closed_at"] else None,
                 "stale_at": float(r["stale_at"]) if r["stale_at"] else None,
                 "relationship_impact": str(r["relationship_impact"] or ""),
-                "insight_text": str(r["insight_text"] or ""),
-                "insight_kind": str(r["insight_kind"] or ""),
                 "insight_target": str(r["insight_target"] or ""),
                 "emotion_label": str(r["emotion_label"] or ""),
                 "emotion_valence": float(r["emotion_valence"]) if r["emotion_valence"] is not None else None,
@@ -522,7 +516,7 @@ class MemoryStore:
                thread_opened_at, thread_last_seen_at, thread_closed_at,
                stale_at,
                relationship_impact,
-               insight_text, insight_kind, insight_target, source_activity_id,
+               insight_target, source_activity_id,
                emotion_label, emotion_valence, emotion_arousal,
                want_more, ask_him, want_used,
                memorability, dominant, last_recalled_at, active_until,
@@ -530,7 +524,7 @@ class MemoryStore:
                confidence, expires_at, l2_status, promoted_to,
                tags, ts, half_life_days,
                vec, vec_dim, vec_model, created_at, updated_at, user_id, scope)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 item.tier,
@@ -547,8 +541,6 @@ class MemoryStore:
                 item.thread_closed_at,
                 item.stale_at,
                 str(item.relationship_impact or "")[:2000],
-                str(item.insight_text or "")[:2000],
-                str(item.insight_kind or "")[:80],
                 str(item.insight_target or "")[:20],
                 item.source_activity_id,
                 str(item.emotion_label or "")[:40],
@@ -776,7 +768,7 @@ class MemoryStore:
     def open_threads(self, limit: int = 10) -> list[dict]:
         rows = self.conn.execute(
             "SELECT id,tier,text,summary,thread_title,thread_aliases,thread_status,"
-            "thread_opened_at,thread_last_seen_at,thread_closed_at,source_ids,insight_text,insight_kind "
+            "thread_opened_at,thread_last_seen_at,thread_closed_at,source_ids,insight_target "
             "FROM memory WHERE tier='L3' AND thread_status='open' "
             "AND (merged_into IS NULL OR merged_into=0) "
             "ORDER BY thread_last_seen_at DESC, id DESC LIMIT ?",
@@ -795,8 +787,6 @@ class MemoryStore:
                 "last_seen_at": float(r["thread_last_seen_at"] or 0),
                 "closed_at": float(r["thread_closed_at"] or 0),
                 "source_ids": json.loads(r["source_ids"] or "[]"),
-                "insight_text": str(r["insight_text"] or ""),
-                "insight_kind": str(r["insight_kind"] or ""),
             })
         return out
 
@@ -820,7 +810,7 @@ class MemoryStore:
                 marks = ",".join("?" for _ in ids)
                 rows = self.conn.execute(
                     f"SELECT id,text,summary,thread_title,thread_aliases,thread_status,"
-                    f"thread_opened_at,thread_last_seen_at,thread_closed_at,source_ids,insight_text,insight_kind "
+                    f"thread_opened_at,thread_last_seen_at,thread_closed_at,source_ids,insight_target "
                     f"FROM memory WHERE id IN ({marks}) AND tier='L3' "
                     f"AND (merged_into IS NULL OR merged_into=0)",
                     ids,
@@ -840,9 +830,7 @@ class MemoryStore:
                         "last_seen_at": float(r["thread_last_seen_at"] or 0),
                         "closed_at": float(r["thread_closed_at"] or 0),
                         "source_ids": json.loads(r["source_ids"] or "[]"),
-                        "insight_text": str(r["insight_text"] or ""),
-                        "insight_kind": str(r["insight_kind"] or ""),
-                    })
+                                    })
         return out
 
     def lifecycle_candidates(self, limit: int = 20) -> list[dict]:
@@ -948,13 +936,11 @@ class MemoryStore:
                       dominant: str | None = None,
                       aliases: Sequence[str] | None = None,
                       status_reason: str | None = None,
-                      insight_text: str | None = None,
-                      insight_kind: str | None = None,
                       insight_target: str | None = None) -> bool:
         now = time.time()
         row = self.conn.execute(
             "SELECT source_ids,source_status,thread_status,thread_opened_at,thread_aliases,"
-            "insight_text,insight_kind,insight_target,insight_history "
+            "insight_target "
             "FROM memory WHERE id=? AND tier='L3'",
             (int(mem_id),),
         ).fetchone()
@@ -979,36 +965,16 @@ class MemoryStore:
                 old.append(int(sid))
         closed = now if status == "closed" else None
         source_status = "verified" if source_ids else str(row["source_status"] or "legacy")
-        history = []
-        try:
-            history = json.loads(row["insight_history"] or "[]")
-        except Exception:  # noqa: BLE001
-            history = []
-        current_insight = str(row["insight_text"] or "")
-        current_kind = str(row["insight_kind"] or "")
         current_target = str(row["insight_target"] or "")
-        if current_insight and not any(
-            isinstance(x, dict) and str(x.get("text") or "").strip() == current_insight
-            for x in history
-        ):
-            history.append({"text": current_insight[:1200], "kind": current_kind[:80], "ts": now})
-        new_insight = str(insight_text or "").strip()
-        new_kind = str(insight_kind or "").strip()
         new_target = str(insight_target or "").strip()
-        if new_insight and (not current_insight or new_insight != current_insight):
-            history.append({"text": new_insight[:1200], "kind": new_kind[:80], "ts": now})
-            history = history[-20:]
-            current_insight = new_insight[:1200]
-            if new_kind:
-                current_kind = new_kind[:80]
-            if new_target:
-                current_target = new_target[:20]
+        if new_target:
+            current_target = new_target[:20]
         self.conn.execute(
             "UPDATE memory SET summary=?, text=?, source_ids=?, thread_aliases=?, source_status=?, "
             "thread_status=?, thread_last_seen_at=?, thread_closed_at=?, "
             "relationship_impact=COALESCE(?, relationship_impact), "
             "memorability=COALESCE(?, memorability), dominant=COALESCE(?, dominant), "
-            "insight_text=?, insight_kind=?, insight_target=?, insight_history=?, "
+            "insight_target=?, "
             "status_reason=COALESCE(?, status_reason), "
             "stability_days=CASE WHEN ? IS NULL THEN stability_days "
             "ELSE (? + 0.5) * COALESCE(half_life_days, 90.0) END, "
@@ -1020,8 +986,7 @@ class MemoryStore:
                 float(last_seen_at or now), closed,
                 relationship_impact,
                 memorability, dominant,
-                current_insight, current_kind, current_target,
-                json.dumps(history, ensure_ascii=False),
+                current_target,
                 status_reason,
                 memorability, memorability,
                 now, int(mem_id),
@@ -1941,20 +1906,20 @@ class MemoryStore:
 
     def bili_insights(self, kind: str = "", limit: int = 20, days: int = 90) -> list[dict]:
         since = time.time() - max(1, int(days)) * 86400
-        sql = ("SELECT id,ts,text,insight_text,insight_kind,insight_target,source_activity_id "
-               "FROM memory WHERE tier='L3' AND insight_text!='' AND ts>=?")
+        # 感悟现在写在正文里，靠 insight_target 分类
+        sql = ("SELECT id,ts,text,insight_target,source_activity_id "
+               "FROM memory WHERE tier='L3' AND insight_target!='' AND ts>=?")
         args: list = [since]
         target = self._TARGET_ALIASES.get(str(kind or "").strip(), "")
         if target:
             # 兼容改造前落的老数据：那时候分类写在 insight_kind 里
-            sql += " AND (insight_target=? OR insight_kind LIKE ?)"
-            args.extend([target, f"%{kind}%"])
+            sql += " AND insight_target=?"
+            args.append(target)
         sql += " ORDER BY ts DESC LIMIT ?"
         args.append(max(1, min(int(limit), 50)))
         rows = self.conn.execute(sql, args).fetchall()
         return [{
             "id": int(r["id"]), "ts": float(r["ts"]), "text": r["text"],
-            "insight_text": r["insight_text"], "insight_kind": r["insight_kind"],
             "insight_target": str(r["insight_target"] or ""),
             "source_activity_id": r["source_activity_id"],
         } for r in rows]
@@ -1962,42 +1927,6 @@ class MemoryStore:
     # B 站用的是旧分类 self/style/relation，落到 insight_target 要换名字
     _BILI_KIND_TO_TARGET = {"self": "me", "relation": "us", "style": "none",
                             "me": "me", "us": "us", "none": "none"}
-
-    def add_bili_insight(self, activity_id: int, context: str = "",
-                         insight: str = "", insight_kind: str = "",
-                         memorability: float = 0.5, dominant: str = "none") -> int | None:
-        insight = str(insight or "").strip()
-        kind = str(insight_kind or "").strip()
-        if not insight or not kind:
-            return None
-        # 旧分类可能是逗号组合（self,relation），取第一个能映射的
-        target = ""
-        for part in kind.replace("，", ",").split(","):
-            target = self._BILI_KIND_TO_TARGET.get(part.strip(), "")
-            if target:
-                break
-        target = target or "none"
-        row = self.conn.execute(
-            "SELECT id,l3_id,summary,detail FROM activity_log WHERE id=?",
-            (int(activity_id),),
-        ).fetchone()
-        if not row:
-            return None
-        if row["l3_id"]:
-            return int(row["l3_id"])
-        ctx = str(context or "").strip() or str(row["summary"] or "").strip() or str(row["detail"] or "")
-        ctx = ctx[:1200]
-        mem_id = self.add(MemoryInput(
-            text=ctx, tier="L3", summary=ctx, tags=["bili-insight", f"insight:{kind}"],
-            source_status="bili", thread_status="standalone",
-            insight_text=insight[:1200], insight_kind=kind[:80], insight_target=target[:20],
-            source_activity_id=int(activity_id),
-            memorability=max(0.0, min(1.0, float(memorability or 0.5))),
-            dominant=str(dominant or "none")[:40],
-        ))
-        self.conn.execute("UPDATE activity_log SET l3_id=? WHERE id=?", (mem_id, int(activity_id)))
-        self.conn.commit()
-        return int(mem_id)
 
     def mark_activity_shared(self, activity_id: int) -> bool:
         cur = self.conn.execute(
