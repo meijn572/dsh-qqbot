@@ -99,10 +99,10 @@ function renderMem(){
     const asks=it.ask_him?`<div class="mut" style="margin-top:3px">想问：${esc(it.ask_him)}</div>`:'';
     const id=Number(it.id)||0;
     const editing=window.__memEdit===id;
-    const editBtn=it.type==='L3'&&!editing&&id?`<button style="float:right" onclick="editMemText(${id})">改字</button>`:'';
-    const stBtn=it.type==='L3'&&id?`<button style="float:right;margin-right:6px" onclick="changeStatus(${id})">改状态</button>`:'';
+    // L3 的操作收进一个下拉，不再并排两个按钮
+    const ops=it.type==='L3'&&id?`<span style="float:right"><select onchange="memAction(${id},this.value);this.value=''" style="background:#0b0f13;border:1px solid #232a33;color:#8b949e;border-radius:6px;padding:2px 4px;font-size:12px"><option value="">操作…</option><option value="edit">改字</option><option value="open">标 open</option><option value="dormant">标 dormant</option><option value="standalone">标 standalone</option><option value="closed">标 closed</option></select></span>`:'';
     const content=editing?`<div style="margin-top:6px"><textarea id="memEditText" style="width:100%;height:160px;background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:10px;font-size:13px;line-height:1.6">${esc(it.content)}</textarea><div style="margin-top:6px"><button onclick="saveMemText(${id})">保存</button> <button onclick="cancelMemText()">取消</button></div></div>`:`<div style="margin-top:3px">${esc(it.content)}</div>`;
-    h+=`<div id="mem-${id}" style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${emo}${status} ${stale}${title}<span class="mut">${esc(t)}</span>${stBtn}${editBtn}${content}${wants}${asks}${memo}${insight}${l2}<div style="margin-top:3px">${src}</div></div>`;
+    h+=`<div id="mem-${id}" style="margin:8px 0;border-bottom:1px solid #1e252e;padding-bottom:8px"><span class="badge ok">${esc(MEM_TIER_LABEL[it.type]||it.type)}</span> ${emo}${status} ${stale}${title}<span class="mut">${esc(t)}</span>${ops}${content}${wants}${asks}${memo}${insight}${l2}<div style="margin-top:3px">${src}</div></div>`;
   }
   const statusRow=document.getElementById('memstatus');
   if(statusRow) statusRow.style.display=memTier==='L3'?'block':'none';
@@ -133,27 +133,20 @@ async function saveMemText(id){
     alert('保存失败：'+e);
   }
 }
-async function changeStatus(id){
-  const cur=(window.__memItems||[]).find(x=>Number(x.id)===Number(id))||{};
-  const now=String(cur.status||'');
-  const input=prompt(
-    '改状态（现在是 '+(now||'未知')+'）\n\n'
-    +'open      在等具体的东西\n'
-    +'dormant   很久没提，可能结束了\n'
-    +'standalone 单次片段，没有下一步\n'
-    +'closed    确认结束\n\n'
-    +'填其中一个：', now||'standalone');
-  if(input===null) return;
-  const status=String(input).trim().toLowerCase();
-  if(!['open','dormant','standalone','closed'].includes(status)){
-    alert('只能填 open / dormant / standalone / closed');
-    return;
-  }
+function memAction(id, act){
+  if(!act) return;
+  if(act==='edit'){ editMemText(id); return; }
+  changeStatus(id, act);
+}
+async function changeStatus(id, status){
+  if(!['open','dormant','standalone','closed'].includes(status)) return;
   try{
     const r=await fetch('/api/threads/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,status})});
     const d=await r.json();
     if(!d.ok){ alert(d.error||'改状态失败'); return; }
-    await load();
+    const item=(window.__memItems||[]).find(x=>Number(x.id)===Number(id));
+    if(item) item.status=status;
+    renderMem();
   }catch(e){ alert('改状态失败：'+e); }
 }
 async function closeThread(id,btn){
