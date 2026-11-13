@@ -2308,3 +2308,53 @@ panel_readers.mood_payload 里的 mood / dims / valence / confidence
     面板「最近的情绪」页现在只用 label / reason / activity / timeline，
     这几个字段是旧的，没人读。留着不碍事。
 ```
+
+### 召回并进配方，context.py 删除（2026-11-13）
+
+`build_context` 只剩 `recipe_recall` 一个调用方，把它完整搬进 `inputs.py`，
+然后删掉 `service/memory/context.py`。
+
+搬的时候不是照抄，是逐字比对验证：
+
+```text
+11 个用例，新旧输出必须完全一致
+  对话召回 / 多层小量 / 顶层参数 / 宽上限 / 空查询
+  recent 排序 / 会话过滤 / 限定 top_k / before_ts / 只 L4 / 超小上限
+结果：11/11 一致（字数、行内容、count 全部相同）
+```
+
+比对中发现并修掉三处差异：
+
+```text
+一、检索方式
+   旧：跨层一次检索，再按层配额截断；top_k 是全局的
+   新（初版）：每层各检索一次 → 结果不同
+   → 按旧的方式重写
+
+二、空查询
+   旧：退回「各层最近几条」的列表模式
+   新（初版）：直接返回空
+   → 补上列表模式
+
+三、换行
+   旧：正文原样保留换行
+   新（初版）：render_memory_line 把换行折成空格
+   → 加 collapse 参数，召回传 False
+```
+
+### cut_lines 分成两种模式
+
+```text
+truncate_last=False   一行一条（召回）：放不下就整条不要
+truncate_last=True    一整块里有一行特别长（证据块）：截断它，否则整块丢光
+```
+
+### 现在的服务端结构
+
+```text
+render.py     排版：行 / 证据块 / 日记 / 人格 / 状态块
+inputs.py     取数原语 + 配方 + /input 入口
+memory_core.py  存储
+```
+
+原先的 `memory/context.py` 已经不存在。

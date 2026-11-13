@@ -45,7 +45,7 @@ def tier_label(tier: str) -> str:
 
 def render_memory_line(item: dict, *, with_id: bool = False,
                        with_time: bool | None = None,
-                       text_chars: int = 0) -> str:
+                       text_chars: int = 0, collapse: bool = True) -> str:
     """一条记忆渲染成一行。
 
     with_id      带上 [L3:123]，复盘要能溯源
@@ -53,7 +53,9 @@ def render_memory_line(item: dict, *, with_id: bool = False,
     text_chars   截断长度，0 表示不截
     """
     tier = str(item.get("tier") or "").upper()
-    text = str(item.get("text") or "").strip().replace("\n", " ")
+    text = str(item.get("text") or "").strip()
+    if collapse:
+        text = text.replace("\n", " ")
     if not text:
         return ""
     if text_chars and len(text) > text_chars:
@@ -262,10 +264,12 @@ def render_relationship(summary: str) -> str:
 _END_PUNCT = "。！？…"
 
 
-def cut_lines(lines: list[str], max_chars: int) -> str:
+def cut_lines(lines: list[str], max_chars: int, *, truncate_last: bool = False) -> str:
     """按整行累加，超了就不再收 —— 不切在半句话上。
 
-    单行本身就超限时截断它，否则整块会被丢掉。
+    一行一条（召回）时，放不下就整条不要。
+    整块里有一行特别长（证据块）时，传 truncate_last=True，
+    否则那一块会被整个丢掉。
     """
     out: list[str] = []
     total = 0
@@ -277,8 +281,9 @@ def cut_lines(lines: list[str], max_chars: int) -> str:
         if room <= 0:
             break
         if len(line) + 1 > room:
+            if not truncate_last:
+                break
             head = line[:max(1, room - 2)]
-            # 尽量切在句末，切不到就硬断
             cut = max(head.rfind("。"), head.rfind("\n"), head.rfind("；"))
             out.append(head[:cut + 1] if cut > room * 0.6 else head + "…")
             break
@@ -323,7 +328,7 @@ def render_evidence(items, sources=None, *, l1_chars: int = 240,
         blocks.append("【最近的便签】\n" + "\n".join(l1_lines))
     if l0_lines:
         blocks.append("【对应原话】\n" + "\n".join(f"- {x}" for x in l0_lines))
-    return cut_lines(blocks, max_chars)
+    return cut_lines(blocks, max_chars, truncate_last=True)
 
 
 def render_l0_recent(items, *, chars: int = 400, max_chars: int = 16000) -> str:

@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import time
 
-from render import (render_batches, render_diary, render_diary_row,
+from render import (cut_lines, render_batches, render_diary, render_diary_row,
                     render_evidence, render_l0_recent, render_memory_line,
                     render_persona, strip_persona_links)
 
@@ -424,28 +424,117 @@ def recipe_diary(store, body: dict, embedder=None) -> dict:
     return {"ok": True, "date": day.isoformat(), "blocks": blocks, "text": text}
 
 
-def recipe_recall(store, body: dict, embedder=None) -> dict:
-    """对话/主动说用的召回：多层各取一批，按层分组渲染。"""
-    query = str(body.get("query") or "").strip()
-    limits = body.get("limits") or {"L1": 25, "L3": 15}
-    scope = str(body.get("scope") or "")
-    max_chars = int(body.get("max_chars") or 6000)
-    tiers = [str(t).upper() for t in (body.get("tiers") or list(limits))]
-    if not query:
-        return {"ok": True, "blocks": {"recall": ""}, "text": "", "count": 0}
+TIER_ORDER = {"L3": 0, "L4": 0, "L2": 1, "L1": 2, "L0": 3}
+_TIERS = {"L0", "L1", "L2", "L3", "L4"}
+RECALL_HEADER = ("以下是你记得的事（不是刚听到的话）。\n"
+                 "用第一人称理解；主人就是主人，不要把他/她的事说成你自己的。")
+RECENT_HEADER = "以下是最近的对话原话（按时间从早到晚）："
 
-    picked = {t: search(store, t, query, top_k=int(limits.get(t, 10)),
-                        scope=scope, embedder=embedder) for t in tiers}
+
+def recipe_recall(store, body: dict, embedder=None) -> dict:
+    """对话/主动说用的召回。
+
+    跨层一次检索，再按层配额截断；
+    没有 query 时退回「各层最近几条」。命中 L1/L2/L3 要记一次 recall。
+    """
+    # ---- 层级与配额 ----
+    tiers = body.get("tiers")
+    limits: dict[str, int] = {}
+    if isinstance(tiers, dict):
+        limits = {str(k).upper(): int(v) for k, v in tiers.items()}
+        tiers = list(limits)
+    elif isinstance(tiers, list):
+        tiers = [str(t).upper() for t in tiers]
+        each = max(1, int(body.get("limit") or 40))
+        limits = {t: each for t in tiers}
+    else:
+        tiers = ["L1", "L3"]
+        limits = {"L1": 80, "L3": 40}
+    if isinstance(body.get("limits"), dict):
+        limits.update({str(k).upper(): int(v) for k, v in body["limits"].items()})
+    tiers = [t for t in tiers if t in _TIERS]
+    if not tiers:
+        return {"ok": True, "blocks": {"recall": ""}, "text": "", "count": 0, "counts": {}}
+
+    max_chars = max(500, min(30000, int(body.get("max_chars") or 16000)))
+    scope = str(body.get("scope") or "")
+    session_id = str(body.get("session_id") or "")
+    purpose = str(body.get("purpose") or "review")
+    query = str(body.get("query") or "").strip()
+    focus = str(body.get("focus") or "").strip()
+
+    # ---- 取行 ----
+    items: list[dict] = []
+    if query or focus:
+        qvec = None
+        if embedder is not None and getattr(embedder, "enabled", False) and body.get("embed_query", True):
+            try:
+                qvec = embedder.embed_one(query or focus)
+            except Exception:  # noqa: BLE001
+                qvec = None
+        hits = store.search(
+            query=query, query_vec=qvec,
+            top_k=max(1, min(40, int(body.get("top_k") or sum(limits.values()) or 8))),
+            tiers=tiers, subject=body.get("subject"), focus=focus or None,
+            scopes=body.get("scopes") or ([scope, "global"] if scope else None),
+            before_ts=body.get("before_ts"),
+        )
+        taken: dict[str, int] = {}
+        for hit in hits or []:
+            tier = str(hit.tier)
+            cap = max(1, int(limits.get(tier, 10)))
+            if taken.get(tier, 0) >= cap:
+                continue
+            taken[tier] = taken.get(tier, 0) + 1
+            items.append({"id": int(hit.id), "tier": tier,
+                          "text": str(hit.text), "ts": float(hit.ts or 0)})
+    else:
+        for tier in tiers:
+            cap = max(1, min(200, int(limits.get(tier, 10))))
+            exclude = ['"bili"'] if tier == "L0" else None
+            got = rows(store, tier, scope=scope,
+                       session_id=session_id if tier == "L0" else "",
+                       limit=cap, exclude_tags=exclude)
+            for row in got:
+                items.append({"id": int(row.get("id") or 0), "tier": tier,
+                              "text": str(row.get("text") or ""),
+                              "ts": float(row.get("ts") or 0)})
+
+    if not items:
+        return {"ok": True, "blocks": {"recall": ""}, "text": "", "count": 0, "counts": {}}
+
+    # ---- 排序 ----
+    if purpose == "recent":
+        items.sort(key=lambda x: float(x["ts"] or 0))
+    else:
+        items.sort(key=lambda x: (TIER_ORDER.get(x["tier"], 9), -float(x["ts"] or 0)))
+
+    # ---- 渲染 ----
     lines: list[str] = []
-    for tier in sorted(tiers, key=lambda t: {"L3": 0, "L4": 0, "L2": 1,
-                                             "L1": 2, "L0": 3}.get(t, 9)):
-        for row in picked.get(tier) or []:
-            line = render_memory_line(row)
-            if line:
-                lines.append(line)
-    header = "以下是你记得的事（不是刚听到的话）。\n用第一人称理解；主人就是主人，不要把他/她的事说成你自己的。"
-    text = (header + "\n" + "\n".join(lines))[:max_chars] if lines else ""
-    return {"ok": True, "blocks": {"recall": text}, "text": text, "count": len(lines)}
+    counts: dict[str, int] = {}
+    recalled: list[int] = []
+    for item in items:
+        text = str(item["text"]).strip()
+        if not text:
+            continue
+        tier = str(item["tier"])
+        counts[tier] = counts.get(tier, 0) + 1
+        if tier in ("L1", "L2", "L3") and item.get("id"):
+            recalled.append(int(item["id"]))
+        lines.append(render_memory_line({**item, "text": text}, collapse=False))
+
+    if recalled:
+        try:
+            store.note_recall(recalled)
+        except Exception:  # noqa: BLE001
+            pass
+
+    header = RECENT_HEADER if purpose == "recent" else RECALL_HEADER
+    body_text = cut_lines(lines, max(1, max_chars - len(header) - 1))
+    text = header + "\n" + body_text if body_text else ""
+    kept = len([x for x in body_text.splitlines() if x]) if body_text else 0
+    return {"ok": True, "blocks": {"recall": text}, "text": text,
+            "count": kept, "counts": counts}
 
 
 def recipe_recent(store, body: dict, embedder=None) -> dict:
