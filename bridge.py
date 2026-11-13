@@ -394,38 +394,78 @@ def sanitize_markdown(text: str) -> str:
 
 
 def split_bubbles(text: str) -> list[str]:
-    """按句子分气泡；一句话不硬切，只有超长单句才按逗号兜底。"""
+    """按她自己写的换行分气泡。
+
+    她自己用空行分段，那就是断句的意思 —— 尊重它，别按字数硬切。
+    只有两种情况要处理：一段太长，或者段数超过上限。
+    """
     try:
         limit = max(1, int(CONFIG.get("split_max_bubbles", 3)))
-        min_len = max(10, int(CONFIG.get("split_min_chars", 40)))
     except (TypeError, ValueError):
-        limit, min_len = 3, 40
+        limit = 3
+    max_unit = 200          # 单段超过这个字数才按句切
+
     text = (text or "").strip()
-    if len(text) <= min_len or limit <= 1:
-        return [text]
-    sentences = [s.strip() for s in re.findall(r"[^。！？!?…~\n]+[。！？!?…~]?", text) if s.strip()]
-    if len(sentences) <= 1:
-        if len(text) <= 1200:
-            return [text]
-        units = [s.strip() for s in re.split(r"(?<=[，,；;、])", text) if s.strip()]
-        if len(units) <= 1:
-            units = [text[i:i + 600] for i in range(0, len(text), 600)]
-    else:
-        units = sentences
-    target = max(24, len(text) // limit)
-    chunks: list[str] = []
-    current = ""
+    if not text:
+        return []
+
+    # 一、按空行切段；段内的单换行也算分界
+    units: list[str] = []
+    for para in re.split(r"\n\s*\n", text):
+        for line in str(para).splitlines():
+            line = line.strip()
+            if line:
+                units.append(line)
+    if not units:
+        return []
+
+    # 二、太长的段按句子切；单句还超长就按逗号兜底，最后硬断
+    pieces: list[str] = []
     for unit in units:
-        if current and len(current) >= target and len(chunks) < limit - 1:
-            chunks.append(current.strip())
-            current = unit
-        else:
-            current += unit
-    if current.strip():
-        chunks.append(current.strip())
-    while len(chunks) > limit:
-        chunks[-2] += chunks.pop()
-    return [c for c in chunks if c]
+        if len(unit) <= max_unit:
+            pieces.append(unit)
+            continue
+        buf = ""
+        for sent in re.findall(r"[^。！？!?…~]+[。！？!?…~]?", unit):
+            sent = sent.strip()
+            if not sent:
+                continue
+            if len(sent) > max_unit:
+                # 一句到底的（通篇逗号）先按逗号分
+                for part in re.split(r"(?<=[，,；;、])", sent):
+                    part = part.strip()
+                    if not part:
+                        continue
+                    if len(part) > max_unit:
+                        if buf:
+                            pieces.append(buf.strip())
+                            buf = ""
+                        for i in range(0, len(part), max_unit):
+                            pieces.append(part[i:i + max_unit].strip())
+                        continue
+                    if buf and len(buf) + len(part) > max_unit:
+                        pieces.append(buf.strip())
+                        buf = part
+                    else:
+                        buf += part
+                continue
+            if buf and len(buf) + len(sent) > max_unit:
+                pieces.append(buf.strip())
+                buf = sent
+            else:
+                buf += sent
+        if buf.strip():
+            pieces.append(buf.strip())
+
+    # 三、超过上限就合并相邻的两段（合并处保留空行）
+    while len(pieces) > limit:
+        i = min(range(len(pieces) - 1),
+                key=lambda k: len(pieces[k]) + len(pieces[k + 1]))
+        pieces[i] = pieces[i] + "\n\n" + pieces[i + 1]
+        del pieces[i + 1]
+
+    return [p for p in pieces if p]
+
 
 
 class OneBot:
