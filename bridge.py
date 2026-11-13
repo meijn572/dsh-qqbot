@@ -399,10 +399,11 @@ def split_bubbles(text: str) -> list[str]:
     她自己用空行分段，那就是断句的意思 —— 尊重它，别按字数硬切。
     只有两种情况要处理：一段太长，或者段数超过上限。
     """
+    # 0 或负数 = 不封顶，她分几段就发几条
     try:
-        limit = max(1, int(CONFIG.get("split_max_bubbles", 3)))
+        limit = int(CONFIG.get("split_max_bubbles", 0))
     except (TypeError, ValueError):
-        limit = 3
+        limit = 0
     max_unit = 200          # 单段超过这个字数才按句切
 
     text = (text or "").strip()
@@ -457,8 +458,8 @@ def split_bubbles(text: str) -> list[str]:
         if buf.strip():
             pieces.append(buf.strip())
 
-    # 三、超过上限就合并相邻的两段（合并处保留空行）
-    while len(pieces) > limit:
+    # 三、设了上限才合并（合并处保留空行）；默认不封顶
+    while limit > 0 and len(pieces) > limit:
         i = min(range(len(pieces) - 1),
                 key=lambda k: len(pieces[k]) + len(pieces[k + 1]))
         pieces[i] = pieces[i] + "\n\n" + pieces[i + 1]
