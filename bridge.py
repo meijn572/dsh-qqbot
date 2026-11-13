@@ -1488,7 +1488,7 @@ IMPORTANT_MAX = 8
 
 
 def review_cfg() -> dict:
-    merged = {"enabled": True, "review_days": 30}
+    merged = {"enabled": True, "review_days": 5}
     merged.update(CONFIG.get("persona_review") or {})
     return merged
 
@@ -2510,9 +2510,10 @@ async def run_style_review(dsh: Dsh, chat_key: str) -> bool:
     )
 
 
-async def run_persona_review(dsh: Dsh) -> bool:
+async def run_persona_review(dsh: Dsh, since: float = 0.0) -> bool:
     return await growth_review.run(
-        lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt, task="review")
+        lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt, task="review"),
+        since=since,
     )
 
 
@@ -2525,9 +2526,10 @@ async def persona_review_loop(dsh: Dsh) -> None:
                 continue
             state = growth_review.load_state()
             last = float(state.get("last_run") or 0)
-            days = max(1, int(review_cfg().get("review_days", 30)))
+            # 5 天一次，每次看全这几天，不按条数截
+            days = max(1, int(review_cfg().get("review_days", 5)))
             if time.time() - last >= days * 86400:
-                await run_persona_review(dsh)
+                await run_persona_review(dsh, since=last)
         except Exception as exc:  # noqa: BLE001
             log.warning("人格复盘失败：%s", exc)
         await asyncio.sleep(6 * 3600)

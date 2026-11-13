@@ -259,36 +259,61 @@ def persona_block(store, *, expand: bool = False) -> dict[str, str]:
 # 配方
 # ---------------------------------------------------------------------------
 
+# 每个用途取多少、要不要带原话、证据块最多多少字
 DEFAULT_LIMITS = {
-    "evidence": {"L1": 15, "L3": 10, "L0": 30},
-    "diary": {"L1": 40, "L3": 5},
-    "review": {"L1": 50, "L3": 30, "L0": 50, "recent": 30},
-    "style": {"L1": 30, "L3": 20, "L0": 30, "recent": 60},
-    "profile": {"L1": 50, "L3": 30, "L0": 50, "recent": 20},
-    "important": {"L1": 15, "L3": 10, "L0": 50, "recent": 80},
+    "evidence":  {"L1": 15, "L3": 10, "recent": 0,
+                  "quotes": False, "max_chars": 8000},
+    "diary":     {"L1": 40, "L3": 5, "recent": 0,
+                  "quotes": False, "max_chars": 8000},
+    # 5 天一次、看全窗口，所以给得比别的大
+    "review":    {"L1": 300, "L3": 200, "recent": 30,
+                  "quotes": False, "max_chars": 24000},
+    # 调口吻要真实措辞，只有它带原话
+    "style":     {"L1": 30, "L3": 20, "recent": 60,
+                  "quotes": True, "max_chars": 12000},
+    "profile":   {"L1": 90, "L3": 50, "recent": 20,
+                  "quotes": False, "max_chars": 18000},
+    "important": {"L1": 30, "L3": 20, "recent": 80,
+                  "quotes": False, "max_chars": 10000},
 }
 
 
-def _limits(name: str, body: dict) -> dict[str, int]:
+def _limits(name: str, body: dict) -> dict:
+    """默认值表 + 调用方覆盖。数字键是条数，其它键（quotes/max_chars）原样保留。"""
     merged = dict(DEFAULT_LIMITS.get(name) or {})
     given = body.get("limits")
     if isinstance(given, dict):
-        merged.update({str(k): int(v) for k, v in given.items()})
+        for k, v in given.items():
+            key = str(k)
+            if key in ("quotes",):
+                merged[key] = bool(v)
+            elif key == "max_chars":
+                merged[key] = int(v)
+            else:
+                merged[key.upper() if len(key) <= 2 else key] = int(v)
+    for key in ("quotes", "max_chars"):
+        if key in body and key not in (given or {}):
+            merged[key] = body[key]
     return merged
 
 
-def _evidence_blocks(store, body: dict, limits: dict[str, int]) -> tuple[str, list[str]]:
-    """L1/L3 各取一批 + 它们引用的原话。返回（渲染文本, refs）。"""
+def _evidence_blocks(store, body: dict, limits: dict) -> tuple[str, list[str]]:
+    """L1/L3 各取一批，按需带上它们引用的原话。返回（渲染文本, refs）。"""
     tiers = [t for t in ("L1", "L3") if limits.get(t)]
-    picked = rows_each(store, tiers, limits=limits, scope=str(body.get("scope") or ""))
+    picked = rows_each(store, tiers, limits=limits,
+                       scope=str(body.get("scope") or ""),
+                       since=body.get("since") or None,
+                       until=body.get("until") or None)
     items: list[dict] = []
     for tier in ("L3", "L1"):
         items.extend(picked.get(tier) or [])
-    sources_rows = sources(store, picked.get("L3") or [],
-                           limit=int(limits.get("L0") or 50))
+    quotes = bool(limits.get("quotes"))
+    sources_rows = (sources(store, picked.get("L3") or [],
+                            limit=int(limits.get("L0") or 50)) if quotes else [])
     refs = [f"{r['tier']}:{r['id']}" for r in items][:8]
     refs += [f"L0:{r['id']}" for r in sources_rows][:4]
-    return render_evidence(items, sources_rows), refs[:8]
+    return render_evidence(items, sources_rows or None,
+                           max_chars=int(limits.get("max_chars") or 16000)), refs[:8]
 
 
 def recipe_evidence(store, body: dict, embedder=None) -> dict:

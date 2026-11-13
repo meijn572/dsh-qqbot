@@ -40,8 +40,9 @@ def _clean_ops(raw, target: str) -> list[dict]:
     return out
 
 
-async def run(turn: Turn) -> bool:
-    data = await input_block("review")
+async def run(turn: Turn, since: float = 0.0) -> bool:
+    # 看全「上次复盘以来」的窗口，不按条数截
+    data = await input_block("review", since=float(since or 0.0))
     blocks = data.get("blocks") or {}
     constitution = str(blocks.get("constitution") or "")
     user_profile = str(blocks.get("profile") or "")
@@ -50,12 +51,14 @@ async def run(turn: Turn) -> bool:
     diary_block = str(blocks.get("diary") or "")
     history = recent_history()
     prompt = (
-        "（内部维护，不要回复用户）做一次核心人格复盘。\n\n"
+        "（内部维护，不要回复用户）做一次核心人格复盘。\n"
+        "【这几天的记录】是上次复盘以来的全部便签和事件，按时间和层排好；\n"
+        "不是摘要，所以别指望它替你挑重点，自己判断哪条算变化。\n\n"
         "【核心设定】\n" + (constitution or "（空）") + "\n\n"
         "【用户画像】\n" + (user_profile or "（空）") + "\n\n"
-        "【最近对话】\n" + (recent or "（最近没聊什么）") + "\n\n"
+        "【最近的原话】\n" + (recent or "（最近没聊什么）") + "\n\n"
         + (("【最近几天的日记】\n" + diary_block + "\n\n") if diary_block else "")
-        + "【长期证据】\n" + (memories or "（没有长期记忆）") + "\n\n"
+        + "【这几天的记录】\n" + (memories or "（没有长期记忆）") + "\n\n"
         "【最近候选】\n" + history + "\n\n"
         "只判断这四类要不要改：\n"
         "\n"
@@ -66,7 +69,7 @@ async def run(turn: Turn) -> bool:
         "\n"
         "不要改身份、性格、说话风格、边界。\n"
         "不要产出「约定」——那是另一条线管的。\n"
-        "每条必须有最近对话、日记或长期证据支撑；没有就空数组。\n"
+        "每条必须在这几天的记录、原话或日记里找得到依据；没有就空数组。\n"
         "\n"
         "relationship 只写长期成立的站位和约定；最近这段是什么样子，由关系复盘管，\n"
         "不要写进来。\n"
