@@ -2062,3 +2062,89 @@ bridge / memory 重启正常
 
 `POST /diary {"date":"2026-11-12","dry_run":true}` 调模型但不落库，
 返回 input / memories / prev_diary / result。调素材和提示词时用。
+
+## 28. 输入收成三层：原语 / 配方 / 一个入口（2026-11-13）
+
+### 问题
+
+接口按「用途」切，不按「层次」切。每加一个用途就要加一个端点，
+或者让消费方自己调三四个接口再拼：
+
+```text
+/context            「标签 · 时间」文本
+/context/evidence   证据 + L0 展开
+/context/batches    按批的 L0
+/persona/context    另一套人格拼法（跟 render_persona 不是一套）
+/diary              四段
+```
+
+六个消费方（diary / review / style / profile / important / 对话）各拼各的。
+
+### 改成三层
+
+```text
+原语   rows_l0 / rows_tier / batch_rows / render_* (render.py)
+配方   service/inputs.py 里 RECIPES 各声明一次
+入口   POST /input/<name>
+```
+
+配方清单：
+
+```text
+diary      人格 + 昨天便签 + 相关旧事 + 前几天日记
+review     人格(展开来源) + 最近对话 + 证据 + 日记
+style      人格 + 最近对话 + 证据
+profile    人格 + 最近对话 + 证据
+important  人格 + 证据 + 最近原话
+evidence   L1/L3 + 原话（通用）
+recall     带 query 的检索
+recent     最近 L0
+batches    按空闲切批的 L0
+```
+
+每个配方返回同一种结构：
+
+```json
+{"ok": true, "blocks": {"persona": "...", "evidence": "...", ...},
+ "text": "拼好的整块", "refs": ["L3:1459", "L0:1234"]}
+```
+
+### 消费方变成一次调用
+
+```python
+data = await input_block("review")
+blocks = data.get("blocks") or {}
+```
+
+不再各自拼 SQL、不再调三四个接口。
+
+### 删掉的
+
+```text
+端点   /context  /context/evidence  /context/batches  /persona/context
+模块   qqbot/domains/growth/evidence.py（collect / format_block）
+函数   expand_persona_links / context_evidence / _evidence_ids
+```
+
+`build_context` 保留在服务端内部，由 recall 配方调用；
+`hook/pre-step` 也直接调它，不走 HTTP。
+
+### 顺带修的两处
+
+```text
+截断   召回和证据都改成按整行累加，超了就不加那一行
+       以前 text[:max_chars] 会切在半句话上，
+       出现过「[记得的事] 2026-11-06 晚上」这种碎片
+
+旧数据  删掉 16 条「旧流水账」L3（11-02~11-06），
+       那几天正常的 L3 已经覆盖；备份 memories.db.bak-legacy-l3-20261113-145341
+```
+
+### 日记也换了配方
+
+```text
+POST /diary {"date": "2026-11-12", "dry_run": true}
+```
+
+返回 blocks（人格 / 便签 / 旧事 / 前几天日记）和产出，不落库。
+_write_diary 现在只是薄包装：调配方 → 调模型 → 落库。

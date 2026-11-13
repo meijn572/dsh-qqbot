@@ -69,7 +69,7 @@ def main() -> int:
 
     print("== 接口 ==")
     urls = [
-        (f"{CMEM_BASE}/persona/context", "GET"),
+        (f"{CMEM_BASE}/input/review", "POST"),
         (f"{CMEM_BASE}/state", "GET"),
         (f"http://127.0.0.1:{PANEL_PORT}/api/status", "GET"),
         (f"http://127.0.0.1:{PANEL_PORT}/api/persona", "GET"),

@@ -2248,7 +2248,7 @@ async def proactive_say(dsh: Dsh, onebot: OneBot, kind: str, extra: str = "") ->
         act_bits.append(f"{a.get('detail') or ''}\n想法：{a.get('thought') or ''}")
     query = "\n".join([recent[-1200:]] + act_bits)[-3000:]
     try:
-        ctx = await cmem_call("POST", "/context", {
+        ctx = await cmem_call("POST", "/input/recall", {
             "query": query,
             "tiers": ["L1", "L3"],
             "limits": {"L1": 12, "L3": 8},

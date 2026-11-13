@@ -201,8 +201,6 @@ def handle_get(handler, path: str, query: dict, store) -> bool:
                 st["open_tasks"] = 0
             st["view_hour"] = hour
             handler._json(200, st)
-        elif path == "/persona/context":
-            handler._guard(handler._persona_context)
         elif path == "/persona":
             handler._guard(handler._get_persona)
         elif path == "/export":

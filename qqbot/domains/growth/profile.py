@@ -7,8 +7,7 @@ import re
 import time
 from typing import Awaitable, Callable
 
-from qqbot.clients.memory import cmem_call, persona_context, recent_dialogue
-from qqbot.domains.growth.evidence import collect, format_block
+from qqbot.clients.memory import cmem_call, input_block
 from settings import DSH_HOME
 
 log = logging.getLogger("qqbot.growth.profile")
@@ -17,10 +16,11 @@ Turn = Callable[[str], Awaitable[str]]
 
 
 async def run(turn: Turn) -> bool:
-    persona_text = await persona_context()
-    recent = await recent_dialogue(20)
-    ev = await collect(l1=50, l3=30, l0=50)
-    memory_text = format_block(ev)
+    data = await input_block("profile")
+    blocks = data.get("blocks") or {}
+    persona_text = str(blocks.get("persona") or "")
+    recent = str(blocks.get("recent") or "")
+    memory_text = str(blocks.get("evidence") or "")
     if not memory_text:
         log.info("画像刷新：素材不够")
         return False

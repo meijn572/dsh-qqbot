@@ -901,62 +901,44 @@ class Extractor:
             return None
         return (str(text).strip()[:250]) if text else None
 
-    def write_diary(self, user_text: str, assistant_text: str = "", date: str = "",
-                    activities: list | None = None, persona: str = "",
+    def write_diary(self, notes: str, date: str = "", persona: str = "",
                     memories: str = "", prev_diary: str = "") -> dict | None:
         """写昨天的日记：一次调用产出 text / changes / open_questions / relationship。"""
         if self.llm is None or not getattr(self.llm, "enabled", False):
             return None
+
+        def _blank(value) -> str:
+            text = str(value or "").strip()
+            return "" if text in ("（无）", "（空）", "（没有）") else text
+
         parts = []
         if date:
             parts.append(f"【日期】{date}")
-        if persona:
-            parts.append("【你现在的样子】")
-            parts.append(persona[:3000])
-            parts.append("")
-        if user_text or assistant_text:
-            if assistant_text:
-                parts.append("【主人说的】")
-                parts.append(user_text)
-                parts.append("【你说的】")
-                parts.append(assistant_text)
-            elif str(user_text or "").startswith("【"):
-                # 调用方已经分好块（原话 / 便签），原样放进去
-                parts.append(user_text)
-            else:
-                parts.append("【昨天的事，按时间】")
-                parts.append(user_text)
-            parts.append("")
-        if activities:
-            parts.append("昨天还做过的事（补充，不必全写）：")
-            for a in activities[-30:]:
-                detail = str(a.get("detail") or "")[:80]
-                kind = str(a.get("kind") or "")
-                if detail:
-                    parts.append(f"- [{kind}] {detail}")
-            parts.append("")
-        if memories:
-            parts.append("以前可能相关的记忆（不一定相关，只在对得上时自然联想）：")
-            parts.append(memories[:3000])
-            parts.append("")
-        if prev_diary:
-            parts.append("前几天写过的日记（保持连续，别每天重写同一句）：")
-            parts.append(prev_diary[:4000])
-        convo = "\n".join(parts) if parts else str(user_text)
+        if _blank(persona):
+            parts.extend(["【你现在的样子】", _blank(persona)[:3000], ""])
+        if _blank(notes):
+            parts.extend(["【昨天记下的便签】", _blank(notes)[:12000], ""])
+        if _blank(memories):
+            parts.extend(["【以前相关的事】", _blank(memories)[:3000], ""])
+        if _blank(prev_diary):
+            parts.extend(["【前几天写过的日记】", _blank(prev_diary)[:4000]])
+        convo = "\n".join(parts)
+
         try:
             raw = self.llm.chat(DIARY_SYSTEM, convo, max_tokens=1200)
-        except Exception:
+        except Exception:  # noqa: BLE001
             return None
         if not raw:
             return None
         match = re.search(r"\{.*\}", raw, re.S)
-        if not match:
+        data = None
+        if match:
+            try:
+                data = json.loads(match.group(0))
+            except Exception:  # noqa: BLE001
+                data = None
+        if not isinstance(data, dict):
             # 没给 JSON 就当成只有正文，别整篇丢掉
-            return {"text": str(raw).strip()[:1200],
-                    "changes": "", "open_questions": "", "relationship": ""}
-        try:
-            data = json.loads(match.group(0))
-        except Exception:
             return {"text": str(raw).strip()[:1200],
                     "changes": "", "open_questions": "", "relationship": ""}
 

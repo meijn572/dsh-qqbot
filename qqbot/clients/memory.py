@@ -20,66 +20,6 @@ async def cmem_call(method: str, path: str, body: dict | None = None) -> dict:
             return await resp.json(content_type=None)
 
 
-async def expand_persona_links(constitution: str) -> str:
-    """把人格里的 【L3:123】 展开成「标题 · 状态 + 正文」，给复盘看。
-
-    日常注入走 persona.mjs，那边是直接抹掉的——模型不需要知道来处。
-    复盘要判断这条还成不成立，才需要看见当时发生了什么。
-    """
-    import re as _re
-    text = str(constitution or "")
-    ids = sorted({int(x) for x in _re.findall(r"【L3:(\d+)】", text)})
-    if not ids:
-        return text
-    info: dict[int, dict] = {}
-    for tier in ("L3", "L4"):
-        try:
-            data = await cmem_call("GET", f"/memories?tier={tier}&limit=200")
-            for item in (data.get("items") or []):
-                try:
-                    mid = int(item.get("id"))
-                except (TypeError, ValueError):
-                    continue
-                if mid in ids:
-                    info[mid] = item
-        except Exception:  # noqa: BLE001
-            continue
-    # 按 id 精确取这些事件，连同它们的 L0 原话
-    evidence: dict[int, list[str]] = {}
-    try:
-        rows = await cmem_call("POST", "/context/evidence", {
-            "ids": ids, "tiers": ["L3", "L4"], "l0_limit": 300,
-        })
-        l0_rows = rows.get("l0") or []
-        for mid in ids:
-            item = next((x for x in (rows.get("items") or [])
-                         if int(x.get("id") or 0) == mid), None)
-            if item is None:
-                continue
-            src = {int(x) for x in (item.get("source_ids") or [])}
-            quotes = [str(r.get("text") or "").strip()[:200]
-                      for r in l0_rows if int(r.get("id") or 0) in src]
-            if quotes:
-                evidence[mid] = quotes[:3]
-    except Exception:  # noqa: BLE001
-        evidence = {}
-
-    for mid in ids:
-        item = info.get(mid)
-        if not item:
-            text = text.replace(" 【L3:%d】" % mid, "").replace("【L3:%d】" % mid, "")
-            continue
-        title = str(item.get("thread_title") or "").strip() or "（无标题）"
-        status = str(item.get("thread_status") or "").strip() or "?"
-        body = str(item.get("summary") or item.get("text") or "").strip().replace("\n", " ")[:200]
-        lines = [f"〔{title} · {status}〕{body}"]
-        quotes = evidence.get(mid) or []
-        if quotes:
-            lines.append("当时的话：" + " / ".join(quotes[:3]))
-        text = text.replace("【L3:%d】" % mid, "\n    ".join(lines))
-    return text
-
-
 async def diary_recent(days: int = 7) -> list[dict]:
     """中间层：最近几天的日记（含 text / changes / open_questions）。"""
     data = await cmem_call("GET", "/diary")
@@ -114,17 +54,31 @@ def format_diary(rows: list[dict]) -> str:
     return "\n\n".join(blocks)
 
 
+async def input_block(name: str, **body) -> dict:
+    """取一份输入配方：POST /input/<name>。
+
+    返回 {"text": 拼好的整块, "blocks": {名字: 内容}}。
+    消费方自己挑块，不再各自拼素材。
+    """
+    data = await cmem_call("POST", f"/input/{name}", body)
+    if not isinstance(data, dict) or not data.get("ok"):
+        return {"text": "", "blocks": {}}
+    return {"text": str(data.get("text") or ""),
+            "blocks": data.get("blocks") or {}}
+
+
 async def persona_context() -> str:
-    data = await cmem_call("GET", "/persona/context")
+    """人格文本（不含溯源标记）：直接取 /persona 渲染好的 text。"""
+    data = await cmem_call("GET", "/persona")
     return str(data.get("text") or "")
 
 
 async def long_term_memory(tiers: dict | None = None) -> str:
-    data = await cmem_call("POST", "/context", {
-        "tiers": tiers or {"L1": 80, "L3": 40},
-        "purpose": "review",
-        "max_chars": 16000,
-    })
+    if tiers and isinstance(tiers, dict):
+        body = {"limits": {str(k).upper(): int(v) for k, v in tiers.items()}}
+    else:
+        body = {"limits": {"L1": 80, "L3": 40}}
+    data = await input_block("evidence", **body)
     return str(data.get("text") or "")
 
 
@@ -152,12 +106,7 @@ async def l0_recent(chat_key: str, limit: int = 80) -> str:
     sid = session_id_for(chat_key)
     if not sid:
         return ""
-    data = await cmem_call("POST", "/context", {
-        "tiers": {"L0": max(1, int(limit))},
-        "session_id": sid,
-        "purpose": "recent",
-        "max_chars": 16000,
-    })
+    data = await input_block("recent", session_id=sid, limit=max(1, int(limit)))
     return str(data.get("text") or "")
 
 
@@ -167,21 +116,15 @@ async def recent_batches(chat_key: str, batches: int = 2, idle_seconds: int = 30
 
     不按会话 id 过滤 —— 重建后新会话里没有旧消息，得从记忆里捞。
     """
-    data = await cmem_call("POST", "/context/batches", {
-        "scope": chat_key,
-        "batches": max(1, int(batches)),
-        "idle_seconds": max(60, int(idle_seconds)),
-        "max_chars": max_chars,
-    })
+    data = await input_block("batches", scope=chat_key,
+                             batches=max(1, int(batches)),
+                             idle_seconds=max(60, int(idle_seconds)),
+                             max_chars=max_chars)
     return str(data.get("text") or "")
 
 
 async def recent_dialogue(limit: int = 80) -> str:
     return await l0_recent(OWNER_CHAT_KEY, limit)
-
-
-async def context_evidence(body: dict) -> dict:
-    return await cmem_call("POST", "/context/evidence", body)
 
 
 async def ingest(text: str, tier: str = "L0", tags: list[str] | None = None) -> int | None:

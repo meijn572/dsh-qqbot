@@ -7,9 +7,8 @@ import re
 import time
 from typing import Awaitable, Callable
 
-from qqbot.clients.memory import (cmem_call, diary_recent, expand_persona_links,
-                                  format_diary, recent_dialogue)
-from qqbot.domains.growth.evidence import collect, format_block
+from qqbot.clients.memory import input_block
+
 from qqbot.domains.growth.proposals import (
     add_proposals,
     load_state,
@@ -19,20 +18,6 @@ from qqbot.domains.growth.proposals import (
 
 log = logging.getLogger("qqbot.growth.review")
 Turn = Callable[[str], Awaitable[str]]
-
-
-def _evidence_ids(ev: dict) -> list[str]:
-    out = []
-    for item in ev.get("items") or []:
-        tier = str(item.get("tier") or "")
-        mid = item.get("id")
-        if tier and mid is not None:
-            out.append(f"{tier}:{mid}")
-    for row in ev.get("l0") or []:
-        mid = row.get("id")
-        if mid is not None:
-            out.append(f"L0:{mid}")
-    return out[:8]
 
 
 def _clean_ops(raw, target: str) -> list[dict]:
@@ -56,20 +41,14 @@ def _clean_ops(raw, target: str) -> list[dict]:
 
 
 async def run(turn: Turn) -> bool:
-    persona = await cmem_call("GET", "/persona")
-    # 复盘要看见每条格的来处，所以这里用展开版（日常注入不展开）
-    constitution = await expand_persona_links(str(persona.get("constitution") or ""))
-    user_profile = str(persona.get("user_profile") or "")
-    recent = await recent_dialogue(30)
-    ev = await collect(l1=50, l3=30, l0=50)
-    memories = format_block(ev)
+    data = await input_block("review")
+    blocks = data.get("blocks") or {}
+    constitution = str(blocks.get("constitution") or "")
+    user_profile = str(blocks.get("profile") or "")
+    recent = str(blocks.get("recent") or "")
+    memories = str(blocks.get("evidence") or "")
+    diary_block = str(blocks.get("diary") or "")
     history = recent_history()
-    # 中间层：最近 7 天的日记。它记的是「最近在变什么」，
-    # 正是人格该不该改的直接线索。
-    try:
-        diary_block = format_diary(await diary_recent(7))
-    except Exception:  # noqa: BLE001
-        diary_block = ""
     prompt = (
         "（内部维护，不要回复用户）做一次核心人格复盘。\n\n"
         "【核心设定】\n" + (constitution or "（空）") + "\n\n"
@@ -132,7 +111,7 @@ async def run(turn: Turn) -> bool:
     if not isinstance(data, dict):
         log.warning("人格复盘：JSON 不是对象")
         return False
-    evidence = _evidence_ids(ev)
+    evidence = list(data.get("refs") or [])[:8]
     added = 0
     for target in ("preference", "judgment", "relationship", "weakness"):
         ops = _clean_ops(data.get(target), target)

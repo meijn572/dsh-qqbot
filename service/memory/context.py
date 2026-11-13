@@ -116,8 +116,16 @@ def build_context(store, body: dict, embedder) -> dict:
         else "以下是你记得的事（不是刚听到的话）。\n"
              "用第一人称理解；主人就是主人，不要把他/她的事说成你自己的。"
     )
-    text = header + "\n" + "\n".join(lines)
-    return {"ok": True, "text": text[:max_chars], "count": len(lines), "counts": counts}
+    # 按整行累加，超了就不再收 —— 别切在半句话上
+    out: list[str] = []
+    total = len(header) + 1
+    for line in lines:
+        if total + len(line) + 1 > max_chars:
+            break
+        out.append(line)
+        total += len(line) + 1
+    text = header + "\n" + "\n".join(out)
+    return {"ok": True, "text": text, "count": len(out), "counts": counts}
 
 
 def recent_batches(store, body: dict) -> dict:

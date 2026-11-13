@@ -55,6 +55,7 @@ from api.routes.read import simple_get
 from api.routes.get import handle_get
 from api.routes.hooks import evidence as hook_evidence, pre_step as hook_pre_step, turn_end as hook_turn_end
 from api.routes.table import post_handler
+import inputs
 from surprisal import SurprisalGate
 
 DATA_DIR = os.environ.get("CMEM_DATA_DIR", "/data")
@@ -361,6 +362,11 @@ class Handler(BaseHTTPRequestHandler):
                 r = store.meme_pack_remove(str(body.get("id") or ""))
             self._json(200, r)
             return
+        if path.startswith("/input/"):
+            name = path[len("/input/"):].strip("/")
+            body = self._body()
+            self._json(200, inputs.run(store, name, body, embedder))
+            return
         if path.startswith("/forget/"):
             mem_id = path.rsplit("/", 1)[-1]
             self._guard(lambda: self._forget(mem_id))
@@ -379,30 +385,11 @@ class Handler(BaseHTTPRequestHandler):
     def _search(self) -> None:
         self._json(200, search(store, embedder, self._body()))
 
-    def _context(self) -> None:
-        self._json(200, build_context(store, self._body(), embedder))
-
-    def _context_batches(self) -> None:
-        """按空闲间隔切批次取最近几段对话：会话重建后接着聊用。"""
-        from memory.context import recent_batches
-        body = self._body()
-        if not body.get("idle_seconds"):
-            # 跟批处理用同一个切分标准，这样「上一批」就是真的上一批
-            cfg = _load_config()
-            body["idle_seconds"] = float(cfg.get("segment_idle_seconds", 300))
-        self._json(200, recent_batches(store, body))
-
     def _hook_pre_step(self) -> None:
         self._json(200, hook_pre_step(store, embedder, self._body()))
 
     def _hook_turn_end(self) -> None:
         self._json(200, hook_turn_end(store, _lock, gate, embedder, self._body()))
-
-    def _context_evidence(self) -> None:
-        self._json(200, hook_evidence(store, self._body()))
-
-    def _persona_context(self) -> None:
-        self._json(200, build_persona_context(store.get_persona()))
 
     def _forget(self, mem_id: str) -> None:
         self._json(200, forget(store, _lock, int(mem_id)))
@@ -2503,158 +2490,26 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200 if ok else 404, {"ok": ok, "id": aid})
 
     def _write_diary(self) -> None:
-        """写昨天的日记：昨天全部原话 + 便签 + 活动 + 相关旧记忆 + 前几天日记。
-
-        素材不再按情绪筛 —— 情绪只是便签上的一个附注，
-        决定「什么值得写」的是模型，不是有没有标情绪。
-        """
+        """写昨天的日记：素材由 inputs 的 diary 配方给，这里只管调模型和落库。"""
         body = self._body()
-        import datetime as _dt
-        target = str(body.get("date") or "").strip()
-        day = None
-        if target:
-            try:
-                day = _dt.date.fromisoformat(target)
-            except ValueError:
-                day = None
-        if day is None:
-            # 默认写昨天：等当天完整结束，深夜的话不会漏
-            day = _dt.date.today() - _dt.timedelta(days=1)
-        day_start = _dt.datetime.combine(day, _dt.time.min).timestamp()
-        day_end = day_start + 86400
         cfg = _load_config()
         if not bool(cfg.get("diary_enabled", True)):
             self._json(200, {"ok": True, "skipped": "disabled"})
             return
 
-        # 当天最活跃的私聊 scope
-        scope = ""
-        try:
-            row = store.conn.execute(
-                "SELECT scope, COUNT(*) AS c FROM memory "
-                "WHERE tier='L0' AND ts>=? AND ts<? AND scope LIKE 'private:%' "
-                "GROUP BY scope ORDER BY c DESC, MAX(id) DESC LIMIT 1",
-                (day_start, day_end),
-            ).fetchone()
-            if row is None:
-                row = store.conn.execute(
-                    "SELECT scope FROM memory WHERE tier='L0' AND ts>=? AND ts<? "
-                    "ORDER BY id DESC LIMIT 1",
-                    (day_start, day_end),
-                ).fetchone()
-            scope = str(row["scope"] or "") if row else ""
-        except Exception:  # noqa: BLE001
-            scope = ""
-
-        def _rows(sql: str, args: list) -> list:
-            try:
-                return list(store.conn.execute(sql, args).fetchall())
-            except Exception:  # noqa: BLE001
-                return []
-
-        # 一、昨天说过的话：全部原话，不按情绪筛
-        l0_rows = _rows(
-            "SELECT text,ts FROM memory WHERE tier='L0' AND ts>=? AND ts<? "
-            "AND (scope=? OR scope='global') AND tags NOT LIKE '%\"bili\"%' "
-            "ORDER BY ts ASC LIMIT 120",
-            [day_start, day_end, scope],
-        )
-        l0_lines: list[str] = []
-        for r in l0_rows:
-            text = str(r["text"] or "").strip()
-            if not text:
-                continue
-            stamp = time.strftime("%H:%M", time.localtime(float(r["ts"] or 0)))
-            l0_lines.append(f"[{stamp}] {text}")
-
-        # 二、昨天记下的便签：情绪是附注，不是门槛
-        l1_rows = _rows(
-            "SELECT text,ts,emotion_label FROM memory WHERE tier='L1' "
-            "AND ts>=? AND ts<? AND (scope=? OR scope='global') "
-            "ORDER BY ts ASC LIMIT 40",
-            [day_start, day_end, scope],
-        )
-        l1_lines: list[str] = []
-        for r in l1_rows:
-            text = str(r["text"] or "").strip()
-            if not text:
-                continue
-            label = str(r["emotion_label"] or "").strip()
-            l1_lines.append(f"- （{label}）{text}" if label else f"- {text}")
-
-        user_text = ""
-        if l0_lines:
-            user_text += "【昨天说过的话，按时间】\n" + "\n".join(l0_lines)
-        if l1_lines:
-            if user_text:
-                user_text += "\n\n"
-            user_text += "【昨天记下的便签】\n" + "\n".join(l1_lines)
-        if str(body.get("user_text") or "").strip():
-            user_text = str(body.get("user_text") or "").strip()
-        user_text = user_text[:14000]
-
-        # 三、相关旧记忆：拿昨天的便签去查，不再用情绪强度排序
-        memory_lines: list[str] = []
-        seen_memory: set[str] = set()
-        for r in l1_rows[-5:]:
-            query = str(r["text"] or "").strip()[:160]
-            if not query:
-                continue
-            try:
-                ctx = build_context(store, {
-                    "query": query,
-                    "tiers": ["L3"],
-                    "limits": {"L3": 3},
-                    "top_k": 3,
-                    "scope": scope,
-                    "purpose": "diary",
-                    "max_chars": 800,
-                    "before_ts": day_start,
-                }, embedder)
-            except Exception:  # noqa: BLE001
-                continue
-            for line in str(ctx.get("text") or "").splitlines():
-                line = line.strip()
-                if not line.startswith("[记得的事"):
-                    continue
-                key = line[:120]
-                if key in seen_memory:
-                    continue
-                seen_memory.add(key)
-                memory_lines.append(line)
-                if len(memory_lines) >= 5:
-                    break
-            if len(memory_lines) >= 5:
-                break
-        related = "\n".join(memory_lines)[:1500]
-
-        # 四、昨天的活动
-        acts = []
-        try:
-            acts = [a for a in store.list_activities(400)
-                    if float(a.get("ts") or 0) >= day_start]
-        except Exception:  # noqa: BLE001
-            acts = []
-        persona_text = build_persona_context(store.get_persona()).get("text", "")
-
-        # 五、前几天的日记：保持连续，尤其关系那句不要每天重写
-        prev_diary = ""
-        try:
-            rows = store.diary_list(8)
-            keep = [r for r in rows if str(r.get("date") or "") < day.isoformat()][:7]
-            from render import render_diary
-            prev_diary = render_diary(keep)
-        except Exception:  # noqa: BLE001
-            prev_diary = ""
+        data = inputs.run(store, "diary", body, embedder)
+        if not data.get("ok"):
+            self._json(400, data)
+            return
+        blocks = data.get("blocks") or {}
+        date = str(data.get("date") or "")
 
         result = extractor.write_diary(
-            user_text,
-            assistant_text=str(body.get("assistant_text") or ""),
-            date=day.isoformat(),
-            activities=acts,
-            persona=persona_text,
-            memories=related,
-            prev_diary=prev_diary,
+            str(blocks.get("notes") or ""),
+            date=date,
+            persona=str(blocks.get("persona") or ""),
+            memories=str(blocks.get("memories") or ""),
+            prev_diary=str(blocks.get("prev_diary") or ""),
         )
         if not result:
             self._json(503, {"ok": False, "error": "llm unavailable"})
@@ -2662,20 +2517,19 @@ class Handler(BaseHTTPRequestHandler):
         if body.get("dry_run"):
             # 调模型但不落库：调提示词和素材时用
             self._json(200, {
-                "ok": True, "dry_run": True, "date": day.isoformat(),
-                "input": user_text, "memories": related, "prev_diary": prev_diary,
-                "result": result,
+                "ok": True, "dry_run": True, "date": date,
+                "blocks": blocks, "result": result,
             })
             return
         with _lock:
-            data = store.diary_add(
-                day.isoformat(),
+            saved = store.diary_add(
+                date,
                 str(result.get("text") or ""),
                 changes=str(result.get("changes") or ""),
                 open_questions=str(result.get("open_questions") or ""),
                 relationship=str(result.get("relationship") or ""),
             )
-        self._json(200, {"ok": True, **data})
+        self._json(200, {"ok": True, **saved})
 
     def _episode(self) -> None:
         """把一段对话压成一条 L3 事件记录（episode）。

@@ -8,8 +8,7 @@ import re
 import time
 from typing import Awaitable, Callable
 
-from qqbot.clients.memory import cmem_call, persona_context, recent_dialogue
-from qqbot.domains.growth.evidence import collect, format_block
+from qqbot.clients.memory import cmem_call, input_block
 from settings import DSH_HOME
 
 log = logging.getLogger("qqbot.growth.style")
@@ -39,10 +38,11 @@ async def run(turn: Turn, chat_key: str) -> bool:
     if not current:
         log.warning("风格复盘：核心设定里没有 style 标记")
         return False
-    persona_text = await persona_context()
-    recent = await recent_dialogue(60)
-    ev = await collect(l1=30, l3=20, l0=30)
-    material = format_block(ev) or "（没有足够素材）"
+    data = await input_block("style")
+    blocks = data.get("blocks") or {}
+    persona_text = str(blocks.get("persona") or "")
+    recent = str(blocks.get("recent") or "")
+    material = str(blocks.get("evidence") or "") or "（没有足够素材）"
     prompt = (
         "（内部维护，不要回复用户）只调整她的「表达风格」，不要改身份、底线和相处原则。\n\n"
         + (persona_text or "（空）") + "\n\n"

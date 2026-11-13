@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from qqbot.clients.memory import cmem_call, context_evidence, l0_recent, persona_context
+from qqbot.clients.memory import cmem_call, input_block
 from qqbot.domains.growth import proposals as growth_proposals
 from settings import DSH_HOME, OWNER_CHAT_KEY
 
@@ -42,40 +42,13 @@ def _items(constitution: str) -> list[str]:
 
 async def check_once(turn: Turn) -> str:
     persona = await cmem_call("GET", "/persona")
-    persona_text = await persona_context()
     current = _items(str(persona.get("constitution") or ""))
-    ev = await context_evidence({
-        "tiers": ["L1", "L3"],
-        "limits": {"L1": 15, "L3": 10},
-        "scope": OWNER_CHAT_KEY,
-        "l0_limit": 50,
-    })
-    items = ev.get("items") or []
-    l1_lines = []
-    l3_lines = []
-    for item in items:
-        # 服务端已渲染好一行（带标签和 id），这里只管截断
-        line = str(item.get("line") or "").strip()
-        if not line:
-            text = str(item.get("text") or "").strip().replace("\n", " ")
-            if not text:
-                continue
-            line = text
-        if str(item.get("tier")) == "L1":
-            l1_lines.append(line[:280])
-        elif str(item.get("tier")) == "L3":
-            l3_lines.append(line[:440])
-    raw_l0 = [str(x.get("text") or "").strip().replace("\n", " ") for x in (ev.get("l0") or [])]
-    raw_l0 = [x[:400] for x in raw_l0 if x]
-    if not l1_lines and not l3_lines and not raw_l0:
-        fallback = await l0_recent(OWNER_CHAT_KEY, 80) or "（最近没聊什么）"
-        raw_l0 = [fallback[:4000]]
-    recent_block = ""
-    if l1_lines or l3_lines:
-        recent_block += "【最近 L1/L3】\n"
-        recent_block += "\n".join(f"[L1] {x}" for x in l1_lines) + "\n"
-        recent_block += "\n".join(f"[L3] {x}" for x in l3_lines) + "\n\n"
-    recent_block += "【相关原话】\n" + ("\n".join(f"- {x}" for x in raw_l0) or "（没有）")
+    data = await input_block("important", scope=OWNER_CHAT_KEY)
+    blocks = data.get("blocks") or {}
+    persona_text = str(blocks.get("persona") or "")
+    evidence_text = str(blocks.get("evidence") or "")
+    fallback_recent = str(blocks.get("recent") or "")
+    recent_block = evidence_text or ("【最近说过的话】\n" + (fallback_recent or "（最近没聊什么）"))
     prompt = (
         "（内部维护，不要回复用户）现在是 " + time.strftime("%Y-%m-%d %H:%M") + "。\n"
         "回看最近这段相处，判断有没有一件事重要到「以后不能忘」：约定、底线、身份、关系里最关键的事。\n"
