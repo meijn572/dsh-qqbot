@@ -2265,3 +2265,46 @@ if time.time() - last >= days * 86400:
 先观察两周，如果面板待确认堆起来，
 再在提示词里收紧「没有明确变化就返回空数组」。
 ```
+
+### 收尾清理（2026-11-13）
+
+按前几轮定下的方向扫了一遍残留，改了四处。
+
+```text
+pre_step    自己拼召回 → 改走 /input/recall
+            顺带去掉了没人读的 system 字段
+            （以前每轮白算一次人格渲染，插件只取 recall）
+
+导入        server.py 里 build_context / build_persona_context 已无引用，删掉
+
+配置        config.json 里 persona_reflect 旧段删掉
+            （review 现在读 persona_review，默认 5 天）
+
+拼正文      _finish 跳过 constitution/profile（persona 已包含）
+            同一份内容不再进 text 三遍
+```
+
+### 顺手修的一个隐患
+
+`cut_lines` 以前是「单行超限就整块丢掉」。证据块只有三行
+（长期记忆 / 便签 / 原话），一行就可能超过上限，那样整个块会变空。
+改成单行超限时按句末截断。
+
+### 查过没问题的
+
+```text
+want_more / want_used / pick_topic / 兴趣池 / reflect   全仓 0 引用
+format_block / evidence.py / context_evidence           全仓 0 引用
+ask_him      /ask-him 正常，昨天刚产生两条：「汤粉里加的是牛肉还是猪杂」
+diary        07:00 写昨天，config 里没有 hour 覆盖
+arousal      实测有分布（0.3×10、0.4×7、0.2×3、0.5×2），不是常量
+面板日记     已经只显示 line，不再分块
+```
+
+### 还留着的（不影响）
+
+```text
+panel_readers.mood_payload 里的 mood / dims / valence / confidence
+    面板「最近的情绪」页现在只用 label / reason / activity / timeline，
+    这几个字段是旧的，没人读。留着不碍事。
+```

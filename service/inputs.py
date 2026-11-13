@@ -338,9 +338,22 @@ def _persona_with_evidence(store, body: dict, name: str, *, expand: bool) -> dic
 
 
 def _finish(payload: dict) -> dict:
+    """拼 text 时按内容去重：constitution/profile 已经在 persona 里了。"""
     blocks = payload.get("blocks") or {}
+    # persona 已经把 constitution/profile 包含进去了，拼正文时跳过这两块
+    skip = {"constitution", "profile"} if blocks.get("persona") else set()
+    seen: set[str] = set()
+    parts: list[str] = []
+    for key, value in blocks.items():
+        if key in skip:
+            continue
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        parts.append(text)
     return {"ok": True, "blocks": blocks, "refs": payload.get("refs") or [],
-            "text": "\n\n".join(v for v in blocks.values() if v)}
+            "text": "\n\n".join(parts)}
 
 
 def recipe_review(store, body: dict, embedder=None) -> dict:

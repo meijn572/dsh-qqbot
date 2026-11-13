@@ -263,11 +263,24 @@ _END_PUNCT = "。！？…"
 
 
 def cut_lines(lines: list[str], max_chars: int) -> str:
-    """按整行累加，超了就不再收 —— 不切在半句话上。"""
+    """按整行累加，超了就不再收 —— 不切在半句话上。
+
+    单行本身就超限时截断它，否则整块会被丢掉。
+    """
     out: list[str] = []
     total = 0
     for line in lines:
-        if total + len(line) + 1 > max_chars:
+        line = str(line or "")
+        if not line:
+            continue
+        room = max_chars - total
+        if room <= 0:
+            break
+        if len(line) + 1 > room:
+            head = line[:max(1, room - 2)]
+            # 尽量切在句末，切不到就硬断
+            cut = max(head.rfind("。"), head.rfind("\n"), head.rfind("；"))
+            out.append(head[:cut + 1] if cut > room * 0.6 else head + "…")
             break
         out.append(line)
         total += len(line) + 1

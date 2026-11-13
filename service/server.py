@@ -39,8 +39,6 @@ from extractor import (ExtractConfig, Extractor, strip_memory_prefix,
 from evidence_match import match_evidence
 from llm import LLM
 from memory_core import MemoryInput, MemoryStore
-from memory.context import build_context
-from persona.context import build_persona_context
 from persona.api import payload as persona_payload
 from persona.schema import (
     add_self_change,

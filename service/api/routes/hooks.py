@@ -6,9 +6,7 @@ import os
 import time
 from pathlib import Path
 
-from memory.context import build_context
 from memory_core import MemoryInput
-from persona.context import build_persona_context
 
 _DATA_DIR = Path(os.environ.get("CMEM_DATA_DIR") or ".")
 HOOK_LOG = Path(os.environ.get("CMEM_HOOK_LOG") or (_DATA_DIR.parent / "hook-events.jsonl"))
@@ -38,29 +36,32 @@ def _query(messages) -> str:
 
 
 def pre_step(store, embedder, body: dict) -> dict:
-    system = build_persona_context(store.get_persona()).get("text", "")
+    """对话前一步：只负责召回。
+
+    人格由 persona.mjs 走 /persona 注入，这里不再重复渲染一份
+    （以前算了一遍 system，插件根本没读过）。
+    """
+    import inputs
+
     query = _query(body.get("messages"))
     recall = ""
     if query:
-        ctx = build_context(store, {
+        got = inputs.run(store, "recall", {
             "query": query,
             "tiers": ["L1", "L3"],
             "limits": {"L1": 25, "L3": 15},
             "scope": body.get("scope") or "",
-            "purpose": "recall",
             "max_chars": 6000,
         }, embedder)
-        recall = str(ctx.get("text") or "")
+        recall = str(got.get("text") or "")
     _log({
         "event": "pre_step",
         "request_id": body.get("request_id") or "",
         "session": body.get("session") or "",
         "scope": body.get("scope") or "",
-        "system_chars": len(system),
         "recall_chars": len(recall),
     })
-    return {"ok": True, "system": system, "recall": recall}
-
+    return {"ok": True, "recall": recall}
 
 def turn_end(store, lock, gate, embedder, body: dict) -> dict:
     user = str(body.get("user") or "").strip()
