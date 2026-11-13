@@ -1,191 +1,210 @@
-"""输入配方：所有「给模型看的素材」都在这里组装。
+"""取数原语：单层、原始行、去重排好序。**不渲染**。
 
-三层：
+取法就这么几种，都挂在同一层上：
 
-    原语   取行 / 检索 / 渲染（排版在 render.py）
-    配方   每个用途声明一次要哪些块（本文件底部 RECIPES）
-    入口   POST /input/<name>
+    rows(store, "L1", ...)        最近 N 条 / 时间窗 / 按 id / 按标签 / 按状态
+    search(store, "L3", query)    相关召回
+    batches(store, "L0", ...)     按空闲切批
 
-消费方只调一次，不再自己拼 SQL、也不再调几个接口凑素材。
+需要跨层就套一层：
+
+    rows_each(store, ("L1", "L3"), ...)   同一种取法跑多层
+    sources(store, rows)                  这些行引用了哪些来源（按 id 取回来）
+
+返回一律是 dict 列表，已去重、已按时间排好。渲染交给 render.py，
+配方只负责「选原语 → 给参数 → 调渲染」。
 """
 from __future__ import annotations
 
+import json
 import time
 
-from render import (render_diary, render_diary_row, render_memory_line,
+from render import (render_batches, render_diary, render_diary_row,
+                    render_evidence, render_l0_recent, render_memory_line,
                     render_persona, strip_persona_links)
 
 
 # ---------------------------------------------------------------------------
-# 原语：取行
+# 单层取数
 # ---------------------------------------------------------------------------
 
-def _rows(store, sql: str, args: list) -> list:
+def _fetch(store, sql: str, args: list) -> list[dict]:
     try:
-        return list(store.conn.execute(sql, args).fetchall())
+        return [dict(r) for r in store.conn.execute(sql, args).fetchall()]
     except Exception:  # noqa: BLE001
         return []
 
 
-def _text(row) -> str:
-    try:
-        return str(row["text"] or "").strip()
-    except (KeyError, IndexError, TypeError):
-        return ""
+def _dedupe(rows: list[dict]) -> list[dict]:
+    seen: set = set()
+    out: list[dict] = []
+    for row in rows:
+        mid = row.get("id")
+        if mid in seen:
+            continue
+        seen.add(mid)
+        out.append(row)
+    return out
 
 
-def rows_l0(store, *, scope: str = "", session_id: str = "", since: float = 0.0,
-            until: float | None = None, limit: int = 80,
-            exclude_bili: bool = True) -> list:
-    """原话。session_id 优先（只看当前会话），否则按 scope。"""
-    sql = ["SELECT id,text,ts,tags,scope FROM memory WHERE tier='L0'"]
-    args: list = []
+def rows(store, tier: str, *, limit: int = 50, order: str = "desc",
+         since: float | None = None, until: float | None = None,
+         scope: str = "", session_id: str = "",
+         tags: list[str] | None = None, exclude_tags: list[str] | None = None,
+         statuses: list[str] | None = None, ids: list[int] | None = None,
+         include_stale: bool = True) -> list[dict]:
+    """某一层按条件取行。最近 N 条 / 时间窗 / 按 id / 按标签 / 按状态都走这里。"""
+    sql = ["SELECT * FROM memory WHERE tier=?"]
+    args: list = [str(tier or "").upper()]
+
+    if ids is not None:
+        want = [int(x) for x in ids if str(x).strip().lstrip("-").isdigit()]
+        if not want:
+            return []
+        sql.append(f"AND id IN ({','.join('?' for _ in want)})")
+        args.extend(want)
+
     if session_id:
         sql.append("AND tags LIKE ?")
         args.append(f"%session:{session_id}%")
     elif scope:
         sql.append("AND (scope=? OR scope='global')")
         args.append(scope)
-    if since:
+
+    if since is not None:
         sql.append("AND ts>=?")
         args.append(float(since))
-    if until:
+    if until is not None:
         sql.append("AND ts<?")
         args.append(float(until))
-    if exclude_bili:
-        sql.append("AND tags NOT LIKE '%\"bili\"%'")
-    sql.append("ORDER BY ts DESC LIMIT ?")
+
+    for tag in tags or []:
+        sql.append("AND tags LIKE ?")
+        args.append(f"%{tag}%")
+    for tag in exclude_tags or []:
+        sql.append("AND tags NOT LIKE ?")
+        args.append(f"%{tag}%")
+
+    if statuses:
+        marks = ",".join("?" for _ in statuses)
+        sql.append(f"AND thread_status IN ({marks})")
+        args.extend(list(statuses))
+
+    if not include_stale:
+        sql.append("AND stale_at IS NULL")
+
+    sql.append("ORDER BY ts " + ("ASC" if str(order).lower() == "asc" else "DESC"))
+    sql.append("LIMIT ?")
     args.append(max(1, int(limit)))
-    return _rows(store, " ".join(sql), args)
+    return _dedupe(_fetch(store, " ".join(sql), args))
 
 
-def rows_tier(store, tier: str, *, scope: str = "", since: float = 0.0,
-              until: float | None = None, limit: int = 40) -> list:
-    sql = ["SELECT * FROM memory WHERE tier=?"]
-    args: list = [tier]
-    if scope:
-        sql.append("AND (scope=? OR scope='global')")
-        args.append(scope)
-    if since:
-        sql.append("AND ts>=?")
-        args.append(float(since))
-    if until:
-        sql.append("AND ts<?")
-        args.append(float(until))
-    sql.append("ORDER BY ts DESC LIMIT ?")
-    args.append(max(1, int(limit)))
-    return _rows(store, " ".join(sql), args)
+def rows_each(store, tiers, **kw) -> dict[str, list[dict]]:
+    """同一种取法跑多层，每层各自套自己的上限。
+
+    limits 用 {"L1": 50, "L3": 30}；不传就都用 limit。
+    """
+    limits = kw.pop("limits", None) or {}
+    out: dict[str, list[dict]] = {}
+    for tier in tiers:
+        body = dict(kw)
+        body["limit"] = int(limits.get(tier, kw.get("limit", 50)))
+        out[str(tier).upper()] = rows(store, tier, **body)
+    return out
 
 
-def batch_rows(rows: list, idle_seconds: float, want: int) -> list[list]:
-    """把按时间倒序的行切成批次，取最近 want 批（返回旧的在前）。"""
-    batches: list[list] = []
-    cur: list = []
-    prev_ts = None
-    for row in rows:
-        ts = float(row["ts"] or 0)
-        if prev_ts is not None and prev_ts - ts > idle_seconds:
+def search(store, tier: str, query: str, *, top_k: int = 6, scope: str = "",
+           before_ts: float | None = None, embedder=None,
+           min_fused: float = 0.3) -> list[dict]:
+    """某一层里按 query 召回，返回带 score 的行。"""
+    query = str(query or "").strip()
+    if not query:
+        return []
+    qvec = None
+    if embedder is not None and getattr(embedder, "enabled", False):
+        try:
+            qvec = embedder.embed_one(query)
+        except Exception:  # noqa: BLE001
+            qvec = None
+    hits = store.search(
+        query=query, query_vec=qvec, top_k=max(1, int(top_k)),
+        tiers=[str(tier or "").upper()],
+        scopes=[scope, "global"] if scope else None,
+        before_ts=before_ts, min_fused=min_fused,
+    )
+    out: list[dict] = []
+    for hit in hits or []:
+        row = {"id": int(hit.id), "tier": str(hit.tier), "text": str(hit.text),
+               "ts": float(hit.ts), "score": float(getattr(hit, "score", 0.0) or 0.0)}
+        full = rows(store, row["tier"], ids=[row["id"]], limit=1)
+        if full:
+            full[0]["score"] = row["score"]
+            out.append(full[0])
+    return _dedupe(out)
+
+
+def batches(store, tier: str, *, idle_seconds: float = 300, want: int = 2,
+            **kw) -> list[list[dict]]:
+    """按空闲间隔把某一层的行切成批，取最近 want 批（旧的在前）。"""
+    flat = rows(store, tier, **kw)
+    out: list[list[dict]] = []
+    cur: list[dict] = []
+    prev = None
+    for row in flat:
+        ts = float(row.get("ts") or 0)
+        if prev is not None and prev - ts > max(60.0, float(idle_seconds)):
             if cur:
-                batches.append(cur)
+                out.append(cur)
             cur = []
-            if len(batches) >= want:
+            if len(out) >= max(1, int(want)):
                 break
         cur.append(row)
-        prev_ts = ts
-    if cur and len(batches) < want:
-        batches.append(cur)
-    return list(reversed(batches))
+        prev = ts
+    if cur and len(out) < max(1, int(want)):
+        out.append(cur)
+    return list(reversed(out))
 
 
-# ---------------------------------------------------------------------------
-# 原语：渲染
-# ---------------------------------------------------------------------------
+def sources(store, items, *, limit: int = 60) -> list[dict]:
+    """这些行引用了哪些来源。给 L3 就能取回它的 L1/L0。
 
-def _cut_lines(lines: list[str], max_chars: int) -> str:
-    """按整行累加，超了就不加 —— 不切在半句话上。"""
-    out: list[str] = []
-    total = 0
-    for line in lines:
-        if total + len(line) + 1 > max_chars:
-            break
-        out.append(line)
-        total += len(line) + 1
-    return "\n".join(out)
-
-
-def render_evidence(items: list, l0_rows: list, *, l1_chars: int = 240,
-                    l3_chars: int = 400, l0_chars: int = 400,
-                    max_chars: int = 16000) -> str:
-    """最近 L1/L3 一行一条，再附它们引用的原话。"""
-    l1_lines: list[str] = []
-    l3_lines: list[str] = []
+    其实就是「按一批 id 取」，跨层。
+    """
+    ids: set[int] = set()
     for item in items or []:
-        line = str(item.get("line") or "").strip()
-        if not line:
-            line = render_memory_line(item, with_id=True, with_time=False)
-        if not line:
+        try:
+            ids.update(int(x) for x in json.loads(item.get("source_ids") or "[]"))
+        except Exception:  # noqa: BLE001
             continue
-        tier = str(item.get("tier") or "").upper()
-        if tier == "L1":
-            l1_lines.append(line[:l1_chars + 40])
-        elif tier in ("L2", "L3", "L4"):
-            l3_lines.append(line[:l3_chars + 40])
-
-    l0_lines: list[str] = []
-    seen: set[str] = set()
-    for row in l0_rows or []:
-        text = _text(row).replace("\n", " ")
-        if not text:
-            continue
-        digest = text[:200]
-        if digest in seen:
-            continue
-        seen.add(digest)
-        l0_lines.append(text[:l0_chars])
-
-    blocks: list[str] = []
-    if l3_lines:
-        blocks.append("【长期记忆】\n" + "\n".join(l3_lines))
-    if l1_lines:
-        blocks.append("【最近的便签】\n" + "\n".join(l1_lines))
-    if l0_lines:
-        blocks.append("【对应原话】\n" + "\n".join(f"- {x}" for x in l0_lines))
-    return _cut_lines(blocks, max_chars)
+    if not ids:
+        return []
+    marks = ",".join("?" for _ in ids)
+    found = _fetch(store,
+                   f"SELECT * FROM memory WHERE id IN ({marks}) ORDER BY ts ASC LIMIT ?",
+                   [*ids, max(1, int(limit))])
+    return _dedupe(found)
 
 
-def render_l0_recent(rows: list, *, chars: int = 400, max_chars: int = 16000) -> str:
-    lines = []
-    for row in rows or []:
-        text = _text(row)
-        if not text:
-            continue
-        lines.append(text[:chars])
-    if not lines:
-        return ""
-    return "以下是最近的对话原话（按时间从早到晚）：\n" + _cut_lines(lines, max_chars)
+def diary_days(store, *, days: int = 7, before_date: str | None = None) -> list[dict]:
+    """最近几天的日记，旧的在前。"""
+    fetched = store.diary_list(max(1, int(days)) + 3)
+    rows_out = [r for r in fetched if str(r.get("date") or "")]
+    if before_date:
+        rows_out = [r for r in rows_out if str(r.get("date")) < str(before_date)]
+    return list(reversed(rows_out[:max(1, int(days))]))
 
 
-def render_batches(batches: list[list], *, max_chars: int = 8000) -> str:
-    blocks = []
-    for batch in batches:
-        lines = []
-        for row in batch:
-            text = _text(row)
-            if not text:
-                continue
-            stamp = time.strftime("%m-%d %H:%M", time.localtime(float(row["ts"] or 0)))
-            lines.append(f"[{stamp}] {text}")
-        if lines:
-            blocks.append("\n".join(lines))
-    return "\n\n".join(blocks)[:max_chars]
+# ---------------------------------------------------------------------------
+# 人格
+# ---------------------------------------------------------------------------
+
+def persona_raw(store) -> tuple[str, str]:
+    data = store.get_persona()
+    return str(data.get("constitution") or ""), str(data.get("user_profile") or "")
 
 
 def expand_persona_links(store, constitution: str) -> str:
-    """把人格里的 【L3:123】 展开成「标题 · 状态 + 正文 + 当时的话」。
-
-    复盘要判断一条还成不成立，得看见当时发生了什么；
-    日常注入走 /persona 的 text，标记在那里已经抹掉了。
-    """
+    """把 【L3:123】 展开成「标题 · 状态 + 正文 + 当时的话」，给复盘看。"""
     import re as _re
 
     text = str(constitution or "")
@@ -193,45 +212,29 @@ def expand_persona_links(store, constitution: str) -> str:
     if not ids:
         return text
 
-    marks = ",".join("?" for _ in ids)
-    rows = _rows(
-        store,
-        f"SELECT id,text,summary,thread_title,thread_status,source_ids "
-        f"FROM memory WHERE tier IN ('L3','L4') AND id IN ({marks})",
-        list(ids),
-    )
-    info = {int(r["id"]): r for r in rows}
-
-    # 每条事件引用的原话
+    found = _fetch(store,
+                   f"SELECT * FROM memory WHERE tier IN ('L3','L4') "
+                   f"AND id IN ({','.join('?' for _ in ids)})", list(ids))
+    info = {int(r["id"]): r for r in found}
     quotes: dict[int, list[str]] = {}
-    src_ids: set[int] = set()
-    for r in rows:
-        try:
-            import json
-            src_ids.update(int(x) for x in json.loads(r["source_ids"] or "[]"))
-        except Exception:  # noqa: BLE001
-            continue
-    if src_ids:
-        smarks = ",".join("?" for _ in src_ids)
-        for r in _rows(store, f"SELECT id,text FROM memory WHERE tier='L0' AND id IN ({smarks})",
-                       list(src_ids)):
-            for mid, row in info.items():
-                try:
-                    import json
-                    if int(r["id"]) in [int(x) for x in json.loads(row["source_ids"] or "[]")]:
-                        quotes.setdefault(mid, []).append(_text(r)[:200])
-                except Exception:  # noqa: BLE001
-                    continue
+    for src in sources(store, found):
+        for mid, row in info.items():
+            try:
+                mine = [int(x) for x in json.loads(row.get("source_ids") or "[]")]
+            except Exception:  # noqa: BLE001
+                continue
+            if int(src["id"]) in mine:
+                quotes.setdefault(mid, []).append(str(src.get("text") or "")[:200])
 
     for mid in ids:
-        row = info.get(mid)
         token = f"【L3:{mid}】"
+        row = info.get(mid)
         if row is None:
             text = text.replace(" " + token, "").replace(token, "")
             continue
-        title = str(row["thread_title"] or "").strip() or "（无标题）"
-        status = str(row["thread_status"] or "").strip() or "?"
-        body = str(row["summary"] or row["text"] or "").strip().replace("\n", " ")[:200]
+        title = str(row.get("thread_title") or "").strip() or "（无标题）"
+        status = str(row.get("thread_status") or "").strip() or "?"
+        body = str(row.get("summary") or row.get("text") or "").strip().replace("\n", " ")[:200]
         lines = [f"〔{title} · {status}〕{body}"]
         got = quotes.get(mid) or []
         if got:
@@ -240,118 +243,108 @@ def expand_persona_links(store, constitution: str) -> str:
     return text
 
 
-def persona_block(store, *, expand: bool = False) -> str:
-    data = store.get_persona()
-    constitution = str(data.get("constitution") or "")
-    profile = str(data.get("user_profile") or "")
-    if expand:
-        constitution = expand_persona_links(store, constitution)
-    return render_persona(constitution, profile)
+def persona_block(store, *, expand: bool = False) -> dict[str, str]:
+    """人格三个视图：原文、拼接好的文本、展开来源的版本。"""
+    constitution, profile = persona_raw(store)
+    expanded = expand_persona_links(store, constitution) if expand else constitution
+    return {
+        "constitution": expanded,
+        "profile": profile,
+        "persona": render_persona(
+            strip_persona_links(expanded) if not expand else expanded, profile),
+    }
 
 
 # ---------------------------------------------------------------------------
 # 配方
 # ---------------------------------------------------------------------------
 
-def _evidence_items(store, body: dict) -> dict:
-    """L1/L3 行 + 它们引用的 L0（复用 hooks.evidence 的去重逻辑）。"""
-    from api.routes.hooks import evidence as _evidence
-    return _evidence(store, body)
+DEFAULT_LIMITS = {
+    "evidence": {"L1": 15, "L3": 10, "L0": 30},
+    "diary": {"L1": 40, "L3": 5},
+    "review": {"L1": 50, "L3": 30, "L0": 50, "recent": 30},
+    "style": {"L1": 30, "L3": 20, "L0": 30, "recent": 60},
+    "profile": {"L1": 50, "L3": 30, "L0": 50, "recent": 20},
+    "important": {"L1": 15, "L3": 10, "L0": 50, "recent": 80},
+}
 
 
-def _refs(data: dict, limit: int = 8) -> list[str]:
-    """这条输入引用了哪些条目，给「人格条目挂来源」用。"""
-    out: list[str] = []
-    for item in data.get("items") or []:
-        tier = str(item.get("tier") or "")
-        mid = item.get("id")
-        if tier and mid is not None:
-            out.append(f"{tier}:{mid}")
-    for row in data.get("l0") or []:
-        mid = row.get("id")
-        if mid is not None:
-            out.append(f"L0:{mid}")
-    return out[:limit]
+def _limits(name: str, body: dict) -> dict[str, int]:
+    merged = dict(DEFAULT_LIMITS.get(name) or {})
+    given = body.get("limits")
+    if isinstance(given, dict):
+        merged.update({str(k): int(v) for k, v in given.items()})
+    return merged
 
 
-def _default_scope(store) -> str:
-    return str((store.get_state() or {}).get("owner_scope") or "") or ""
+def _evidence_blocks(store, body: dict, limits: dict[str, int]) -> tuple[str, list[str]]:
+    """L1/L3 各取一批 + 它们引用的原话。返回（渲染文本, refs）。"""
+    tiers = [t for t in ("L1", "L3") if limits.get(t)]
+    picked = rows_each(store, tiers, limits=limits, scope=str(body.get("scope") or ""))
+    items: list[dict] = []
+    for tier in ("L3", "L1"):
+        items.extend(picked.get(tier) or [])
+    sources_rows = sources(store, picked.get("L3") or [],
+                           limit=int(limits.get("L0") or 50))
+    refs = [f"{r['tier']}:{r['id']}" for r in items][:8]
+    refs += [f"L0:{r['id']}" for r in sources_rows][:4]
+    return render_evidence(items, sources_rows), refs[:8]
 
 
 def recipe_evidence(store, body: dict, embedder=None) -> dict:
-    data = _evidence_items(store, body)
-    text = render_evidence(data.get("items") or [], data.get("l0") or [])
+    text, refs = _evidence_blocks(store, body, _limits("evidence", body))
     return {"ok": True, "blocks": {"evidence": text, "memories": text},
-            "text": text, "refs": _refs(data)}
+            "text": text, "refs": refs}
 
 
-def _persona_and_evidence(store, body: dict, *, expand: bool, l1: int, l3: int,
-                          l0: int, recent: int) -> dict:
-    blocks: dict[str, str] = {}
-    raw = store.get_persona()
-    constitution = str(raw.get("constitution") or "")
-    if expand:
-        constitution = expand_persona_links(store, constitution)
-    blocks["constitution"] = constitution
-    blocks["profile"] = str(raw.get("user_profile") or "")
-    blocks["persona"] = render_persona(
-        constitution if expand else strip_persona_links(constitution),
-        str(raw.get("user_profile") or ""),
-    )
-    data = _evidence_items(store, {
-        "tiers": ["L1", "L3"],
-        "limits": {"L1": l1, "L3": l3},
-        "l0_limit": l0,
-        "scope": body.get("scope") or "",
-    })
-    evidence_text = render_evidence(data.get("items") or [], data.get("l0") or [])
-    blocks["evidence"] = evidence_text
-    body["_refs"] = _refs(data)
-    blocks["memories"] = evidence_text
-    if recent:
-        rows = rows_l0(store, scope=str(body.get("scope") or ""),
-                       session_id=str(body.get("session_id") or ""), limit=recent)
-        blocks["recent"] = render_l0_recent(rows)
-    return blocks
+def _persona_with_evidence(store, body: dict, name: str, *, expand: bool) -> dict:
+    limits = _limits(name, body)
+    blocks = persona_block(store, expand=expand)
+    text, refs = _evidence_blocks(store, body, limits)
+    blocks["evidence"] = text
+    blocks["memories"] = text
+    if limits.get("recent"):
+        blocks["recent"] = render_l0_recent(rows(
+            store, "L0", scope=str(body.get("scope") or ""),
+            session_id=str(body.get("session_id") or ""),
+            limit=int(limits["recent"]),
+            exclude_tags=['"bili"']))
+    return {"blocks": blocks, "refs": refs}
+
+
+def _finish(payload: dict) -> dict:
+    blocks = payload.get("blocks") or {}
+    return {"ok": True, "blocks": blocks, "refs": payload.get("refs") or [],
+            "text": "\n\n".join(v for v in blocks.values() if v)}
 
 
 def recipe_review(store, body: dict, embedder=None) -> dict:
-    blocks = _persona_and_evidence(store, body, expand=True, l1=50, l3=30, l0=50, recent=30)
-    rows = store.diary_list(int(body.get("diary_days") or 7))
-    keep = [r for r in rows if str(r.get("date") or "")]
-    blocks["diary"] = render_diary(list(reversed(keep)))
-    return {"ok": True, "blocks": blocks, "refs": body.get("_refs") or [],
-            "text": "\n\n".join(v for v in blocks.values() if v)}
+    payload = _persona_with_evidence(store, body, "review", expand=True)
+    payload["blocks"]["diary"] = render_diary(
+        diary_days(store, days=int(body.get("diary_days") or 7)))
+    return _finish(payload)
 
 
 def recipe_style(store, body: dict, embedder=None) -> dict:
-    blocks = _persona_and_evidence(store, body, expand=False, l1=30, l3=20, l0=30, recent=60)
-    blocks["material"] = blocks.get("evidence", "")
-
-    return {"ok": True, "blocks": blocks, "refs": body.get("_refs") or [],
-            "text": "\n\n".join(v for v in blocks.values() if v)}
+    payload = _persona_with_evidence(store, body, "style", expand=False)
+    payload["blocks"]["material"] = payload["blocks"].get("evidence", "")
+    return _finish(payload)
 
 
 def recipe_profile(store, body: dict, embedder=None) -> dict:
-    blocks = _persona_and_evidence(store, body, expand=False, l1=50, l3=30, l0=50, recent=20)
-
-    return {"ok": True, "blocks": blocks, "refs": body.get("_refs") or [],
-            "text": "\n\n".join(v for v in blocks.values() if v)}
+    return _finish(_persona_with_evidence(store, body, "profile", expand=False))
 
 
 def recipe_important(store, body: dict, embedder=None) -> dict:
-    blocks = _persona_and_evidence(store, body, expand=False, l1=15, l3=10, l0=50, recent=80)
-
-    return {"ok": True, "blocks": blocks, "refs": body.get("_refs") or [],
-            "text": "\n\n".join(v for v in blocks.values() if v)}
+    return _finish(_persona_with_evidence(store, body, "important", expand=False))
 
 
 def recipe_diary(store, body: dict, embedder=None) -> dict:
     """昨天的日记素材：人格 + 昨天的便签 + 相关的旧事 + 前几天的日记。"""
     import datetime as _dt
 
-    target = str(body.get("date") or "").strip()
     day = None
+    target = str(body.get("date") or "").strip()
     if target:
         try:
             day = _dt.date.fromisoformat(target)
@@ -361,72 +354,60 @@ def recipe_diary(store, body: dict, embedder=None) -> dict:
         day = _dt.date.today() - _dt.timedelta(days=1)
     start = _dt.datetime.combine(day, _dt.time.min).timestamp()
     end = start + 86400
+    limits = _limits("diary", body)
     scope = str(body.get("scope") or "")
 
-    blocks: dict[str, str] = {}
-    blocks["persona"] = persona_block(store, expand=False)
+    blocks = persona_block(store, expand=False)
 
-    # 昨天的便签：全部，情绪只做附注
-    l1_rows = rows_tier(store, "L1", scope=scope, since=start, until=end, limit=40)
+    # 昨天记下的便签：情绪只做附注
+    notes = rows(store, "L1", since=start, until=end, scope=scope, order="asc",
+                 limit=int(limits.get("L1") or 40))
     lines = []
-    for row in reversed(l1_rows):
-        text = _text(row)
+    for row in notes:
+        text = str(row.get("text") or "").strip()
         if not text:
             continue
-        try:
-            label = str(row["emotion_label"] or "").strip()
-        except (KeyError, IndexError):
-            label = ""
+        label = str(row.get("emotion_label") or "").strip()
         lines.append(f"- （{label}）{text}" if label else f"- {text}")
     blocks["notes"] = "\n".join(lines)
 
-    # 相关的旧事：拿昨天最近的几条便签去检索
-    memory_lines: list[str] = []
-    seen: set[str] = set()
-    for row in l1_rows[:5]:
-        query = _text(row)[:160]
-        if not query:
-            continue
-        try:
-            ctx = _context(store, {
-                "query": query, "tiers": ["L3"], "limits": {"L3": 3},
-                "top_k": 3, "scope": scope, "purpose": "diary",
-                "max_chars": 800, "before_ts": start,
-            }, embedder)
-        except Exception:  # noqa: BLE001
-            continue
-        for line in str(ctx.get("text") or "").splitlines():
-            line = line.strip()
-            if not line.startswith("[记得的事"):
-                continue
-            key = line[:120]
-            if key in seen:
-                continue
-            seen.add(key)
-            memory_lines.append(line)
-            if len(memory_lines) >= 5:
-                break
-        if len(memory_lines) >= 5:
-            break
-    blocks["memories"] = "\n".join(memory_lines)
+    # 相关旧事：拿昨天最后几条便签去召回，再取它们的来源
+    query = " ".join(str(r.get("text") or "") for r in notes[-5:])[:400]
+    hits = search(store, "L3", query, top_k=int(limits.get("L3") or 5),
+                  scope=scope, before_ts=start, embedder=embedder)
+    lines = [render_memory_line(h) for h in hits[:int(limits.get("L3") or 5)]]
+    blocks["memories"] = "\n".join(x for x in lines if x)
 
-    days = int(body.get("diary_days") or 7)
-    rows = [r for r in store.diary_list(days + 2) if str(r.get("date") or "") < day.isoformat()]
-    blocks["prev_diary"] = render_diary(rows[:days]) if rows else ""
+    blocks["prev_diary"] = render_diary(
+        diary_days(store, days=int(body.get("diary_days") or 7),
+                   before_date=day.isoformat()))
 
     text = "\n\n".join(v for v in blocks.values() if v)
     return {"ok": True, "date": day.isoformat(), "blocks": blocks, "text": text}
 
 
-def _context(store, body: dict, embedder=None) -> dict:
-    from memory.context import build_context
-    return build_context(store, body, embedder)
-
-
 def recipe_recall(store, body: dict, embedder=None) -> dict:
-    data = _context(store, {**body, "purpose": body.get("purpose") or "recall"}, embedder)
-    return {"ok": True, "blocks": {"recall": str(data.get("text") or "")},
-            "text": str(data.get("text") or ""), "count": data.get("count")}
+    """对话/主动说用的召回：多层各取一批，按层分组渲染。"""
+    query = str(body.get("query") or "").strip()
+    limits = body.get("limits") or {"L1": 25, "L3": 15}
+    scope = str(body.get("scope") or "")
+    max_chars = int(body.get("max_chars") or 6000)
+    tiers = [str(t).upper() for t in (body.get("tiers") or list(limits))]
+    if not query:
+        return {"ok": True, "blocks": {"recall": ""}, "text": "", "count": 0}
+
+    picked = {t: search(store, t, query, top_k=int(limits.get(t, 10)),
+                        scope=scope, embedder=embedder) for t in tiers}
+    lines: list[str] = []
+    for tier in sorted(tiers, key=lambda t: {"L3": 0, "L4": 0, "L2": 1,
+                                             "L1": 2, "L0": 3}.get(t, 9)):
+        for row in picked.get(tier) or []:
+            line = render_memory_line(row)
+            if line:
+                lines.append(line)
+    header = "以下是你记得的事（不是刚听到的话）。\n用第一人称理解；主人就是主人，不要把他/她的事说成你自己的。"
+    text = (header + "\n" + "\n".join(lines))[:max_chars] if lines else ""
+    return {"ok": True, "blocks": {"recall": text}, "text": text, "count": len(lines)}
 
 
 def recipe_recent(store, body: dict, embedder=None) -> dict:
@@ -434,22 +415,21 @@ def recipe_recent(store, body: dict, embedder=None) -> dict:
     scope = str(body.get("scope") or "")
     if not session_id and not scope:
         return {"ok": True, "blocks": {"recent": ""}, "text": ""}
-    rows = rows_l0(store, scope=scope, session_id=session_id,
-                   since=float(body.get("since") or 0.0),
-                   limit=int(body.get("limit") or 80))
-    text = render_l0_recent(rows, chars=int(body.get("chars") or 400))
+    got = rows(store, "L0", session_id=session_id, scope=scope,
+               since=float(body.get("since") or 0) or None,
+               limit=int(body.get("limit") or 80), exclude_tags=['"bili"'])
+    text = render_l0_recent(got, chars=int(body.get("chars") or 400))
     return {"ok": True, "blocks": {"recent": text}, "text": text}
 
 
 def recipe_batches(store, body: dict, embedder=None) -> dict:
     scope = str(body.get("scope") or "")
-    idle = float(body.get("idle_seconds") or 300)
-    want = max(1, min(6, int(body.get("batches") or 2)))
-    rows = rows_l0(store, scope=scope, limit=int(body.get("limit") or 300))
-    batches = batch_rows(rows, max(60.0, min(idle, 3600.0)), want)
-    text = render_batches(batches, max_chars=int(body.get("max_chars") or 8000))
+    got = batches(store, "L0", idle_seconds=float(body.get("idle_seconds") or 300),
+                  want=int(body.get("batches") or 2), scope=scope,
+                  limit=int(body.get("limit") or 300), exclude_tags=['"bili"'])
+    text = render_batches(got, max_chars=int(body.get("max_chars") or 8000))
     return {"ok": True, "blocks": {"recent": text}, "text": text,
-            "batches": len(batches), "count": sum(len(b) for b in batches)}
+            "batches": len(got), "count": sum(len(b) for b in got)}
 
 
 RECIPES = {

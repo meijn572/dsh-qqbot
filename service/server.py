@@ -53,7 +53,7 @@ from api.routes.persona import set_persona
 from api.routes.memory import forget, ingest, search
 from api.routes.read import simple_get
 from api.routes.get import handle_get
-from api.routes.hooks import evidence as hook_evidence, pre_step as hook_pre_step, turn_end as hook_turn_end
+from api.routes.hooks import pre_step as hook_pre_step, turn_end as hook_turn_end
 from api.routes.table import post_handler
 import inputs
 from surprisal import SurprisalGate

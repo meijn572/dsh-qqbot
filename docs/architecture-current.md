@@ -2148,3 +2148,61 @@ POST /diary {"date": "2026-11-12", "dry_run": true}
 
 返回 blocks（人格 / 便签 / 旧事 / 前几天日记）和产出，不落库。
 _write_diary 现在只是薄包装：调配方 → 调模型 → 落库。
+
+### 原语按「取法」重写（2026-11-13 下午）
+
+上一版的取行原语是两份重复代码（rows_l0 / rows_tier），而且把 evidence
+的编排留在了路由层，还缺检索。改成按「取法」切，全部只在一层上操作：
+
+```text
+rows(store, "L1", ...)          最近 N 条 / 时间窗 / 按 id / 按标签 / 按状态
+search(store, "L3", query)      相关召回（带 score）
+batches(store, "L0", ...)       按空闲切批
+```
+
+跨层就套一层：
+
+```text
+rows_each(store, ("L1","L3"), limits={...})   同一种取法跑多层
+sources(store, rows)                          这些行引用了哪些来源（按 id 取）
+diary_days(store, days=7, before_date=...)    中间层
+```
+
+约定：
+
+```text
+只认一层（跨层自己套）
+返回原始行（dict），不渲染
+已去重、已按时间排好
+```
+
+### 改掉的三处
+
+```text
+检索    以前配方拿渲染文本再按 "[记得的事" 前缀解析回条目；
+        现在 search() 直接给行
+
+证据    evidence 的展开逻辑原来埋在 api/routes/hooks.py，
+        配方从路由层 import；现在拆成 rows_each + sources 的组合
+
+参数    四份复盘的层级上限原来写死在配方里，现在 DEFAULT_LIMITS 一张表，
+        body 里给 limits 可覆盖
+```
+
+### 删掉的
+
+```text
+service/api/routes/hooks.py  evidence() / _ids()
+_rows / _text / _default_scope 等上一版内部工具
+```
+
+`pre_step` 仍然内部调 build_context 做对话召回；`/input/recall` 走 search。
+
+### 验证
+
+```text
+九个配方全通；evidence 4210 字、diary 7660 字、review 37385 字
+四个复盘端到端跑通（假 turn）
+日记 dry_run：正文 572 字 / 变化 3 条 / 没想清 2 条 / 关系 93 字
+59 个测试通过
+```

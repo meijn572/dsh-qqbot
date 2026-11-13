@@ -254,3 +254,89 @@ def render_open_threads(threads: list[dict]) -> str:
 def render_relationship(summary: str) -> str:
     s = str(summary or "").strip()
     return f"最近我们的关系：{s}" if s else ""
+
+# ---------------------------------------------------------------------------
+# 一批行怎么排成给模型看的样子
+# ---------------------------------------------------------------------------
+
+_END_PUNCT = "。！？…"
+
+
+def cut_lines(lines: list[str], max_chars: int) -> str:
+    """按整行累加，超了就不再收 —— 不切在半句话上。"""
+    out: list[str] = []
+    total = 0
+    for line in lines:
+        if total + len(line) + 1 > max_chars:
+            break
+        out.append(line)
+        total += len(line) + 1
+    return "\n".join(out)
+
+
+def render_evidence(items, sources=None, *, l1_chars: int = 240,
+                    l3_chars: int = 400, l0_chars: int = 400,
+                    max_chars: int = 16000) -> str:
+    """证据块：事件、便签、原话三段。items 必须是已排好序的行。"""
+    l3_lines: list[str] = []
+    l1_lines: list[str] = []
+    for item in items or []:
+        tier = str(item.get("tier") or "").upper()
+        text = str(item.get("text") or "").strip().replace("\n", " ")
+        if not text:
+            continue
+        line = render_memory_line(item, with_id=True, with_time=False)
+        if tier == "L1":
+            l1_lines.append(line[:l1_chars + 40])
+        elif tier in ("L2", "L3", "L4"):
+            l3_lines.append(line[:l3_chars + 40])
+
+    l0_lines: list[str] = []
+    seen: set[str] = set()
+    for row in sources or []:
+        text = str(row.get("text") or "").strip().replace("\n", " ")
+        if not text:
+            continue
+        key = text[:200]
+        if key in seen:
+            continue
+        seen.add(key)
+        l0_lines.append(text[:l0_chars])
+
+    blocks: list[str] = []
+    if l3_lines:
+        blocks.append("【长期记忆】\n" + "\n".join(l3_lines))
+    if l1_lines:
+        blocks.append("【最近的便签】\n" + "\n".join(l1_lines))
+    if l0_lines:
+        blocks.append("【对应原话】\n" + "\n".join(f"- {x}" for x in l0_lines))
+    return cut_lines(blocks, max_chars)
+
+
+def render_l0_recent(items, *, chars: int = 400, max_chars: int = 16000) -> str:
+    """最近说过的话，按时间从早到晚（items 已是正序）。"""
+    lines = []
+    for row in items or []:
+        text = str(row.get("text") or "").strip()
+        if text:
+            lines.append(text[:chars])
+    if not lines:
+        return ""
+    return "以下是最近的对话原话（按时间从早到晚）：\n" + cut_lines(lines, max_chars)
+
+
+def render_batches(batches, *, max_chars: int = 8000) -> str:
+    """按批渲染对话，批内带时间戳。"""
+    blocks: list[str] = []
+    for batch in batches or []:
+        lines = []
+        for row in batch:
+            text = str(row.get("text") or "").strip()
+            if not text:
+                continue
+            stamp = time.strftime("%m-%d %H:%M",
+                                  time.localtime(float(row.get("ts") or 0)))
+            lines.append(f"[{stamp}] {text}")
+        if lines:
+            blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)[:max_chars]
