@@ -2503,27 +2503,31 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200 if ok else 404, {"ok": ok, "id": aid})
 
     def _write_diary(self) -> None:
-        """写今天的日记：情绪事件 + 对应 L0 + L3 旧记忆 + 少量活动。"""
+        """写昨天的日记：昨天全部原话 + 便签 + 活动 + 相关旧记忆 + 前几天日记。
+
+        素材不再按情绪筛 —— 情绪只是便签上的一个附注，
+        决定「什么值得写」的是模型，不是有没有标情绪。
+        """
         body = self._body()
         import datetime as _dt
-        # 07:00 写的是昨天：等当天完整结束，不丢深夜的对话
         target = str(body.get("date") or "").strip()
+        day = None
         if target:
             try:
                 day = _dt.date.fromisoformat(target)
             except ValueError:
-                day = _dt.date.today() - _dt.timedelta(days=1)
-        else:
+                day = None
+        if day is None:
+            # 默认写昨天：等当天完整结束，深夜的话不会漏
             day = _dt.date.today() - _dt.timedelta(days=1)
         day_start = _dt.datetime.combine(day, _dt.time.min).timestamp()
-        today_start = day_start
         day_end = day_start + 86400
         cfg = _load_config()
         if not bool(cfg.get("diary_enabled", True)):
             self._json(200, {"ok": True, "skipped": "disabled"})
             return
 
-        # 当天最活跃的私聊 scope；没有私聊才退回最近 L0
+        # 当天最活跃的私聊 scope
         scope = ""
         try:
             row = store.conn.execute(
@@ -2534,96 +2538,66 @@ class Handler(BaseHTTPRequestHandler):
             ).fetchone()
             if row is None:
                 row = store.conn.execute(
-                    "SELECT scope FROM memory WHERE tier='L0' AND ts>=? ORDER BY id DESC LIMIT 1",
-                    (today_start,),
+                    "SELECT scope FROM memory WHERE tier='L0' AND ts>=? AND ts<? "
+                    "ORDER BY id DESC LIMIT 1",
+                    (day_start, day_end),
                 ).fetchone()
             scope = str(row["scope"] or "") if row else ""
-        except Exception:
+        except Exception:  # noqa: BLE001
             scope = ""
 
-        # 情绪现在挂在 L1 上：日记直接从带情绪的 L1 取，不再读 emotion_log
-        events = []
-        try:
-            for r in store.conn.execute(
-                "SELECT id,ts,emotion_label,emotion_valence,emotion_arousal,text "
-                "FROM memory WHERE tier='L1' AND emotion_label!='' AND ts>=? "
-                "ORDER BY ts ASC",
-                (today_start,),
-            ).fetchall():
-                events.append({
-                    "id": int(r["id"]),
-                    "ts": float(r["ts"] or 0),
-                    "label": str(r["emotion_label"] or ""),
-                    "trigger": str(r["text"] or ""),
-                    "valence": float(r["emotion_valence"] or 0),
-                    "arousal": float(r["emotion_arousal"] or 0),
-                })
-        except Exception:
-            events = []
-
-        def l0_window(start: float, end: float) -> list[str]:
+        def _rows(sql: str, args: list) -> list:
             try:
-                rows = store.conn.execute(
-                    "SELECT text,ts FROM memory WHERE tier='L0' AND ts>=? AND ts<=? "
-                    "AND (scope=? OR scope='global') ORDER BY ts ASC",
-                    (float(start), float(end), scope),
-                ).fetchall()
-            except Exception:
+                return list(store.conn.execute(sql, args).fetchall())
+            except Exception:  # noqa: BLE001
                 return []
-            return [str(r["text"]).strip() for r in rows if str(r["text"] or "").strip()]
 
-        event_l0: dict[int, list[str]] = {}
-        blocks: list[str] = []
-        seen_l0: set[str] = set()
-        for event in events:
-            ts = float(event.get("ts") or 0)
-            start = float(event.get("ts_start") or (ts - 120))
-            end = float(event.get("ts_end") or (ts + 120))
-            lines = l0_window(start, end)
-            event_l0[int(event.get("id") or 0)] = lines
-            label = str(event.get("label") or "情绪").strip()
-            reason = str(event.get("trigger") or "").strip()
-            block = [f"- {label}：{reason}" if reason else f"- {label}"]
-            for line in lines:
-                key = line[:120]
-                if key in seen_l0:
-                    continue
-                seen_l0.add(key)
-                block.append("  " + line.replace("\n", "\n  "))
-            if len(block) > 1:
-                blocks.append("\n".join(block))
+        # 一、昨天说过的话：全部原话，不按情绪筛
+        l0_rows = _rows(
+            "SELECT text,ts FROM memory WHERE tier='L0' AND ts>=? AND ts<? "
+            "AND (scope=? OR scope='global') AND tags NOT LIKE '%\"bili\"%' "
+            "ORDER BY ts ASC LIMIT 120",
+            [day_start, day_end, scope],
+        )
+        l0_lines: list[str] = []
+        for r in l0_rows:
+            text = str(r["text"] or "").strip()
+            if not text:
+                continue
+            stamp = time.strftime("%H:%M", time.localtime(float(r["ts"] or 0)))
+            l0_lines.append(f"[{stamp}] {text}")
 
-        user_text = str(body.get("user_text") or "").strip()
-        if not user_text:
-            if blocks:
-                user_text = "【今天有情绪的事】\n" + "\n\n".join(blocks)
-            else:
-                # 没有情绪事件时，只写很轻的近况，不硬凑
-                try:
-                    rows = store.conn.execute(
-                        "SELECT text FROM memory WHERE tier='L0' AND ts>=? "
-                        "AND (scope=? OR scope='global') ORDER BY ts ASC LIMIT 20",
-                        (today_start, scope),
-                    ).fetchall()
-                    user_text = "\n".join(str(r["text"]) for r in rows)[:5000]
-                except Exception:
-                    user_text = ""
+        # 二、昨天记下的便签：情绪是附注，不是门槛
+        l1_rows = _rows(
+            "SELECT text,ts,emotion_label FROM memory WHERE tier='L1' "
+            "AND ts>=? AND ts<? AND (scope=? OR scope='global') "
+            "ORDER BY ts ASC LIMIT 40",
+            [day_start, day_end, scope],
+        )
+        l1_lines: list[str] = []
+        for r in l1_rows:
+            text = str(r["text"] or "").strip()
+            if not text:
+                continue
+            label = str(r["emotion_label"] or "").strip()
+            l1_lines.append(f"- （{label}）{text}" if label else f"- {text}")
 
-        # L3-only 旧记忆：用情绪事件做锚点，最多 5 个
-        anchors = sorted(
-            events,
-            key=lambda e: abs(float(e.get("valence") or 0)) + abs(float(e.get("arousal") or 0.5) - 0.5),
-            reverse=True,
-        )[:5]
+        user_text = ""
+        if l0_lines:
+            user_text += "【昨天说过的话，按时间】\n" + "\n".join(l0_lines)
+        if l1_lines:
+            if user_text:
+                user_text += "\n\n"
+            user_text += "【昨天记下的便签】\n" + "\n".join(l1_lines)
+        if str(body.get("user_text") or "").strip():
+            user_text = str(body.get("user_text") or "").strip()
+        user_text = user_text[:14000]
+
+        # 三、相关旧记忆：拿昨天的便签去查，不再用情绪强度排序
         memory_lines: list[str] = []
         seen_memory: set[str] = set()
-        for event in anchors:
-            lines = event_l0.get(int(event.get("id") or 0)) or []
-            query = " ".join([
-                str(event.get("label") or ""),
-                str(event.get("trigger") or ""),
-                lines[0] if lines else "",
-            ]).strip()
+        for r in l1_rows[-5:]:
+            query = str(r["text"] or "").strip()[:160]
             if not query:
                 continue
             try:
@@ -2635,13 +2609,13 @@ class Handler(BaseHTTPRequestHandler):
                     "scope": scope,
                     "purpose": "diary",
                     "max_chars": 800,
-                    "before_ts": today_start,
+                    "before_ts": day_start,
                 }, embedder)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 continue
             for line in str(ctx.get("text") or "").splitlines():
                 line = line.strip()
-                if not line.startswith("[L3"):
+                if not line.startswith("[记得的事"):
                     continue
                 key = line[:120]
                 if key in seen_memory:
@@ -2654,14 +2628,16 @@ class Handler(BaseHTTPRequestHandler):
                 break
         related = "\n".join(memory_lines)[:1500]
 
+        # 四、昨天的活动
         acts = []
         try:
-            acts = [a for a in store.list_activities(200) if float(a.get("ts") or 0) >= today_start]
-        except Exception:
+            acts = [a for a in store.list_activities(400)
+                    if float(a.get("ts") or 0) >= day_start]
+        except Exception:  # noqa: BLE001
             acts = []
         persona_text = build_persona_context(store.get_persona()).get("text", "")
 
-        # 前几天的日记：保持连续，尤其关系那句不要每天重写
+        # 五、前几天的日记：保持连续，尤其关系那句不要每天重写
         prev_diary = ""
         try:
             rows = store.diary_list(8)
@@ -2682,6 +2658,14 @@ class Handler(BaseHTTPRequestHandler):
         )
         if not result:
             self._json(503, {"ok": False, "error": "llm unavailable"})
+            return
+        if body.get("dry_run"):
+            # 调模型但不落库：调提示词和素材时用
+            self._json(200, {
+                "ok": True, "dry_run": True, "date": day.isoformat(),
+                "input": user_text, "memories": related, "prev_diary": prev_diary,
+                "result": result,
+            })
             return
         with _lock:
             data = store.diary_add(

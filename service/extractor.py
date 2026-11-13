@@ -56,6 +56,8 @@ open_questions  还没想清的。可以就一两句，别凑数。
 relationship    最近你和他是什么样子。看得到前几天的日记，写变化，不必每天重写同一句。
 
 四样都是自己的话，不是条目汇总。
+输入分两块：「昨天说过的话」是按时间的原话；「昨天记下的便签」是你当时记下来的，
+括号里是当时的情绪，只是提示，不必逐条引用。
 只写输入里真实发生过的事。可以写自己的想法，但不要补不存在的动作、场景或对话。
 对话里「主人：」是主人说的，「我：」或「洄：」是你，不要写反。
 
@@ -918,6 +920,9 @@ class Extractor:
                 parts.append(user_text)
                 parts.append("【你说的】")
                 parts.append(assistant_text)
+            elif str(user_text or "").startswith("【"):
+                # 调用方已经分好块（原话 / 便签），原样放进去
+                parts.append(user_text)
             else:
                 parts.append("【昨天的事，按时间】")
                 parts.append(user_text)
