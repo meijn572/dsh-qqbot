@@ -343,41 +343,6 @@ L2_SYSTEM = VOICE_RULE + """你从这段对话和 L1 事实里，找「没有明
 没有就返回 []。"""
 
 
-L2_REVIEW_SYSTEM = VOICE_RULE + """你复查当前的短期判断（L2）。
-
-输入：
-- 编号的 L2：可能、大概、我猜出来的短期判断
-- 最近对话 / L1 事实
-
-对每条 L2 选：
-- confirm：已经被最近证据证实，给一句确定的 fact
-- reject：被否定
-- keep：还说不准，继续挂着
-
-confirm 的 fact 必须去掉「可能/大概/我猜」，写成明确事实。
-没有证据就 keep，不要硬 confirm。
-
-像这样：
-
-```text
-L2: 他最近可能还会继续琢磨把积分挪到别处用
-最近他说「我又找到一个新路子」
-→ confirm，fact：他在继续找把积分挪到别处用的办法
-
-L2: 主人这会儿是真饿了，急着催饭
-最近聊的还是记忆方案，没提吃饭
-→ keep（没证据，但也没被否定）
-
-L2: 他大概不想跟我聊这个
-他接着聊了半小时
-→ reject
-```
-
-返回 JSON：
-{"items":[{"ref":1,"action":"confirm|reject|keep","fact":"确认后的确定事实"}]}
-
-不要输出别的。"""
-
 
 RELATIONSHIP_REVIEW_SYSTEM = VOICE_RULE + """你复查我和主人的关系状态。
 
@@ -1244,26 +1209,6 @@ class Extractor:
                 continue
             out.append(item)
         return out
-
-    def review_l2(self, active: list[dict], evidence: list[dict]) -> list[dict]:
-        """复查 hypothesis，返回 confirm/reject/keep。"""
-        if self.llm is None or not getattr(self.llm, "enabled", False):
-            return []
-        if not active:
-            return []
-        lines = []
-        for i, item in enumerate(active, 1):
-            exp = time.strftime("%m-%d %H:%M", time.localtime(float(item.get("expires_at") or 0)))
-            lines.append(
-                f"[{i}] {item.get('text')}（confidence {item.get('confidence', 0):.2f}，过期 {exp}）"
-            )
-        ev_lines = [f"[{i}] {str(x.get('text') or '')}" for i, x in enumerate(evidence, 1)]
-        payload = "【待复查 L2】\n" + "\n".join(lines) + "\n\n【最近证据】\n" + "\n".join(ev_lines)
-        data = self.llm.chat_json(L2_REVIEW_SYSTEM, payload, max_tokens=500)
-        if not isinstance(data, dict):
-            return []
-        items = data.get("items")
-        return [x for x in items if isinstance(x, dict)] if isinstance(items, list) else []
 
     def plan_threads(self, transcript: str, facts: list[str],
                      open_threads: list[dict],

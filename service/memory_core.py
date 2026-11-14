@@ -716,24 +716,6 @@ class MemoryStore:
             self._invalidate_caches()
         return {"stale": stale, "dormant": dormant}
 
-    def l2_active(self, limit: int = 12) -> list[dict]:
-        now = time.time()
-        rows = self.conn.execute(
-            "SELECT id,text,confidence,expires_at,source_ids,ts FROM memory "
-            "WHERE tier='L2' AND l2_status='hypothesis' "
-            "AND (expires_at IS NULL OR expires_at > ?) "
-            "ORDER BY ts DESC LIMIT ?",
-            (now, max(1, min(int(limit), 30))),
-        ).fetchall()
-        return [{
-            "id": int(r["id"]),
-            "text": str(r["text"] or ""),
-            "confidence": float(r["confidence"] or 0.0),
-            "expires_at": float(r["expires_at"] or 0.0),
-            "source_ids": json.loads(r["source_ids"] or "[]"),
-            "ts": float(r["ts"] or 0.0),
-        } for r in rows]
-
     def l2_expire(self) -> int:
         cur = self.conn.execute(
             "UPDATE memory SET l2_status='expired' "
@@ -743,19 +725,6 @@ class MemoryStore:
         )
         self.conn.commit()
         return int(cur.rowcount or 0)
-
-    def l2_set_status(self, mem_id: int, status: str, promoted_to: int | None = None) -> bool:
-        allowed = {"hypothesis", "promoted", "rejected", "expired", "superseded"}
-        status = str(status or "").strip()
-        if status not in allowed:
-            return False
-        cur = self.conn.execute(
-            "UPDATE memory SET l2_status=?, promoted_to=?, updated_at=? "
-            "WHERE id=? AND tier='L2'",
-            (status, promoted_to, time.time(), int(mem_id)),
-        )
-        self.conn.commit()
-        return bool(cur.rowcount)
 
     def open_threads(self, limit: int = 10) -> list[dict]:
         rows = self.conn.execute(

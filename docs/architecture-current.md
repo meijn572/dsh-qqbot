@@ -2517,3 +2517,55 @@ remembers-data\config.json 的三个 segment_* 已删掉
 ```
 
 维护任务是独立会话（`maint-<task>.json`），不占聊天主会话，白天跑不影响对话。
+
+### L2 复查删除（2026-11-15）
+
+#### 为什么删
+
+复查把 hypothesis 升成 L1 时，用的是**复查那一刻的时间戳**，不是对话时间。
+实测 6 条：
+
+```text
+L1 时间戳     11-15 01:49（复查时刻，全部同一秒）
+L2 来源时间   11-14 14:40 ~ 20:40（真实对话时刻）
+```
+
+后果：
+
+```text
+召回    这批 L1 是"最新"的，但说的是昨天下午的事
+日记    它们跑到 15 号那篇去了，14 号那篇缺一段
+```
+
+也就是拿旧对话伪装成新发生的事。这跟 L1 的定义（这段对话发生了什么）
+直接冲突。
+
+#### 删掉了什么
+
+```text
+接口   POST /l2/review
+函数   extractor.review_l2 / L2_REVIEW_SYSTEM
+       memory_core.l2_active / l2_set_status
+调度   scheduler._tick_l2 / _run_l2_review
+测试   test_l2 里三条测复查的
+```
+
+#### 保留了什么
+
+```text
+L2 生成          仍在 L0→L1 那批里，最多 3 条
+L2 作为 L3 输入   ref_rows = source_rows + l1_rows + l2_rows
+L2 过期流转       store.l2_expire() 挂到批处理里，到期自动转 expired
+```
+
+L2 现在是纯粹的「短期推断缓存」：有效期内供 L3 参考，过期就退场。
+
+#### 数据清理
+
+```text
+删掉 39 条 l2-promoted 的 L1（时间戳是假的）
+它们的 L2 状态从 promoted 退回 hypothesis
+备份 memories.db.bak-del-promoted-20261115-020536
+```
+
+现在：L2 166 hypothesis / 41 expired，L1 362 条，无 l2-promoted。

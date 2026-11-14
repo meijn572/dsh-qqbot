@@ -2782,6 +2782,11 @@ class Handler(BaseHTTPRequestHandler):
         max_minutes = float(seg.get("max_minutes", 10))
         max_messages = int(seg.get("max_messages", 80))
         lifecycle = store.mark_lifecycle(30.0, 7.0)
+        # L2 到期自动标记（复查已删，只留状态流转）
+        try:
+            store.l2_expire()
+        except Exception:  # noqa: BLE001
+            pass
         stats = {"ok": True, "l1": 0, "l2": 0, "l3": 0, "waiting": "",
                  "stale": lifecycle.get("stale", 0), "dormant": lifecycle.get("dormant", 0)}
 
@@ -3005,53 +3010,6 @@ class Handler(BaseHTTPRequestHandler):
                 store.link(mid, rid, "derived_from", role_for.get(tier, "evidence"))
             stats["l3"] += 1
 
-        self._json(200, stats)
-
-    def _l2_review(self) -> None:
-        """复查短期判断：confirmed 的自动升 L1，并保留 L2 作为来源。"""
-        store.l2_expire()
-        active = store.l2_active(12)
-        if not active:
-            self._json(200, {"ok": True, "skipped": "no-active"})
-            return
-        since = time.time() - 86400
-        ev_rows = store.conn.execute(
-            "SELECT id,text FROM memory WHERE tier IN ('L0','L1') AND ts >= ? "
-            "ORDER BY ts DESC LIMIT 20",
-            (since,),
-        ).fetchall()
-        evidence = [{"id": int(r["id"]), "text": str(r["text"] or "")} for r in ev_rows]
-        decisions = extractor.review_l2(active, evidence)
-        stats = {"ok": True, "confirmed": 0, "rejected": 0, "kept": 0, "expired": 0}
-        for item in decisions[:12]:
-            try:
-                idx = int(item.get("ref") or 0) - 1
-            except Exception:
-                continue
-            if idx < 0 or idx >= len(active):
-                continue
-            target = active[idx]
-            action = str(item.get("action") or "keep").lower()
-            if action == "reject":
-                store.l2_set_status(int(target["id"]), "rejected")
-                stats["rejected"] += 1
-            elif action == "confirm":
-                fact = str(item.get("fact") or "").strip()[:1000]
-                if not fact:
-                    continue
-                mid = store.add(MemoryInput(
-                    text=fact,
-                    tier="L1",
-                    subject="owner",
-                    source_ids=target.get("source_ids") or None,
-                    source_status="verified" if target.get("source_ids") else "batch",
-                    tags=["l2-promoted"],
-                ))
-                store.link(mid, int(target["id"]), "derived_from", "judgment")
-                store.l2_set_status(int(target["id"]), "promoted", mid)
-                stats["confirmed"] += 1
-            else:
-                stats["kept"] += 1
         self._json(200, stats)
 
     def _update_memory_text(self) -> None:

@@ -54,7 +54,6 @@ POST_ROUTES = {
     "/threads/close": "_close_thread",
     "/threads/status": "_set_thread_status",
     "/memories/update_text": "_update_memory_text",
-    "/l2/review": "_l2_review",
 }
 
 

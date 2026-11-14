@@ -90,9 +90,6 @@ class Scheduler:
 
         if self._tick_wake(st, now):
             changed = True
-        if self._tick_l2(st, now):
-            changed = True
-            changed = True
         if self._tick_l3_review(st, now):
             changed = True
 
@@ -240,32 +237,6 @@ class Scheduler:
 
     # ---------- 2. B 站 ----------
     # ---------- 3. 日记（23 点）----------
-    def _tick_l2(self, st: dict, now: float) -> bool:
-        today = datetime.date.today().isoformat()
-        if st.get("l2_review_date") == today:
-            return False
-        st["l2_review_date"] = today
-        threading.Thread(target=self._run_l2_review, name="dsh-l2-review", daemon=True).start()
-        _log("l2: scheduled daily review")
-        return True
-
-    def _run_l2_review(self) -> None:
-        import urllib.request
-        port = os.environ.get("CMEM_PORT", "8081")
-        req = urllib.request.Request(
-            f"http://127.0.0.1:{port}/l2/review",
-            data=json.dumps({}).encode(),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=180) as resp:
-                data = json.loads(resp.read().decode("utf-8") or "{}")
-            _log(f"l2: {data}")
-        except Exception as exc:  # noqa: BLE001
-            _log(f"l2 review failed: {exc}")
-
-    # ---------- 工具 ----------
     def _tick_l3_review(self, st: dict, now: float) -> bool:
         days = float(self._schedule_cfg("l3_review", "days", 7) or 7)
         last = float(st.get("l3_review_at") or 0)

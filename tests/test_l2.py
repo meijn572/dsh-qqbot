@@ -1,4 +1,4 @@
-"""L1 只收确定事实；L2 只召回 hypothesis 且未过期。"""
+"""L1 只收确定事实；L2 到期自动标记（复查流程已删）。"""
 import os
 import sys
 import tempfile
@@ -34,30 +34,16 @@ class L2StoreTest(unittest.TestCase):
         self.assertTrue(_is_speculation("我猜他今天很累"))
         self.assertFalse(_is_speculation("主人说今天很累"))
 
-    def test_active_and_expired(self):
+    def test_l2_expire_marks_old_rows(self):
+        """复查已删，只剩过期标记：到期自动转 expired。"""
         mid = self._add("他可能最近不想吃辣")
-        self.assertEqual([x["id"] for x in self.store.l2_active()], [mid])
         self.store.conn.execute("UPDATE memory SET expires_at=? WHERE id=?", (time.time() - 1, mid))
         self.store.conn.commit()
-        self.assertEqual(self.store.l2_active(), [])
         self.assertEqual(self.store.l2_expire(), 1)
-
-    def test_set_status(self):
-        mid = self._add("他可能最近很忙")
-        self.assertTrue(self.store.l2_set_status(mid, "rejected"))
-        self.assertEqual(self.store.l2_active(), [])
-
-    def test_promote_to_l1(self):
-        mid = self._add("他可能最近不想吃辣", source_ids=[1])
-        l1 = self.store.add(mc.MemoryInput(text="主人最近不想吃辣", tier="L1", source_ids=[1]))
-        self.store.link(l1, mid, "derived_from", "judgment")
-        self.assertTrue(self.store.l2_set_status(mid, "promoted", l1))
-        self.assertEqual(self.store.l2_active(), [])
         row = self.store.conn.execute(
-            "SELECT l2_status,promoted_to FROM memory WHERE id=?", (mid,)
+            "SELECT l2_status FROM memory WHERE id=?", (mid,)
         ).fetchone()
-        self.assertEqual(row["l2_status"], "promoted")
-        self.assertEqual(row["promoted_to"], l1)
+        self.assertEqual(row["l2_status"], "expired")
 
 
 if __name__ == "__main__":
