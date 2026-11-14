@@ -90,8 +90,6 @@ class Scheduler:
 
         if self._tick_wake(st, now):
             changed = True
-        if self._tick_diary(st, now):
-            changed = True
         if self._tick_l2(st, now):
             changed = True
             changed = True
@@ -102,6 +100,21 @@ class Scheduler:
             self._save_state(st)
 
     # ---------- 读配置 ----------
+    def _schedule_cfg(self, name: str, key: str, default=None):
+        """读 config.json 的 schedule.<name>.<key>（主配置只读）。"""
+        import json as _json
+        import os as _os
+        path = _os.environ.get("CMEM_MAIN_CONFIG") or ""
+        if not path:
+            return default
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = _json.load(f)
+        except Exception:  # noqa: BLE001
+            return default
+        node = ((data or {}).get("schedule") or {}).get(name) or {}
+        return node.get(key, default)
+
     def _proactive_cfg(self) -> dict:
         """读 proactive.json（前端"主动消息"页配置的那个文件）。
 
@@ -227,58 +240,9 @@ class Scheduler:
 
     # ---------- 2. B 站 ----------
     # ---------- 3. 日记（23 点）----------
-    def _tick_diary(self, st: dict, now: float) -> bool:
-        today = datetime.date.today().isoformat()
-        if st.get("diary_date") == today:
-            return False
-        dt = datetime.datetime.now()
-        if dt.hour < 23:
-            return False
-        st["diary_date"] = today
-        # 读当天素材，让她写日记时有东西可写
-        extra = ""
-        try:
-            start = datetime.datetime.combine(datetime.date.today(), datetime.time.min).timestamp()
-            rows = self.store.conn.execute(
-                "SELECT kind, detail FROM activity_log WHERE ts >= ? ORDER BY ts", (start,)
-            ).fetchall()
-            kinds = {}
-            for k, d in rows:
-                kinds.setdefault(k, []).append(str(d or "")[:24])
-            parts = []
-            if kinds.get("bili"):
-                parts.append(f"刷了 {len(kinds['bili'])} 次 B 站：" + "、".join(kinds["bili"][-3:]))
-            if kinds.get("chat"):
-                parts.append(f"跟主人聊了 {len(kinds['chat'])} 次")
-            if kinds.get("proactive"):
-                parts.append(f"被叫醒 {len(kinds['proactive'])} 次")
-            if kinds.get("game"):
-                parts.append(f"玩了 {len(kinds['game'])} 次游戏")
-            if kinds.get("habit"):
-                parts.append(f"有 {len(kinds['habit'])} 次习惯动作")
-            # 顺便带上今天刷到的视频标题
-            try:
-                browsed = self.store.conn.execute(
-                    "SELECT title FROM browsed WHERE ts >= ? ORDER BY ts DESC LIMIT 5", (start,)
-                ).fetchall()
-                if browsed:
-                    parts.append("刷到的视频：" + "、".join(str(x[0])[:20] for x in browsed))
-            except Exception:
-                pass
-            if parts:
-                extra = "\n今天你：\n· " + "\n· ".join(parts) + "\n"
-        except Exception:
-            pass
-        msg = f"（该写日记了，今天是 {dt.month} 月 {dt.day} 日。{extra}记两句今天的事吧，写给你自己看。）"
-        self._inject(msg, silent=True)
-        _log("diary: nudged model to write")
-        return True
-
     def _tick_l2(self, st: dict, now: float) -> bool:
         today = datetime.date.today().isoformat()
         if st.get("l2_review_date") == today:
-            return False
-        if datetime.datetime.now().hour < 7:
             return False
         st["l2_review_date"] = today
         threading.Thread(target=self._run_l2_review, name="dsh-l2-review", daemon=True).start()
@@ -303,10 +267,9 @@ class Scheduler:
 
     # ---------- 工具 ----------
     def _tick_l3_review(self, st: dict, now: float) -> bool:
+        days = float(self._schedule_cfg("l3_review", "days", 7) or 7)
         last = float(st.get("l3_review_at") or 0)
-        if now - last < 7 * 86400:
-            return False
-        if datetime.datetime.now().hour < 7:
+        if now - last < max(1.0, days) * 86400:
             return False
         st["l3_review_at"] = now
         threading.Thread(target=self._run_l3_review, name="dsh-l3-review", daemon=True).start()
