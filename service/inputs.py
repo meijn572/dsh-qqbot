@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 
 from render import (cut_lines, render_batches, render_diary, render_diary_row,
@@ -259,28 +260,47 @@ def persona_block(store, *, expand: bool = False) -> dict[str, str]:
 # 配方
 # ---------------------------------------------------------------------------
 
-# 每个用途取多少、要不要带原话、证据块最多多少字
-DEFAULT_LIMITS = {
-    "evidence":  {"L1": 15, "L3": 10, "recent": 0,
-                  "quotes": False, "max_chars": 8000},
-    "diary":     {"L1": 40, "L3": 5, "recent": 0,
-                  "quotes": False, "max_chars": 8000},
-    # 5 天一次、看全窗口，所以给得比别的大
-    "review":    {"L1": 300, "L3": 200, "recent": 30,
-                  "quotes": False, "max_chars": 24000},
-    # 调口吻要真实措辞，只有它带原话
-    "style":     {"L1": 30, "L3": 20, "recent": 60,
-                  "quotes": True, "max_chars": 12000},
-    "profile":   {"L1": 90, "L3": 50, "recent": 20,
-                  "quotes": False, "max_chars": 18000},
-    "important": {"L1": 30, "L3": 20, "recent": 80,
-                  "quotes": False, "max_chars": 10000},
+# 默认值：config.json 的 budget 段会覆盖这里。改预算去改配置，不用动代码。
+FALLBACK_LIMITS = {
+    "evidence":  {"L1": 15, "L3": 10, "recent": 0, "quotes": False, "max_chars": 8000},
+    "diary":     {"L1": 40, "L3": 5, "recent": 0, "quotes": False, "max_chars": 8000},
+    "review":    {"L1": 300, "L3": 200, "recent": 30, "quotes": False, "max_chars": 24000},
+    "style":     {"L1": 30, "L3": 20, "recent": 60, "quotes": True, "max_chars": 12000},
+    "profile":   {"L1": 90, "L3": 50, "recent": 20, "quotes": False, "max_chars": 18000},
+    "important": {"L1": 30, "L3": 20, "recent": 80, "quotes": False, "max_chars": 10000},
 }
 
 
+def _load_budget() -> dict:
+    """从 config.json 读 budget 段（只读）。"""
+    path = os.environ.get("CMEM_MAIN_CONFIG") or ""
+    if not path:
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:  # noqa: BLE001
+        return {}
+    node = data.get("budget") if isinstance(data, dict) else None
+    return node if isinstance(node, dict) else {}
+
+
+_BUDGET_CACHE: dict | None = None
+
+
+def _configured(name: str) -> dict:
+    """config.json 的 budget.<name>；读不到就用代码里的兜底。"""
+    global _BUDGET_CACHE
+    if _BUDGET_CACHE is None:
+        _BUDGET_CACHE = _load_budget()
+    got = _BUDGET_CACHE.get(name)
+    return dict(got) if isinstance(got, dict) else {}
+
+
 def _limits(name: str, body: dict) -> dict:
-    """默认值表 + 调用方覆盖。数字键是条数，其它键（quotes/max_chars）原样保留。"""
-    merged = dict(DEFAULT_LIMITS.get(name) or {})
+    """代码兜底 → 配置文件 → 调用方 body，后者覆盖前者。"""
+    merged = dict(FALLBACK_LIMITS.get(name) or {})
+    merged.update(_configured(name))
     given = body.get("limits")
     if isinstance(given, dict):
         for k, v in given.items():

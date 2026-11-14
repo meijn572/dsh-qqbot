@@ -401,7 +401,7 @@ def split_bubbles(text: str) -> list[str]:
     """
     # 0 或负数 = 不封顶，她分几段就发几条
     try:
-        limit = int(CONFIG.get("split_max_bubbles", 0))
+        limit = int(delivery("split_max_bubbles", 0))
     except (TypeError, ValueError):
         limit = 0
     max_unit = 200          # 单段超过这个字数才按句切
@@ -807,7 +807,7 @@ async def group_slang_loop(dsh: Dsh) -> None:
     while True:
         try:
             cfg = {"enabled": True, "extract_hour": 22, "min_messages": 30}
-            cfg.update(CONFIG.get("group_slang") or {})
+            cfg.update(sched("group_slang") or {})
             if cfg.get("enabled", True):
                 state_path = GROUP_SLANG_DIR / "group-slang-state.json"
                 try:
@@ -930,7 +930,7 @@ async def lexicon_review_loop(dsh: Dsh) -> None:
             if not cfg.get("enabled", True):
                 await asyncio.sleep(1800)
                 continue
-            if is_review_hour():
+            if True:
                 state = {}
                 if LEXICON_REVIEW_STATE.exists():
                     try:
@@ -1053,7 +1053,7 @@ def other_at(event: dict) -> bool:
 
 def merge_seconds() -> float:
     try:
-        return max(0.0, float(CONFIG.get("merge_seconds", 6.5)))
+        return max(0.0, float(delivery("merge_seconds", 6.5)))
     except (TypeError, ValueError):
         return 6.5
 
@@ -1069,6 +1069,7 @@ def sticker_review_cfg() -> dict:
         "max_chars": 2000,
     }
     merged.update(CONFIG.get("sticker_review") or {})
+    merged.update(sched("sticker_review") or {})
     return merged
 
 
@@ -1400,7 +1401,7 @@ async def sticker_review_loop(dsh: Dsh) -> None:
         try:
             items = pending_occurrences(500)
             if not items:
-                await asyncio.sleep(max(60, int(float(cfg.get("interval_hours", 12)) * 3600)))
+                await asyncio.sleep(max(60, int(float(cfg.get("interval_hours", sched("sticker_review", "every_hours", 12))) * 3600)))
                 continue
             groups: dict[str, list[dict]] = {}
             for item in items:
@@ -1419,7 +1420,7 @@ async def sticker_review_loop(dsh: Dsh) -> None:
             log.info("表情复盘：处理 %s 张，标记 %s 条 occurrence", done, len(reviewed_ids))
         except Exception as exc:  # noqa: BLE001
             log.warning("sticker_review_loop err: %s", exc)
-        await asyncio.sleep(max(60, int(float(cfg.get("interval_hours", 12)) * 3600)))
+        await asyncio.sleep(max(60, int(float(cfg.get("interval_hours", sched("sticker_review", "every_hours", 12))) * 3600)))
 
 
 RECENT_TEXT: dict[str, str] = {}
@@ -1455,6 +1456,29 @@ def mark_session_mode_off(sid: str) -> None:
 # 维护类会话的上下文上限：快到就换新会话，靠换新而不是靠压缩。
 # 换新只付一次 6k 冷启动；压缩要读整段历史再重写前缀，越晚压越贵。
 ROTATE_TOKENS = int(CONFIG.get("maintenance_rotate_tokens") or 30000)
+
+
+def sched(name: str, key: str = "", default=None):
+    """周期配置：config.schedule.<name>.<key>。
+
+    key 传空串时返回整段（给那些直接吃 dict 的模块用）。
+    """
+    node = (CONFIG.get("schedule") or {}).get(name) or {}
+    if not key:
+        return node or None
+    return node.get(key, default)
+
+
+def budget(name: str, key: str = "", default=None):
+    """预算配置：config.budget.<name> 或 config.budget.<name>.<key>"""
+    node = (CONFIG.get("budget") or {}).get(name) or {}
+    if not key:
+        return node or default
+    return node.get(key, default)
+
+
+def delivery(key: str, default=None):
+    return (CONFIG.get("delivery") or {}).get(key, default)
 
 
 def _task_state_file(kind: str, task: str) -> Path:
@@ -1529,8 +1553,8 @@ IMPORTANT_MAX = 8
 
 
 def review_cfg() -> dict:
-    merged = {"enabled": True, "review_days": 5}
-    merged.update(CONFIG.get("persona_review") or {})
+    merged = {"enabled": True}
+    merged.update((CONFIG.get("schedule") or {}).get("persona_review") or {})
     return merged
 
 
@@ -1775,7 +1799,7 @@ async def autonomy_loop(dsh: Dsh, onebot: OneBot) -> None:
 
 def group_merge_seconds() -> float:
     try:
-        return max(0.0, float(CONFIG.get("group_merge_seconds", 10)))
+        return max(0.0, float(delivery("group_merge_seconds", 10)))
     except (TypeError, ValueError):
         return 10.0
 
@@ -2511,32 +2535,29 @@ async def profile_refresh_loop(dsh: Dsh) -> None:
     await asyncio.sleep(120)
     while True:
         try:
-            if not is_review_hour():
-                await asyncio.sleep(1800)
-                continue
             state = {}
             if PROFILE_STATE_FILE.exists():
                 try:
                     state = json.loads(PROFILE_STATE_FILE.read_text(encoding="utf-8"))
                 except Exception:  # noqa: BLE001
                     state = {}
-            if time.time() - float(state.get("last_run") or 0) >= int(CONFIG.get("profile_refresh_days", 2)) * 86400:
+            if time.time() - float(state.get("last_run") or 0) >= int(sched("profile_refresh", "days", 2)) * 86400:
                 await refresh_user_profile(dsh)
         except Exception as exc:  # noqa: BLE001
             log.warning("画像刷新失败：%s", exc)
-        await asyncio.sleep(6 * 3600)
+        await asyncio.sleep(600)
 
 
 STYLE_BEGIN = "<!-- style:begin -->"
 STYLE_END = "<!-- style:end -->"
 STYLE_PROPOSAL_FILE = DSH_HOME / "persona-roles" / "state" / "style-proposal.json"
 STYLE_STATE_FILE = DSH_HOME / "persona-roles" / "state" / "style-review-state.json"
-STYLE_DAYS = int(CONFIG.get("style_review_days", 3))
+STYLE_DAYS = int(sched("style_review", "days", 3))
 REVIEW_HOUR = 7
 
 
 def is_review_hour() -> bool:
-    """所有周期复盘统一在早上 7 点这一小时内跑。"""
+    """只有需要写「昨天」的任务（日记 / L2 复查）才挑这个点。"""
     return time.localtime().tm_hour == REVIEW_HOUR
 
 
@@ -2562,27 +2583,21 @@ async def persona_review_loop(dsh: Dsh) -> None:
     await asyncio.sleep(420)
     while True:
         try:
-            if not is_review_hour():
-                await asyncio.sleep(1800)
-                continue
             state = growth_review.load_state()
             last = float(state.get("last_run") or 0)
             # 5 天一次，每次看全这几天，不按条数截
-            days = max(1, int(review_cfg().get("review_days", 5)))
+            days = max(1, int(review_cfg().get("days", 5)))
             if time.time() - last >= days * 86400:
                 await run_persona_review(dsh, since=last)
         except Exception as exc:  # noqa: BLE001
             log.warning("人格复盘失败：%s", exc)
-        await asyncio.sleep(6 * 3600)
+        await asyncio.sleep(600)
 
 
 async def style_review_loop(dsh: Dsh) -> None:
     await asyncio.sleep(300)
     while True:
         try:
-            if not is_review_hour():
-                await asyncio.sleep(1800)
-                continue
             if not STYLE_PROPOSAL_FILE.exists():
                 state = {}
                 if STYLE_STATE_FILE.exists():
@@ -2598,7 +2613,7 @@ async def style_review_loop(dsh: Dsh) -> None:
                             {"last_run": int(time.time())}, ensure_ascii=False), encoding="utf-8")
         except Exception as exc:  # noqa: BLE001
             log.warning("style_review err: %s", exc)
-        await asyncio.sleep(6 * 3600)
+        await asyncio.sleep(600)
 
 
 INJECT_FILE = DSH_HOME / "qq-inject.jsonl"
@@ -2655,7 +2670,7 @@ async def qzone_loop(dsh: Dsh, onebot: OneBot) -> None:
 async def important_check_loop(dsh: Dsh) -> None:
     await growth_important.loop(
         lambda prompt: maintenance_turn(dsh, OWNER_CHAT_KEY, prompt, task="important"),
-        CONFIG.get("important_check") or {},
+        sched("important_check") or {},
     )
 
 
@@ -2664,24 +2679,22 @@ async def important_file_loop(dsh: Dsh) -> None:
 
 
 async def core_review_loop() -> None:
-    """每 6 小时检查一次，只在早上 7 点这一小时触发；服务端再按 3 天节流。"""
+    """到期就跑；服务端按 schedule.core_review.days 节流。"""
     await asyncio.sleep(120)
     while True:
         try:
-            if not is_review_hour():
-                await asyncio.sleep(1800)
-                continue
             result = await cmem_call("POST", "/core/review", {})
             if result.get("created"):
                 log.info("核心记忆复盘：新增 %s 条", result.get("created"))
         except Exception as exc:  # noqa: BLE001
             log.warning("core_review_loop err: %s", exc)
-        await asyncio.sleep(6 * 3600)
+        await asyncio.sleep(600)
 
 
 async def memory_batch_loop() -> None:
     """批量蒸馏：L0→L1，多条 L1→L3。"""
-    await asyncio.sleep(60)
+    every = max(1, int(sched("memory_batch", "every_minutes", 5)))
+    await asyncio.sleep(every * 60)
     while True:
         try:
             result = await cmem_call("POST", "/batch/run", {})
@@ -2691,7 +2704,7 @@ async def memory_batch_loop() -> None:
                 log.warning("批量记忆失败：%s", result.get("reason") or "unknown")
         except Exception as exc:  # noqa: BLE001
             log.warning("memory_batch_loop err: %s", exc)
-        await asyncio.sleep(300)
+        await asyncio.sleep(every * 60)
 
 
 async def observation_archive_loop() -> None:

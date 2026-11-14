@@ -25,8 +25,9 @@ class BubbleSplitTest(unittest.TestCase):
         self.assertEqual(len(split_bubbles(text)), 6)
 
     def test_cap_merges_when_configured(self) -> None:
-        old = bridge.CONFIG.get("split_max_bubbles")
-        bridge.CONFIG["split_max_bubbles"] = 3
+        # 上限现在读 delivery.split_max_bubbles
+        old = bridge.CONFIG.get("delivery")
+        bridge.CONFIG["delivery"] = {"split_max_bubbles": 3}
         try:
             text = "\n\n".join(f"第{i}段。" for i in range(1, 7))
             out = split_bubbles(text)
@@ -34,9 +35,9 @@ class BubbleSplitTest(unittest.TestCase):
             self.assertIn("\n\n", out[0])
         finally:
             if old is None:
-                bridge.CONFIG.pop("split_max_bubbles", None)
+                bridge.CONFIG.pop("delivery", None)
             else:
-                bridge.CONFIG["split_max_bubbles"] = old
+                bridge.CONFIG["delivery"] = old
 
     def test_long_paragraph_split(self) -> None:
         text = "说了很多事情，" * 40 + "收尾。"

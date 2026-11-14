@@ -146,7 +146,7 @@ async def run_round(deps: Deps) -> dict | None:
         mark_aut_seen([v for v in videos if isinstance(v, dict)], round_topic)
     AUT_REPORT_DIR.mkdir(parents=True, exist_ok=True)
     report = AUT_REPORT_DIR / f"{time.strftime('%Y-%m-%d')}.md"
-    lines = [f"\n## {time.strftime('%H:%M')} · {round_topic}（{'自由探索' if mode == 'explore' else '兴趣驱动'}）"]
+    lines = [f"\n## {time.strftime('%H:%M')} · {round_topic}"]
     links: list[str] = []
     for video in videos[:max_videos]:
         if isinstance(video, dict):

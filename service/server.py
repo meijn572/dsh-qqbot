@@ -76,16 +76,40 @@ def _mask(secret: str) -> str:
     return f"{secret[:6]}…{secret[-4:]}"
 
 
+# 主配置（bridge 那边维护）：只读，用来取 schedule / budget / segment
+MAIN_CONFIG_PATH = os.environ.get("CMEM_MAIN_CONFIG") or ""
+
+
+def _load_main_config() -> dict:
+    if not MAIN_CONFIG_PATH:
+        return {}
+    try:
+        with open(MAIN_CONFIG_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def _load_config() -> dict:
+    """本地 config.json 优先；缺的键从主配置补（主配置只读）。"""
+    local: dict = {}
     try:
         with open(CONFIG_PATH, encoding="utf-8") as f:
             data = json.load(f)
-        return data if isinstance(data, dict) else {}
+        if isinstance(data, dict):
+            local = data
     except FileNotFoundError:
-        return {}
+        pass
     except Exception as exc:  # noqa: BLE001
         print(f"[cmem] config.json unreadable, ignoring: {type(exc).__name__}: {exc}", flush=True)
-        return {}
+
+    main = _load_main_config()
+    if not main:
+        return local
+    merged = dict(main)
+    merged.update(local)          # 本地覆盖主配置
+    return merged
 
 
 def _save_config(cfg: dict) -> None:
@@ -2491,7 +2515,8 @@ class Handler(BaseHTTPRequestHandler):
         """写昨天的日记：素材由 inputs 的 diary 配方给，这里只管调模型和落库。"""
         body = self._body()
         cfg = _load_config()
-        if not bool(cfg.get("diary_enabled", True)):
+        diary_cfg = (cfg.get("schedule") or {}).get("diary") or {}
+        if not bool(diary_cfg.get("enabled", True)):
             self._json(200, {"ok": True, "skipped": "disabled"})
             return
 
@@ -2752,10 +2777,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _batch_run(self) -> None:
         """按会话段提取：L0 → L1；L3 事件线程续写/新建。"""
-        cfg = _load_config().get("batch") or {}
-        idle_seconds = float(cfg.get("segment_idle_seconds", 300))
-        max_minutes = float(cfg.get("segment_max_minutes", 30))
-        max_messages = int(cfg.get("segment_max_messages", 80))
+        seg = _load_config().get("segment") or {}
+        idle_seconds = float(seg.get("idle_seconds", 300))
+        max_minutes = float(seg.get("max_minutes", 10))
+        max_messages = int(seg.get("max_messages", 80))
         lifecycle = store.mark_lifecycle(30.0, 7.0)
         stats = {"ok": True, "l1": 0, "l2": 0, "l3": 0, "waiting": "",
                  "stale": lifecycle.get("stale", 0), "dormant": lifecycle.get("dormant", 0)}
@@ -3078,8 +3103,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _core_review(self) -> None:
         """每 3 天从 closed L3 里挑 0–2 条核心记忆。"""
-        cfg = _load_config().get("core_review") or {}
-        interval = float(cfg.get("interval_days", 3)) * 86400
+        cfg = ((_load_config().get("schedule") or {}).get("core_review") or {})
+        interval = float(cfg.get("days", 3)) * 86400
         last = float(self._meta_get("core_review_at", "0") or 0)
         if last and time.time() - last < interval:
             self._json(200, {"ok": True, "skipped": "not-due"})

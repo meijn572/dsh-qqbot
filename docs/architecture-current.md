@@ -2422,3 +2422,98 @@ per_tier=500 → 1267 条（L0 500 / L1 392 到底）
 ```
 
 总数 1517 是全部层之和，滑条拉满是 1267——差的 250 条是 L0 超过 500 上限的部分。
+
+## 29. 配置集中到一个文件（2026-11-15）
+
+### 问题
+
+```text
+散在两个文件    D:\QQBot\dshbot\config.json
+                C:\Users\12152\.dsh-qqbot\remembers-data\config.json
+                后者只有三个 segment_* 键，和前者 batch 段重复
+
+硬编码在代码    REVIEW_HOUR = 7
+                review_days 5 / style_review_days 3 / profile_refresh_days 2
+                budget 那些 L1 300 / L3 200 / max_chars 24000
+
+命名不统一      profile_refresh_days（扁平）
+                batch.segment_idle_seconds（嵌套）
+                group_slang.extract_hour（又是另一种）
+```
+
+结果：改频率要翻代码，改预算找不到地方。
+
+### 现在
+
+`config.json` 按「改动频率」分三区，越靠后越常改：
+
+```text
+一、部署      端口 / 路径 / 密钥 / 白名单 —— 装好基本不动
+二、行为      proactive / bili_autonomy / qzone / important …
+三、常改      schedule（跑多勤）/ budget（取多少）/ segment / delivery
+```
+
+`schedule`：
+
+```json
+"diary":           {"hour": 7},
+"l2_review":       {"hour": 7},
+"l3_review":       {"days": 7},
+"core_review":     {"days": 3},
+"style_review":    {"days": 3},
+"profile_refresh": {"days": 2},
+"persona_review":  {"days": 5},
+"important_check": {"enabled": true, "hours": [10, 22]},
+"memory_batch":    {"every_minutes": 5},
+"sticker_review":  {"every_hours": 12},
+"group_slang":     {"enabled": false, "hour": 22, "min_messages": 30}
+```
+
+`budget`：
+
+```json
+"diary":     {"notes": 40, "recalled": 5, "prev_days": 7},
+"review":    {"L1": 300, "L3": 200, "window_days": 5, "max_chars": 24000},
+"style":     {"L1": 30, "L3": 20, "quotes": true, "max_chars": 12000},
+"profile":   {"L1": 90, "L3": 50, "max_chars": 18000},
+"important": {"L1": 30, "L3": 20, "max_chars": 10000},
+"recall":    {"L1": 25, "L3": 15, "max_chars": 6000},
+"batches":   {"count": 2, "idle_seconds": 300}
+```
+
+### 代码侧
+
+```python
+sched(name, key, default)     读 schedule.<name>.<key>；key 为空返回整段
+budget(name, key, default)    读 budget.<name>
+delivery(key, default)        读 delivery.<key>
+```
+
+`service/inputs.py` 的 `_limits()` 改成三层合并：
+
+```text
+代码兜底 FALLBACK_LIMITS → config.budget → 调用方 body
+```
+
+配置里改了 `budget.profile.L1`，`/input/profile` 立刻按新值取。
+（已用「改成 7 条 / 900 字」实测确认生效。）
+
+### 服务端也读同一份
+
+```text
+_load_config() 先读本地，再读主配置，本地覆盖主配置
+主配置路径来自 CMEM_MAIN_CONFIG 环境变量
+remembers-data\config.json 的三个 segment_* 已删掉
+```
+
+### 顺带修的漏跑问题
+
+```text
+改前  7 点那一小时才跑 + 循环每 6 小时醒一次
+      → 大量任务几个月不触发（l3_review 一次没跑过）
+
+改后  去掉 is_review_hour，到期就跑；循环 10 分钟醒一次
+      只有 diary 和 l2_review 保留 7 点（要写「昨天」）
+```
+
+维护任务是独立会话（`maint-<task>.json`），不占聊天主会话，白天跑不影响对话。
