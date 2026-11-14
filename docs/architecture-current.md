@@ -1,3 +1,5 @@
+> 这份文档记录**现状**和历次改动。**目标架构**见 [architecture-three-tiers.md](architecture-three-tiers.md)。
+
 # 当前架构与待办
 
 状态：设计已定，大部分未实现。
