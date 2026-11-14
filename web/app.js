@@ -62,6 +62,7 @@ let logName='bridge';
 let memTab='long';
 let memTier='';
 let memStatus='';
+let memPerTier=150;
 const MEM_TIER_LABEL={L0:'L0 原话',L1:'L1 总结',L2:'L2 判断',L3:'L3 事件',L4:'L4 核心'};
 const MEM_STATUS_LABEL={open:'进行中',closed:'已结束',standalone:'片段',dormant:'沉睡',archived:'归档',legacy:'旧数据',hypothesis:'待验证',promoted:'已升 L1',rejected:'已否定',expired:'已过期',superseded:'被替代'};
 function memBadgeClass(status){
@@ -299,7 +300,7 @@ async function load(){
     $('#tl').innerHTML=tl||'<span class="mut">还没有记录</span>';
   }
   if(!$('#memory').hidden){
-    const m=await j('/api/memory');
+    const m=await j('/api/memory?per_tier='+encodeURIComponent(memPerTier));
     const st=m.stats||{};
     const tiers=st.tiers||{};
     const l3=st.l3_status||{};
@@ -307,6 +308,14 @@ async function load(){
     let h=`<div class="card"><div class="k">记忆 · ${m.count} 条</div>
       <div class="grid" style="margin-top:8px">${stat('L1 总结',tiers.L1)}${stat('L2 判断',tiers.L2)}${stat('L3 事件',tiers.L3)}${stat('进行中',l3.open)}${stat('已结束',l3.closed)}${stat('片段',l3.standalone)}${stat('沉睡',l3.dormant)}${stat('L4 核心',tiers.L4)}</div>
       <div style="margin:10px 0"><input id="memq" placeholder="搜标题 / 内容…" style="background:#0b0f13;border:1px solid #232a33;color:#e6edf3;border-radius:8px;padding:7px 10px;width:260px" oninput="renderMem()"></div>
+      <div style="margin:8px 0;display:flex;align-items:center;gap:8px">
+        <span class="mut">每层取</span>
+        <input type="range" min="20" max="500" step="10" value="${memPerTier}"
+          oninput="document.getElementById('memlimit').textContent=this.value"
+          onchange="memPerTier=Number(this.value);load()" style="width:200px">
+        <span id="memlimit">${memPerTier}</span>
+        <span class="mut">条（共 ${m.count} 条）</span>
+      </div>
       <div style="margin:6px 0">
         <button onclick="memTier='';memStatus='';renderMem()">全部</button>
         <button onclick="memTier='L0';memStatus='';renderMem()">L0 原话</button>

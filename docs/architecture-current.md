@@ -2395,3 +2395,30 @@ memory_core.py  存储
 配置项 `split_min_chars` 不再使用，`split_max_bubbles` 保留（默认 3）。
 
 新增 `tests/test_split_bubbles.py` 锁住这六种情况。
+
+### 面板记忆条数滑条（2026-11-14）
+
+以前面板固定取 `/memories?limit=100` 再单独补 L3 200 条、L4 100 条，
+但总量已经 1517 条（L0 750 / L1 392 / L2 207 / L3 164 / L4 4），
+翻不到早的记录。
+
+改成：
+
+```text
+PER_TIER    每层各取 limit，互不挤占
+            任何一层时间老了也不会被别的层顶掉
+GET /api/memory?per_tier=150
+滑条        20 ~ 500，步长 10，默认 150
+            onchange 触发 load() 重新取
+```
+
+实测：
+
+```text
+per_tier= 20 → 84 条（每层 20，L4 只有 4）
+per_tier=150 → 604 条
+per_tier=300 → 975 条（L2 207 / L3 164 已到底）
+per_tier=500 → 1267 条（L0 500 / L1 392 到底）
+```
+
+总数 1517 是全部层之和，滑条拉满是 1267——差的 250 条是 L0 超过 500 上限的部分。

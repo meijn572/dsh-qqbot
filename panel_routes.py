@@ -67,7 +67,12 @@ def handle_get(handler, path: str, parsed) -> None:
     elif path == "/api/mood":
         handler._json(mood_payload())
     elif path == "/api/memory":
-        handler._json(memory_payload())
+        # 前端滑条控制每层取多少
+        try:
+            per_tier = int((query.get("per_tier") or ["150"])[0])
+        except (TypeError, ValueError):
+            per_tier = 150
+        handler._json(memory_payload(per_tier))
     elif path == "/api/proactive":
         handler._json(proactive_payload())
     elif path == "/api/style":
