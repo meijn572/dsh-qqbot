@@ -384,6 +384,13 @@ class Handler(BaseHTTPRequestHandler):
                 r = store.meme_pack_remove(str(body.get("id") or ""))
             self._json(200, r)
             return
+        if path.startswith("/task/"):
+            name = path[len("/task/"):].strip("/")
+            body = self._body()
+            import tasks as task_mod
+            self._json(200, task_mod.run(store, extractor.llm if extractor else None,
+                                         embedder, name, body))
+            return
         if path.startswith("/input/"):
             name = path[len("/input/"):].strip("/")
             body = self._body()

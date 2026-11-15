@@ -33,6 +33,8 @@ class LLM:
         self.failures = 0
         self.prompt_tokens = 0
         self.completion_tokens = 0
+        self.cached_tokens = 0        # 命中前缀缓存的部分
+        self.uncached_tokens = 0
 
     @property
     def enabled(self) -> bool:
@@ -40,17 +42,31 @@ class LLM:
 
     def chat(self, system: str, user: str, max_tokens: int = 1200) -> str | None:
         """返回文本；任何失败都返回 None，调用方自己决定降级。"""
+        result = self.chat_messages(
+            [{"role": "system", "content": system},
+             {"role": "user", "content": user}],
+            max_tokens=max_tokens,
+        )
+        return result.get("text")
+
+    def chat_messages(self, messages: list[dict], max_tokens: int = 1200,
+                      tools: list | None = None) -> dict:
+        """多轮调用。返回 {"text", "usage", "error", "raw_message"}。
+
+        带上完整历史，DeepSeek 的前缀缓存才能命中：
+        前面一字不差的那一段按缓存价，只有新增部分按全价。
+        """
         if not self.enabled:
-            return None
-        payload = json.dumps({
+            return {"text": None, "error": "llm-disabled", "usage": {}}
+        body: dict = {
             "model": self.model,
             "temperature": self.temperature,
             "max_tokens": max_tokens,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-        }, ensure_ascii=False).encode("utf-8")
+            "messages": list(messages or []),
+        }
+        if tools:
+            body["tools"] = tools
+        payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(f"{self.base_url}/chat/completions", data=payload, method="POST")
         req.add_header("Content-Type", "application/json; charset=utf-8")
         if self.api_key:
@@ -60,30 +76,40 @@ class LLM:
             self.calls += 1
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
+                data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:300]
             with self._lock:
                 self.failures += 1
                 self.last_error = f"HTTP {exc.code}: {detail}"
-            return None
+            return {"text": None, "error": self.last_error, "usage": {}}
         except Exception as exc:  # noqa: BLE001
             with self._lock:
                 self.failures += 1
                 self.last_error = f"{type(exc).__name__}: {exc}"
-            return None
+            return {"text": None, "error": self.last_error, "usage": {}}
 
-        usage = body.get("usage") or {}
+        usage = data.get("usage") or {}
+        cached = int(usage.get("prompt_cache_hit_tokens") or 0)
+        fresh = int(usage.get("prompt_cache_miss_tokens") or 0)
         with self._lock:
             self.prompt_tokens += int(usage.get("prompt_tokens") or 0)
             self.completion_tokens += int(usage.get("completion_tokens") or 0)
+            self.cached_tokens += cached
+            self.uncached_tokens += fresh
 
-        choices = body.get("choices") or []
+        choices = data.get("choices") or []
         if not choices:
-            return None
+            return {"text": None, "error": "no-choices", "usage": usage}
         message = choices[0].get("message") or {}
         content = message.get("content")
-        return content.strip() if isinstance(content, str) and content.strip() else None
+        text = content.strip() if isinstance(content, str) and content.strip() else None
+        return {"text": text, "error": None, "usage": {
+            "prompt": int(usage.get("prompt_tokens") or 0),
+            "cached": cached,
+            "fresh": fresh,
+            "completion": int(usage.get("completion_tokens") or 0),
+        }, "raw_message": message}
 
 
     def chat_json_vision(self, prompt: str, image_data_url: str, max_tokens: int = 300):
@@ -128,6 +154,13 @@ class LLM:
             return None
         return _extract_json(text)
 
+    def chat_json_messages(self, messages: list[dict], max_tokens: int = 1200) -> dict:
+        """多轮 + JSON。返回 {"data", "text", "usage", "error"}。"""
+        result = self.chat_messages(messages, max_tokens=max_tokens)
+        text = result.get("text")
+        result["data"] = _extract_json(text) if text else None
+        return result
+
     def health(self) -> dict:
         return {
             "enabled": self.enabled,
@@ -136,6 +169,8 @@ class LLM:
             "failures": self.failures,
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
+            "cached_tokens": self.cached_tokens,
+            "uncached_tokens": self.uncached_tokens,
             "last_error": self.last_error,
         }
 

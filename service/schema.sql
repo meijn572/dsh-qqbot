@@ -309,3 +309,19 @@ CREATE TABLE IF NOT EXISTS profiles (
     first_seen  REAL,
     updated_at  REAL
 );
+
+-- ---------------------------------------------------------------------------
+-- 任务会话：每个复盘任务一个持久会话，靠追加历史命中前缀缓存
+-- ---------------------------------------------------------------------------
+--   task      任务名（profile / style / important / review / diary）
+--   messages  历史消息 JSON 数组，只会往后追加，不修改已有内容
+--   turns     已完成轮数，用于裁剪
+--   pressure  上次记录的上下文占用（token），超过阈值就换新
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS task_session (
+  task        TEXT PRIMARY KEY,
+  messages    TEXT NOT NULL DEFAULT '[]',
+  turns       INTEGER NOT NULL DEFAULT 0,
+  pressure    INTEGER NOT NULL DEFAULT 0,
+  updated_at  REAL NOT NULL DEFAULT 0
+);
